@@ -1,8 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { resolveValue, resolveEndpoint, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe-engine.js'
 import type { ExecutionContext, StepResult } from '../../src/types.js'
 import { CliError } from '../../src/lib/errors.js'
 import * as apiClient from '../../src/lib/api-client.js'
+import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 // Mock the api-client get function to avoid real HTTP calls
 vi.mock('../../src/lib/api-client.js', async () => {
@@ -798,6 +801,108 @@ describe('executeRecipe', () => {
       expect(result.status).toBe('complete')
       const complete = result as { timestamp: string }
       expect(complete.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    })
+  })
+
+  // -- Output dir --
+
+  describe('outputDir', () => {
+    let tempDir: string
+
+    beforeEach(() => {
+      tempDir = mkdtempSync(join(tmpdir(), 'recipe-test-'))
+    })
+
+    afterEach(() => {
+      if (existsSync(tempDir)) {
+        rmSync(tempDir, { recursive: true })
+      }
+    })
+
+    it('should write segment files to outputDir when specified', async () => {
+      const projectsData = [{ id: 'p1' }]
+      const signalsData = [{ id: 's1' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const outputDir = join(tempDir, 'output')
+      const result = await executeRecipe({
+        yaml: TWO_STEP_RECIPE,
+        params: {},
+        clientOptions: {},
+        outputDir,
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+
+      // Data should contain file references instead of inline data
+      const projectsEntry = data.projects as { file: string }
+      const signalsEntry = data.signals as { file: string }
+      expect(projectsEntry.file).toContain('segment-001.json')
+      expect(signalsEntry.file).toContain('segment-002.json')
+
+      // Files should actually exist with correct content
+      const projectsContent = JSON.parse(readFileSync(projectsEntry.file, 'utf-8'))
+      expect(projectsContent).toEqual(projectsData)
+      const signalsContent = JSON.parse(readFileSync(signalsEntry.file, 'utf-8'))
+      expect(signalsContent).toEqual(signalsData)
+    })
+
+    it('should create outputDir if it does not exist', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+
+      const outputDir = join(tempDir, 'nested', 'dir')
+      expect(existsSync(outputDir)).toBe(false)
+
+      await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+        outputDir,
+      })
+
+      expect(existsSync(outputDir)).toBe(true)
+      expect(existsSync(join(outputDir, 'segment-001.json'))).toBe(true)
+    })
+
+    it('should fall back to inline data when outputDir write fails', async () => {
+      const projectsData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      // Use a path that can't be created (file as parent)
+      const blockingFile = join(tempDir, 'blocker')
+      require('node:fs').writeFileSync(blockingFile, 'x')
+      const outputDir = join(blockingFile, 'subdir')
+
+      const result = await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+        outputDir,
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      // Should have inline data, not file references
+      expect(data.projects).toEqual(projectsData)
+    })
+
+    it('should return inline data when outputDir is not specified', async () => {
+      const projectsData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.projects).toEqual(projectsData)
     })
   })
 

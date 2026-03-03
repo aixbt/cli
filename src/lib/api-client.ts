@@ -148,7 +148,7 @@ export async function get<T>(
   return apiRequest<T>('GET', path, options, params)
 }
 
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 

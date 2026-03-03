@@ -1,15 +1,10 @@
 import { RecipeValidationError } from './errors.js'
-import type { Recipe, RecipeStep, Segment, AgentStep } from '../types.js'
-import { isAgentStep, isForeachStep } from '../types.js'
-
-interface ValidationIssue {
-  path: string
-  message: string
-}
+import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../types.js'
+import { isAgentStep, isForeachStep, TEMPLATE_REGEX } from '../types.js'
 
 export function extractTemplateRefs(str: string): string[] {
   const refs: string[] = []
-  const regex = /\{([^}]+)\}/g
+  const regex = new RegExp(TEMPLATE_REGEX.source, TEMPLATE_REGEX.flags)
   let match: RegExpExecArray | null
   while ((match = regex.exec(str)) !== null) {
     refs.push(match[1])
@@ -261,24 +256,6 @@ function validateVariableReferences(
   }
 }
 
-function validateRequiredParams(
-  recipe: Recipe,
-  issues: ValidationIssue[],
-): void {
-  if (!recipe.params) return
-
-  const validTypes = new Set(['string', 'number', 'boolean'])
-
-  for (const [name, param] of Object.entries(recipe.params)) {
-    if (!validTypes.has(param.type)) {
-      issues.push({
-        path: `params.${name}.type`,
-        message: `Param type must be one of: string, number, boolean`,
-      })
-    }
-  }
-}
-
 export function validateRecipeCollectIssues(
   recipe: Recipe,
 ): Array<{ path: string; message: string }> {
@@ -287,7 +264,6 @@ export function validateRecipeCollectIssues(
 
   validateSegmentBoundaries(recipe, segments, issues)
   validateVariableReferences(recipe, segments, issues)
-  validateRequiredParams(recipe, issues)
 
   return issues
 }

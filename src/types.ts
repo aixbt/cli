@@ -22,6 +22,13 @@ export interface ApiResponse<T> {
   rateLimit: RateLimitInfo | null
 }
 
+export const TEMPLATE_REGEX = /\{([^}]+)\}/g
+
+export interface ValidationIssue {
+  path: string
+  message: string
+}
+
 // -- Recipe YAML schema types --
 
 export interface Recipe {

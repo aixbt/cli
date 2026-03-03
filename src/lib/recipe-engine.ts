@@ -5,13 +5,11 @@ import type {
   RecipeAwaitingAgent, RecipeComplete, AgentStep, Recipe,
   ForeachStep, ForeachResult, ForeachFailure, RateLimitInfo,
 } from '../types.js'
-import { isAgentStep, isForeachStep } from '../types.js'
+import { isAgentStep, isForeachStep, TEMPLATE_REGEX } from '../types.js'
 import { parseRecipe } from './recipe-parser.js'
 import { validateRecipe, buildSegments } from './recipe-validator.js'
-import { get, type ApiClientOptions } from './api-client.js'
+import { get, sleep, type ApiClientOptions } from './api-client.js'
 import { CliError } from './errors.js'
-
-const TEMPLATE_REGEX = /\{([^}]+)\}/g
 const RELATIVE_TIME_REGEX = /^-(\d+)(h|d|m)$/
 
 function getNestedValue(obj: unknown, path: string): unknown {
@@ -212,10 +210,6 @@ function flattenParams(
 }
 
 // -- Foreach helpers --
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
 
 function deriveConcurrency(rateLimit: RateLimitInfo | null): number {
   if (!rateLimit) return 3

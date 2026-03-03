@@ -1,11 +1,6 @@
 import { parse as parseYaml } from 'yaml'
 import { RecipeValidationError } from './errors.js'
-import type { Recipe, RecipeStep, RecipeParam } from '../types.js'
-
-interface ValidationIssue {
-  path: string
-  message: string
-}
+import type { Recipe, RecipeStep, RecipeParam, ValidationIssue } from '../types.js'
 
 function validateStep(
   raw: unknown,

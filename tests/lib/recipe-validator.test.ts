@@ -505,18 +505,6 @@ describe('validateRecipe required params', () => {
     expect(() => validateRecipe(recipe)).not.toThrow()
   })
 
-  it('should reject param with invalid type', () => {
-    const recipe = makeRecipe(
-      [apiStep('s1', 'GET /v2/projects')],
-      { bad: { type: 'object' as any } },
-    )
-    expect(() => validateRecipe(recipe)).toThrow(RecipeValidationError)
-    const issues = validateRecipeCollectIssues(recipe)
-    expect(issues.some((i) =>
-      i.path.includes('params.bad.type') && i.message.includes('Param type must be one of'),
-    )).toBe(true)
-  })
-
   it('should accept recipe with no params defined', () => {
     const recipe = makeRecipe([apiStep('s1', 'GET /v2/projects')])
     expect(() => validateRecipe(recipe)).not.toThrow()
@@ -591,15 +579,15 @@ describe('multiple issue collection', () => {
         apiStep('s1', 'GET /v2/projects'),
         agentStep('a1', ['s1']),
         // Cross-boundary reference (segment boundary issue)
-        apiStep('s2', 'GET /v2/{s1.data}'),
+        apiStep('s2', 'GET /v2/{s1.data}', { x: '{params.missing}' }),
       ],
-      // Invalid param type (required params issue)
-      { bad: { type: 'array' as any } },
+      // Define a param so variable ref check catches the undefined one
+      { valid: { type: 'string', required: false } },
     )
     const issues = validateRecipeCollectIssues(recipe)
-    // Should have both segment boundary issue and param type issue
+    // Should have both segment boundary issue and variable reference issue
     expect(issues.some((i) => i.message.includes('not accessible'))).toBe(true)
-    expect(issues.some((i) => i.message.includes('Param type must be one of'))).toBe(true)
+    expect(issues.some((i) => i.message.includes('undefined param "missing"'))).toBe(true)
   })
 
   it('should include issue count in the thrown error message', () => {
