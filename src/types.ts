@@ -30,6 +30,28 @@ export interface ValidationIssue {
   message: string
 }
 
+// -- API response types --
+
+export interface SignalData {
+  id: string
+  detectedAt: string
+  reinforcedAt: string
+  description: string
+  projectName: string
+  projectId: string
+  category: string
+  officialSources: string[]
+  clusters: Array<{ id: string; name: string }>
+  activity: Array<{
+    date: string
+    source: string
+    cluster: { id: string; name: string } | null
+    incoming: string
+    result: string
+    fromSignal?: { signalId: string; projectId: string; projectName: string }
+  }>
+}
+
 // -- Recipe YAML schema types --
 
 export interface Recipe {

@@ -1,4 +1,5 @@
 import type { Command } from 'commander'
+import type { SignalData } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
@@ -36,26 +37,6 @@ interface ProjectData {
   updatedAt?: string
   reinforcedAt?: string
   signals: SignalData[]
-}
-
-interface SignalData {
-  id: string
-  detectedAt: string
-  reinforcedAt: string
-  description: string
-  projectName: string
-  projectId: string
-  category: string
-  officialSources: string[]
-  clusters: Array<{ id: string; name: string }>
-  activity: Array<{
-    date: string
-    source: string
-    cluster: { id: string; name: string } | null
-    incoming: string
-    result: string
-    fromSignal?: { signalId: string; projectId: string; projectName: string }
-  }>
 }
 
 interface MomentumData {

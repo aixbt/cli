@@ -2,7 +2,7 @@ import type { AuthMode } from './auth.js'
 import { readConfig, writeConfig } from './config.js'
 import { CliError, PaymentRequiredError } from './errors.js'
 import * as output from './output.js'
-import { apiRequest } from './api-client.js'
+import { apiRequest, decodeBase64JsonHeader } from './api-client.js'
 
 // -- Types --
 
@@ -71,18 +71,9 @@ const VALID_DURATIONS = Object.keys(X402_API_KEY_ENDPOINTS)
 
 /**
  * Decode the PAYMENT-REQUIRED header from a 402 response.
- * The header is base64-encoded JSON.
  */
 export function decodePaymentRequiredHeader(headers: Headers): X402PaymentRequired | null {
-  const raw = headers.get('payment-required')
-  if (!raw) return null
-
-  try {
-    const decoded = Buffer.from(raw, 'base64').toString('utf-8')
-    return JSON.parse(decoded) as X402PaymentRequired
-  } catch {
-    return null
-  }
+  return decodeBase64JsonHeader<X402PaymentRequired>(headers, 'payment-required')
 }
 
 // -- Amount formatting --

@@ -1,23 +1,9 @@
 import type { Command } from 'commander'
+import type { SignalData } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
-
-// -- Response types --
-
-interface SignalData {
-  id: string
-  detectedAt: string
-  reinforcedAt: string
-  description: string
-  projectName: string
-  projectId: string
-  category: string
-  officialSources: string[]
-  clusters: Array<{ id: string; name: string }>
-  activity: Array<{ date: string; source: string }>
-}
 
 // -- Table column definitions --
 

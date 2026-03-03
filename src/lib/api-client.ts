@@ -132,16 +132,7 @@ async function executeWithBackoff<T>(
     throw new ApiError(res.status, 'Invalid JSON in API response', 'INVALID_RESPONSE')
   }
 
-  let paymentResponse: Record<string, unknown> | null = null
-  const paymentResponseHeader = res.headers.get('payment-response')
-  if (paymentResponseHeader) {
-    try {
-      const decoded = Buffer.from(paymentResponseHeader, 'base64').toString('utf-8')
-      paymentResponse = JSON.parse(decoded) as Record<string, unknown>
-    } catch {
-      // Ignore malformed settlement header
-    }
-  }
+  const paymentResponse = decodeBase64JsonHeader<Record<string, unknown>>(res.headers, 'payment-response')
 
   return {
     status: body.status,
@@ -167,6 +158,22 @@ export function sleep(ms: number): Promise<void> {
 async function safeJson(res: Response): Promise<Record<string, unknown> | null> {
   try {
     return await res.json() as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Decode a base64-encoded JSON header value.
+ * Returns null if the header is missing or malformed.
+ */
+export function decodeBase64JsonHeader<T>(headers: Headers, name: string): T | null {
+  const raw = headers.get(name)
+  if (!raw) return null
+
+  try {
+    const decoded = Buffer.from(raw, 'base64').toString('utf-8')
+    return JSON.parse(decoded) as T
   } catch {
     return null
   }
