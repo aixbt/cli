@@ -1,3 +1,4 @@
+import type { Command } from 'commander'
 import { resolveConfig, type ResolvedConfig } from './config.js'
 import { NoApiKeyError } from './errors.js'
 import { get, type ApiClientOptions } from './api-client.js'
@@ -52,4 +53,36 @@ export function buildClientOptions(authMode: AuthMode, globalOpts: { apiUrl?: st
     return { apiKey: authMode.apiKey, apiUrl: authMode.config.apiUrl }
   }
   return { noAuth: true, apiUrl: globalOpts.apiUrl }
+}
+
+export function formatExpiry(expiresAt: string): string {
+  if (expiresAt === 'never') return 'never'
+  const date = new Date(expiresAt)
+  if (isNaN(date.getTime())) return expiresAt
+  return date.toLocaleString()
+}
+
+export function isExpiringSoon(expiresAt: string): boolean {
+  if (expiresAt === 'never') return false
+  const date = new Date(expiresAt)
+  if (isNaN(date.getTime())) return false
+  const hoursUntilExpiry = (date.getTime() - Date.now()) / (1000 * 60 * 60)
+  return hoursUntilExpiry > 0 && hoursUntilExpiry < 24
+}
+
+export function getClientOptions(cmd: Command): {
+  clientOpts: ApiClientOptions
+  authMode: AuthMode
+  isJson: boolean
+} {
+  const opts = cmd.optsWithGlobals()
+  const isJson = opts.json === true
+  const authMode = resolveAuthMode({
+    delayed: opts.delayed as boolean | undefined,
+    payPerUse: opts.payPerUse as boolean | undefined,
+    apiKey: opts.apiKey as string | undefined,
+    apiUrl: opts.apiUrl as string | undefined,
+  })
+  const clientOpts = buildClientOptions(authMode, { apiUrl: opts.apiUrl as string | undefined })
+  return { clientOpts, authMode, isJson }
 }

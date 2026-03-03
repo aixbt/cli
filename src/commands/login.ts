@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 import { password } from '@inquirer/prompts'
 import { readConfig, writeConfig, resolveConfig } from '../lib/config.js'
-import { validateApiKey, type ApiKeyInfo } from '../lib/auth.js'
+import { validateApiKey, formatExpiry, isExpiringSoon } from '../lib/auth.js'
 import * as output from '../lib/output.js'
 import { CliError } from '../lib/errors.js'
 
@@ -45,20 +45,12 @@ export function registerLoginCommand(program: Command): void {
       apiKey = apiKey.trim()
 
       // Validate key against API
-      let spin: ReturnType<typeof output.spinner> | undefined
-      if (!isJson) {
-        spin = output.spinner('Validating API key...')
-      }
-
-      let keyInfo: ApiKeyInfo
-      try {
-        keyInfo = await validateApiKey(apiKey, opts.apiUrl as string | undefined)
-      } catch (err) {
-        spin?.fail('Validation failed')
-        throw err
-      }
-
-      spin?.succeed('API key validated')
+      const keyInfo = await output.withSpinner(
+        'Validating API key...',
+        isJson,
+        () => validateApiKey(apiKey, opts.apiUrl as string | undefined),
+        'Validation failed',
+      )
 
       // Store in config
       const config = readConfig()
@@ -128,20 +120,12 @@ export function registerLoginCommand(program: Command): void {
       }
 
       // Always validate against API
-      let spin: ReturnType<typeof output.spinner> | undefined
-      if (!isJson) {
-        spin = output.spinner('Checking authentication...')
-      }
-
-      let keyInfo: ApiKeyInfo
-      try {
-        keyInfo = await validateApiKey(resolved.apiKey, resolved.apiUrl)
-      } catch (err) {
-        spin?.fail('Authentication check failed')
-        throw err
-      }
-
-      spin?.succeed('Authenticated')
+      const keyInfo = await output.withSpinner(
+        'Checking authentication...',
+        isJson,
+        () => validateApiKey(resolved.apiKey!, resolved.apiUrl),
+        'Authentication check failed',
+      )
 
       // Check expiry warning
       const expiryWarning = isExpiringSoon(keyInfo.expiresAt)
@@ -165,19 +149,4 @@ export function registerLoginCommand(program: Command): void {
         }
       }
     })
-}
-
-function formatExpiry(expiresAt: string): string {
-  if (expiresAt === 'never') return 'never'
-  const date = new Date(expiresAt)
-  if (isNaN(date.getTime())) return expiresAt
-  return date.toLocaleString()
-}
-
-function isExpiringSoon(expiresAt: string): boolean {
-  if (expiresAt === 'never') return false
-  const date = new Date(expiresAt)
-  if (isNaN(date.getTime())) return false
-  const hoursUntilExpiry = (date.getTime() - Date.now()) / (1000 * 60 * 60)
-  return hoursUntilExpiry > 0 && hoursUntilExpiry < 24
 }

@@ -135,6 +135,7 @@ async function executeWithBackoff<T>(
   return {
     status: body.status,
     data: body.data,
+    pagination: body.pagination as ApiResponse<T>['pagination'],
     rateLimit,
   }
 }

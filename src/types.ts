@@ -13,13 +13,7 @@ export interface RateLimitInfo {
 export interface ApiResponse<T> {
   status: number
   data: T
-  rateLimit: RateLimitInfo | null
-}
-
-export interface PaginatedApiResponse<T> {
-  status: number
-  data: T[]
-  pagination: {
+  pagination?: {
     page: number
     limit: number
     totalCount: number

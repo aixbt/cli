@@ -64,6 +64,23 @@ export function spinner(text: string): Ora {
   return ora({ text, spinner: 'dots', color: 'cyan' }).start()
 }
 
+export async function withSpinner<T>(
+  text: string,
+  isJson: boolean,
+  fn: () => Promise<T>,
+  failText?: string,
+): Promise<T> {
+  const spin = isJson ? null : spinner(text)
+  try {
+    const result = await fn()
+    spin?.succeed()
+    return result
+  } catch (err) {
+    spin?.fail(failText ?? text)
+    throw err
+  }
+}
+
 // -- API key masking --
 
 export function maskApiKey(key: string): string {
@@ -120,6 +137,18 @@ export function table<T extends Record<string, unknown>>(
       })
       .join('  ')
     console.log(line)
+  }
+}
+
+// -- Pagination --
+
+export function showPagination(pagination: { page: number; limit: number; totalCount: number; hasMore: boolean } | undefined): void {
+  if (!pagination) return
+  const { page, limit, totalCount, hasMore } = pagination
+  console.log()
+  dim(`Page ${page} of ${Math.ceil(totalCount / limit)} (${totalCount} total)`)
+  if (hasMore) {
+    dim(`Use --page ${page + 1} to see next page`)
   }
 }
 
