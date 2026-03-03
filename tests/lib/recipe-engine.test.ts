@@ -1145,4 +1145,138 @@ steps:
       expect(momentumData).toEqual([])
     })
   })
+
+  // -- Required params validation --
+
+  describe('required params validation', () => {
+    it('should execute successfully when required param is provided', async () => {
+      const recipe = `
+name: test-recipe
+version: "1.0"
+description: Required param test
+params:
+  chain:
+    type: string
+    required: true
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      const result = await executeRecipe({
+        yaml: recipe,
+        params: { chain: 'base' },
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+    })
+
+    it('should throw CliError with MISSING_PARAMS when required param is missing', async () => {
+      const recipe = `
+name: test-recipe
+version: "1.0"
+description: Required param test
+params:
+  chain:
+    type: string
+    required: true
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+`
+      try {
+        await executeRecipe({
+          yaml: recipe,
+          params: {},
+          clientOptions: {},
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('MISSING_PARAMS')
+        expect((err as CliError).message).toContain('chain')
+      }
+    })
+
+    it('should not throw when required param has a default and is not provided', async () => {
+      const recipe = `
+name: test-recipe
+version: "1.0"
+description: Required with default
+params:
+  chain:
+    type: string
+    required: true
+    default: base
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      const result = await executeRecipe({
+        yaml: recipe,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+    })
+
+    it('should report only the missing required param when multiple required params exist', async () => {
+      const recipe = `
+name: test-recipe
+version: "1.0"
+description: Multiple required params
+params:
+  chain:
+    type: string
+    required: true
+  count:
+    type: number
+    required: true
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+`
+      try {
+        await executeRecipe({
+          yaml: recipe,
+          params: { chain: 'base' },
+          clientOptions: {},
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('MISSING_PARAMS')
+        expect((err as CliError).message).toContain('count')
+        expect((err as CliError).message).not.toContain('chain')
+      }
+    })
+
+    it('should not throw when optional param is not provided', async () => {
+      const recipe = `
+name: test-recipe
+version: "1.0"
+description: Optional param test
+params:
+  chain:
+    type: string
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      const result = await executeRecipe({
+        yaml: recipe,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+    })
+  })
 })

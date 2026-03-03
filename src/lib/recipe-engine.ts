@@ -332,6 +332,27 @@ async function executeForeach(options: ForeachOptions): Promise<ForeachResult> {
 
 // -- Recipe execution --
 
+function validateRequiredParams(
+  recipe: Recipe,
+  provided: Record<string, string>,
+): void {
+  if (!recipe.params) return
+
+  const missing: string[] = []
+  for (const [name, param] of Object.entries(recipe.params)) {
+    if (param.required && param.default === undefined && !(name in provided)) {
+      missing.push(name)
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new CliError(
+      `Missing required parameter${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
+      'MISSING_PARAMS',
+    )
+  }
+}
+
 function applyDefaults(
   recipe: Recipe,
   provided: Record<string, string>,
@@ -511,6 +532,7 @@ export async function executeRecipe(options: {
 }): Promise<RecipeAwaitingAgent | RecipeComplete> {
   const recipe = parseRecipe(options.yaml)
   validateRecipe(recipe)
+  validateRequiredParams(recipe, options.params)
   const segments = buildSegments(recipe)
 
   const params = applyDefaults(recipe, options.params)
