@@ -189,6 +189,28 @@ export function resolveRelativeTime(expr: string): string {
   return now.toISOString()
 }
 
+// -- Param helpers --
+
+function flattenParams(
+  params: Record<string, unknown> | undefined,
+  ctx: ExecutionContext,
+  foreachItem?: unknown,
+): Record<string, string | number | boolean | undefined> {
+  const result: Record<string, string | number | boolean | undefined> = {}
+  if (!params) return result
+  const resolved = resolveValue(params, ctx, foreachItem) as Record<string, unknown>
+  for (const [key, val] of Object.entries(resolved)) {
+    if (Array.isArray(val)) {
+      result[key] = val.join(',')
+    } else if (val === null || val === undefined) {
+      result[key] = undefined
+    } else {
+      result[key] = val as string | number | boolean
+    }
+  }
+  return result
+}
+
 // -- Foreach helpers --
 
 function sleep(ms: number): Promise<void> {
@@ -267,20 +289,7 @@ async function executeForeach(options: ForeachOptions): Promise<ForeachResult> {
 
     const batchPromises = batch.map(async (item) => {
       const { path } = resolveEndpoint(step.endpoint, ctx, item)
-
-      const resolvedParams: Record<string, string | number | boolean | undefined> = {}
-      if (step.params) {
-        const resolved = resolveValue(step.params, ctx, item) as Record<string, unknown>
-        for (const [key, val] of Object.entries(resolved)) {
-          if (Array.isArray(val)) {
-            resolvedParams[key] = val.join(',')
-          } else if (val === null || val === undefined) {
-            resolvedParams[key] = undefined
-          } else {
-            resolvedParams[key] = val as string | number | boolean
-          }
-        }
-      }
+      const resolvedParams = flattenParams(step.params, ctx, item)
 
       try {
         const response = await get(path, resolvedParams, clientOptions)
@@ -412,11 +421,22 @@ async function executeStep(
 
   if (isForeachStep(step)) {
     const sourceData = resolveValue(`{${step.foreach}}`, ctx)
-    const items = Array.isArray(sourceData) ? sourceData : []
+    if (sourceData === undefined || sourceData === null) {
+      throw new CliError(
+        `Foreach step "${step.id}": source "${step.foreach}" resolved to ${String(sourceData)}`,
+        'FOREACH_SOURCE_MISSING',
+      )
+    }
+    if (!Array.isArray(sourceData)) {
+      throw new CliError(
+        `Foreach step "${step.id}": source "${step.foreach}" resolved to ${typeof sourceData}, expected array`,
+        'FOREACH_SOURCE_NOT_ARRAY',
+      )
+    }
 
     return executeForeach({
       step,
-      items,
+      items: sourceData,
       ctx,
       clientOptions,
       currentRateLimit: ctx.currentRateLimit,
@@ -428,21 +448,23 @@ async function executeStep(
     ctx,
   )
 
-  const resolvedParams: Record<string, string | number | boolean | undefined> = {}
-  if (!isAgentStep(step) && step.params) {
-    const resolved = resolveValue(step.params, ctx) as Record<string, unknown>
-    for (const [key, val] of Object.entries(resolved)) {
-      if (Array.isArray(val)) {
-        resolvedParams[key] = val.join(',')
-      } else if (val === null || val === undefined) {
-        resolvedParams[key] = undefined
-      } else {
-        resolvedParams[key] = val as string | number | boolean
-      }
-    }
-  }
+  const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
 
-  const response = await get(path, resolvedParams, clientOptions)
+  let response
+  try {
+    response = await get(path, resolvedParams, clientOptions)
+  } catch (err) {
+    if (err instanceof CliError) {
+      throw new CliError(
+        `Step "${step.id}" failed: ${err.message}`,
+        err.code,
+      )
+    }
+    throw new CliError(
+      `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
+      'STEP_EXECUTION_FAILED',
+    )
+  }
 
   const completedAt = new Date()
 
@@ -496,14 +518,21 @@ function buildCompleteOutput(
   const data: Record<string, unknown> = {}
 
   if (outputDir) {
-    mkdirSync(outputDir, { recursive: true })
-    let fileIndex = 1
-    for (const [stepId, result] of ctx.results) {
-      const filename = `segment-${String(fileIndex).padStart(3, '0')}.json`
-      const filePath = join(outputDir, filename)
-      writeFileSync(filePath, JSON.stringify(result.data, null, 2))
-      data[stepId] = { file: filePath }
-      fileIndex++
+    try {
+      mkdirSync(outputDir, { recursive: true })
+      let fileIndex = 1
+      for (const [stepId, result] of ctx.results) {
+        const filename = `segment-${String(fileIndex).padStart(3, '0')}.json`
+        const filePath = join(outputDir, filename)
+        writeFileSync(filePath, JSON.stringify(result.data, null, 2))
+        data[stepId] = { file: filePath }
+        fileIndex++
+      }
+    } catch {
+      // Fall back to inline data so collected results aren't lost
+      for (const [stepId, result] of ctx.results) {
+        data[stepId] = result.data
+      }
     }
   } else {
     for (const [stepId, result] of ctx.results) {

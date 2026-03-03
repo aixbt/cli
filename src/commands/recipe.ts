@@ -2,7 +2,7 @@ import type { Command } from 'commander'
 import { readFileSync, existsSync } from 'node:fs'
 import type { Recipe } from '../types.js'
 import { isAgentStep, isForeachStep } from '../types.js'
-import { resolveAuthMode, buildClientOptions } from '../lib/auth.js'
+import { getClientOptions } from '../lib/auth.js'
 import { executeRecipe } from '../lib/recipe-engine.js'
 import { parseRecipe } from '../lib/recipe-parser.js'
 import { validateRecipeCollectIssues } from '../lib/recipe-validator.js'
@@ -144,16 +144,7 @@ export function registerRecipeCommand(program: Command): void {
     .option('--output-dir <path>', 'Write segment data to files instead of stdout')
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
-      const globalOpts = cmd.optsWithGlobals()
-      const isJson = globalOpts.json === true
-
-      const authMode = resolveAuthMode({
-        delayed: globalOpts.delayed as boolean | undefined,
-        payPerUse: globalOpts.payPerUse as boolean | undefined,
-        apiKey: globalOpts.apiKey as string | undefined,
-        apiUrl: globalOpts.apiUrl as string | undefined,
-      })
-      const clientOptions = buildClientOptions(authMode, { apiUrl: globalOpts.apiUrl as string | undefined })
+      const { clientOpts: clientOptions, isJson } = getClientOptions(cmd)
 
       let yaml: string
       if (opts.stdin) {
@@ -183,11 +174,12 @@ export function registerRecipeCommand(program: Command): void {
       if (opts.input) {
         try {
           resumeInput = JSON.parse(opts.input as string) as Record<string, unknown>
-        } catch {
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : 'parse error'
           if (isJson) {
-            output.json({ error: 'INVALID_INPUT', message: 'Invalid JSON for --input' })
+            output.json({ error: 'INVALID_INPUT', message: `Invalid JSON for --input: ${detail}` })
           } else {
-            output.error('Invalid JSON for --input')
+            output.error(`Invalid JSON for --input: ${detail}`)
           }
           process.exit(1)
         }
