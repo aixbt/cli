@@ -113,7 +113,7 @@ async function executeWithBackoff<T>(
 
   if (res.status === 402) {
     const body = await safeJson(res)
-    throw new PaymentRequiredError(body)
+    throw new PaymentRequiredError(body, res.headers)
   }
 
   if (!res.ok) {
@@ -132,11 +132,23 @@ async function executeWithBackoff<T>(
     throw new ApiError(res.status, 'Invalid JSON in API response', 'INVALID_RESPONSE')
   }
 
+  let paymentResponse: Record<string, unknown> | null = null
+  const paymentResponseHeader = res.headers.get('payment-response')
+  if (paymentResponseHeader) {
+    try {
+      const decoded = Buffer.from(paymentResponseHeader, 'base64').toString('utf-8')
+      paymentResponse = JSON.parse(decoded) as Record<string, unknown>
+    } catch {
+      // Ignore malformed settlement header
+    }
+  }
+
   return {
     status: body.status,
     data: body.data,
     pagination: body.pagination as ApiResponse<T>['pagination'],
     rateLimit,
+    paymentResponse,
   }
 }
 

@@ -4,6 +4,7 @@ import { readConfig, writeConfig, resolveConfig } from '../lib/config.js'
 import { validateApiKey, formatExpiry, isExpiringSoon } from '../lib/auth.js'
 import * as output from '../lib/output.js'
 import { CliError } from '../lib/errors.js'
+import { handlePurchasePass } from '../lib/x402.js'
 
 export function registerLoginCommand(program: Command): void {
   // -- login --
@@ -17,13 +18,14 @@ export function registerLoginCommand(program: Command): void {
       const opts = cmd.optsWithGlobals()
       const isJson = opts.json === true
 
-      // Handle purchase-pass stub
+      // Handle purchase-pass flow
       if (opts.purchasePass !== undefined) {
-        if (isJson) {
-          output.json({ error: 'not_implemented', message: 'Pass purchase via x402 is not yet implemented' })
-        } else {
-          output.warn('Pass purchase via x402 is not yet implemented.')
-        }
+        const duration = typeof opts.purchasePass === 'string' ? opts.purchasePass : '1d'
+        await handlePurchasePass(
+          duration,
+          opts.paymentSignature as string | undefined,
+          isJson,
+        )
         return
       }
 

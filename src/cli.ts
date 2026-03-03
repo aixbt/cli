@@ -25,6 +25,7 @@ export function createProgram(): Command {
     .option('--json', 'Output as JSON (machine-readable)')
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')
+    .option('--payment-signature <base64>', 'Payment proof for x402 (base64-encoded)')
     .option('--api-key <key>', 'API key (overrides config and env)')
     .option('--api-url <url>', 'API base URL (overrides config and env)')
     .configureOutput({
@@ -36,6 +37,12 @@ export function createProgram(): Command {
     const opts = thisCommand.optsWithGlobals()
     if (opts.delayed && opts.payPerUse) {
       thisCommand.error('--delayed and --pay-per-use cannot be used together')
+    }
+    if (opts.paymentSignature && opts.payPerUse) {
+      thisCommand.error('--payment-signature and --pay-per-use cannot be used together')
+    }
+    if (opts.paymentSignature && opts.delayed) {
+      thisCommand.error('--payment-signature and --delayed cannot be used together')
     }
   })
 

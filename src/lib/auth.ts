@@ -48,11 +48,18 @@ export async function validateApiKey(apiKey: string, apiUrl?: string): Promise<A
   return result.data
 }
 
-export function buildClientOptions(authMode: AuthMode, globalOpts: { apiUrl?: string }): ApiClientOptions {
-  if (authMode.mode === 'api-key') {
-    return { apiKey: authMode.apiKey, apiUrl: authMode.config.apiUrl }
+export function buildClientOptions(
+  authMode: AuthMode,
+  globalOpts: { apiUrl?: string; paymentSignature?: string },
+): ApiClientOptions {
+  const base: ApiClientOptions = authMode.mode === 'api-key'
+    ? { apiKey: authMode.apiKey, apiUrl: authMode.config.apiUrl }
+    : { noAuth: true, apiUrl: globalOpts.apiUrl }
+
+  if (globalOpts.paymentSignature) {
+    base.paymentSignature = globalOpts.paymentSignature
   }
-  return { noAuth: true, apiUrl: globalOpts.apiUrl }
+  return base
 }
 
 export function formatExpiry(expiresAt: string): string {
@@ -83,6 +90,9 @@ export function getClientOptions(cmd: Command): {
     apiKey: opts.apiKey as string | undefined,
     apiUrl: opts.apiUrl as string | undefined,
   })
-  const clientOpts = buildClientOptions(authMode, { apiUrl: opts.apiUrl as string | undefined })
+  const clientOpts = buildClientOptions(authMode, {
+    apiUrl: opts.apiUrl as string | undefined,
+    paymentSignature: opts.paymentSignature as string | undefined,
+  })
   return { clientOpts, authMode, isJson }
 }

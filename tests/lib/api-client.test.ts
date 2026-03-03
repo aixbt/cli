@@ -392,6 +392,59 @@ describe('api-client', () => {
       const headers = callArgs[1].headers as Record<string, string>
       expect(headers['PAYMENT-SIGNATURE']).toBe('sig-abc123')
     })
+
+    it('should not set PAYMENT-SIGNATURE header when not provided', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: {} }),
+      )
+
+      await get('/v1/test')
+
+      const callArgs = mockFetch.mock.calls[0]
+      const headers = callArgs[1].headers as Record<string, string>
+      expect(headers['PAYMENT-SIGNATURE']).toBeUndefined()
+    })
+  })
+
+  // -- PAYMENT-RESPONSE header extraction --
+
+  describe('PAYMENT-RESPONSE header extraction', () => {
+    it('should decode base64 JSON PAYMENT-RESPONSE header into paymentResponse', async () => {
+      const settlement = { settled: true, txHash: '0xabc' }
+      const encoded = Buffer.from(JSON.stringify(settlement)).toString('base64')
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: { id: '1' } }, {
+          'PAYMENT-RESPONSE': encoded,
+        }),
+      )
+
+      const result = await get<{ id: string }>('/v1/test')
+
+      expect(result.paymentResponse).toEqual(settlement)
+    })
+
+    it('should return null paymentResponse when no PAYMENT-RESPONSE header is present', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: { id: '1' } }),
+      )
+
+      const result = await get<{ id: string }>('/v1/test')
+
+      expect(result.paymentResponse).toBeNull()
+    })
+
+    it('should return null paymentResponse when PAYMENT-RESPONSE header is malformed', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: { id: '1' } }, {
+          'PAYMENT-RESPONSE': '!!!not-valid-base64!!!',
+        }),
+      )
+
+      const result = await get<{ id: string }>('/v1/test')
+
+      expect(result.paymentResponse).toBeNull()
+    })
   })
 
   // -- Query params --

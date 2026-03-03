@@ -142,24 +142,190 @@ describe('login commands', () => {
       ).rejects.toThrow()
     })
 
-    it('should output "not yet implemented" for --purchase-pass', async () => {
+    it('should request payment details for --purchase-pass (step 1)', async () => {
+      const paymentRequired = {
+        x402Version: 2,
+        resource: { url: 'https://api.aixbt.tech/x402/v2/api-keys/1d', description: 'API key for 1 day', mimeType: 'application/json' },
+        accepts: [{
+          scheme: 'exact',
+          network: 'eip155:8453',
+          amount: '10000000',
+          payTo: '0x8e4b195c14f20e1ba4c40234f471e1781f293b45',
+          asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        }],
+      }
+      const encoded = Buffer.from(JSON.stringify(paymentRequired)).toString('base64')
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(402, { message: 'Payment required' }, { 'PAYMENT-REQUIRED': encoded }),
+      )
+
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit') })
+
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'login', '--purchase-pass'], { from: 'node' })
+      try {
+        await program.parseAsync(['node', 'aixbt', 'login', '--purchase-pass', '1d'], { from: 'node' })
+      } catch { /* process.exit throws */ }
 
-      const hasWarning = errors.some(e => e.includes('not yet implemented'))
-      expect(hasWarning).toBe(true)
+      // Verify the payment details were output (human-readable mode)
+      const allOutput = logs.join('\n')
+      expect(allOutput).toContain('Payment required')
+      expect(allOutput).toContain('--payment-signature')
+
+      // Verify POST was made to the correct endpoint
+      const [url, init] = mockFetch.mock.calls[0]
+      expect(url).toContain('/x402/v2/api-keys/1d')
+      expect(init.method).toBe('POST')
+
+      exitSpy.mockRestore()
     })
 
-    it('should output JSON error for --purchase-pass with --json', async () => {
+    it('should output JSON payment details for --purchase-pass with --json (step 1)', async () => {
+      const paymentRequired = {
+        x402Version: 2,
+        resource: { url: 'https://api.aixbt.tech/x402/v2/api-keys/1d', description: 'API key for 1 day', mimeType: 'application/json' },
+        accepts: [{
+          scheme: 'exact',
+          network: 'eip155:8453',
+          amount: '10000000',
+          payTo: '0x8e4b195c14f20e1ba4c40234f471e1781f293b45',
+          asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        }],
+      }
+      const encoded = Buffer.from(JSON.stringify(paymentRequired)).toString('base64')
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(402, { message: 'Payment required' }, { 'PAYMENT-REQUIRED': encoded }),
+      )
+
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit') })
+
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'login', '--purchase-pass'], { from: 'node' })
+      try {
+        await program.parseAsync(['node', 'aixbt', '--json', 'login', '--purchase-pass', '1d'], { from: 'node' })
+      } catch { /* process.exit throws */ }
 
-      const jsonOutput = logs.find(l => l.includes('"not_implemented"'))
+      // Verify JSON output contains payment details
+      const jsonOutput = logs.find(l => l.includes('"payment_required"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('not_implemented')
+      expect(parsed.status).toBe('payment_required')
+      expect(parsed.x402Version).toBe(2)
+      expect(parsed.payment.amount).toBe('$10.00')
+      expect(parsed.payment.network).toBe('eip155:8453')
+      expect(parsed.retryCommand).toContain('--payment-signature')
+
+      exitSpy.mockRestore()
+    })
+
+    it('should store API key from --purchase-pass with --payment-signature (step 2)', async () => {
+      const passResponse = {
+        apiKey: 'generated-key-hex',
+        expiresAt: '2026-03-04T00:00:00.000Z',
+        period: '1d',
+        type: 'x402',
+        scopes: ['mcp', 'projects'],
+        rateLimit: { requestsPerMinute: 30, requestsPerDay: 10000 },
+        warning: 'Save this API key now.',
+      }
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 201, data: passResponse }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync([
+        'node', 'aixbt', 'login',
+        '--purchase-pass', '1d',
+        '--payment-signature', 'base64-payment-proof',
+      ], { from: 'node' })
+
+      // Verify config was updated
+      const config = readConfig()
+      expect(config.apiKey).toBe('generated-key-hex')
+      expect(config.keyType).toBe('x402')
+      expect(config.expiresAt).toBe('2026-03-04T00:00:00.000Z')
+      expect(config.scopes).toEqual(['mcp', 'projects'])
+
+      // Verify POST was made with PAYMENT-SIGNATURE header
+      const [url, init] = mockFetch.mock.calls[0]
+      expect(url).toContain('/x402/v2/api-keys/1d')
+      expect(init.headers['PAYMENT-SIGNATURE']).toBe('base64-payment-proof')
+    })
+
+    it('should output JSON for --purchase-pass with --payment-signature and --json (step 2)', async () => {
+      const passResponse = {
+        apiKey: 'generated-key-hex',
+        expiresAt: '2026-03-04T00:00:00.000Z',
+        period: '1d',
+        type: 'x402',
+        scopes: ['mcp', 'projects'],
+        rateLimit: { requestsPerMinute: 30, requestsPerDay: 10000 },
+        warning: 'Save this API key now.',
+      }
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 201, data: passResponse }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync([
+        'node', 'aixbt', '--json', 'login',
+        '--purchase-pass', '1d',
+        '--payment-signature', 'base64-payment-proof',
+      ], { from: 'node' })
+
+      const jsonOutput = logs.find(l => l.includes('"authenticated"'))
+      expect(jsonOutput).toBeDefined()
+      const parsed = JSON.parse(jsonOutput!)
+      expect(parsed.status).toBe('authenticated')
+      expect(parsed.apiKey).toBe('generated-key-hex')
+      expect(parsed.type).toBe('x402')
+      expect(parsed.scopes).toEqual(['mcp', 'projects'])
+      expect(parsed.expiresAt).toBe('2026-03-04T00:00:00.000Z')
+      expect(parsed.period).toBe('1d')
+      expect(parsed.rateLimit).toEqual({ requestsPerMinute: 30, requestsPerDay: 10000 })
+      expect(parsed.warning).toBe('Save this API key now.')
+    })
+
+    it('should error on invalid --purchase-pass duration', async () => {
+      const program = createProgram()
+      program.exitOverride()
+      await expect(
+        program.parseAsync(['node', 'aixbt', 'login', '--purchase-pass', 'invalid'], { from: 'node' }),
+      ).rejects.toThrow('Invalid duration')
+    })
+
+    it('should default to 1d when --purchase-pass is used without duration', async () => {
+      const paymentRequired = {
+        x402Version: 2,
+        resource: { url: 'https://api.aixbt.tech/x402/v2/api-keys/1d', description: 'API key for 1 day', mimeType: 'application/json' },
+        accepts: [{
+          scheme: 'exact',
+          network: 'eip155:8453',
+          amount: '10000000',
+          payTo: '0x8e4b195c14f20e1ba4c40234f471e1781f293b45',
+        }],
+      }
+      const encoded = Buffer.from(JSON.stringify(paymentRequired)).toString('base64')
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(402, { message: 'Payment required' }, { 'PAYMENT-REQUIRED': encoded }),
+      )
+
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit') })
+
+      const program = createProgram()
+      program.exitOverride()
+      try {
+        await program.parseAsync(['node', 'aixbt', 'login', '--purchase-pass'], { from: 'node' })
+      } catch { /* */ }
+
+      const [url] = mockFetch.mock.calls[0]
+      expect(url).toContain('/x402/v2/api-keys/1d')
+
+      exitSpy.mockRestore()
     })
 
     it('should call the API with the provided key for validation', async () => {

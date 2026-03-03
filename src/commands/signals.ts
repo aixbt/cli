@@ -2,6 +2,7 @@ import type { Command } from 'commander'
 import { getClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
+import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 
 // -- Response types --
 
@@ -61,7 +62,7 @@ export function registerSignalsCommand(program: Command): void {
 // -- Handlers --
 
 async function handleSignalList(cmd: Command): Promise<void> {
-  const { clientOpts, isJson } = getClientOptions(cmd)
+  const { clientOpts, authMode, isJson } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
@@ -84,7 +85,12 @@ async function handleSignalList(cmd: Command): Promise<void> {
   const result = await output.withSpinner(
     'Fetching signals...',
     isJson,
-    () => get<SignalData[]>('/v2/signals', params, clientOpts),
+    () => withPayPerUse(
+      () => get<SignalData[]>('/v2/signals', params, clientOpts),
+      authMode,
+      reconstructCommand('aixbt signals', opts),
+      isJson,
+    ),
     'Failed to fetch signals',
   )
 

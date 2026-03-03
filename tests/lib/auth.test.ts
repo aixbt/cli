@@ -246,5 +246,41 @@ describe('auth', () => {
 
       expect(result.apiUrl).toBe(DEFAULT_API_URL)
     })
+
+    it('should include paymentSignature when provided in globalOpts', () => {
+      const authMode: AuthMode = {
+        mode: 'api-key',
+        apiKey: 'test-key',
+        config: {
+          apiKey: 'test-key',
+          apiUrl: DEFAULT_API_URL,
+          keyType: undefined,
+          expiresAt: undefined,
+          scopes: [],
+        },
+      }
+
+      const result = buildClientOptions(authMode, { paymentSignature: 'sig-xyz-789' })
+
+      expect(result.paymentSignature).toBe('sig-xyz-789')
+    })
+
+    it('should not include paymentSignature when not provided in globalOpts', () => {
+      const authMode: AuthMode = {
+        mode: 'api-key',
+        apiKey: 'test-key',
+        config: {
+          apiKey: 'test-key',
+          apiUrl: DEFAULT_API_URL,
+          keyType: undefined,
+          expiresAt: undefined,
+          scopes: [],
+        },
+      }
+
+      const result = buildClientOptions(authMode, {})
+
+      expect(result.paymentSignature).toBeUndefined()
+    })
   })
 })

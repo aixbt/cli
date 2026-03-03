@@ -51,6 +51,26 @@ describe('CLI', () => {
       expect(ppuOpt!.description).toBe('Pay per API call via x402')
     })
 
+    it('should have --payment-signature option registered with required argument', () => {
+      const program = createProgram()
+      const paymentSigOpt = program.options.find((o) => o.long === '--payment-signature')
+      expect(paymentSigOpt).toBeDefined()
+      expect(paymentSigOpt!.description).toBe(
+        'Payment proof for x402 (base64-encoded)',
+      )
+      expect(paymentSigOpt!.required).toBe(true)
+    })
+
+    it('should parse --payment-signature with a value correctly', () => {
+      const program = createProgram()
+      program.exitOverride()
+      program.parse(
+        ['node', 'test', '--payment-signature', 'c2lnLWRhdGE=', 'login'],
+        { from: 'node' },
+      )
+      expect(program.opts().paymentSignature).toBe('c2lnLWRhdGE=')
+    })
+
     it('should have --api-key option registered with required argument', () => {
       const program = createProgram()
       const apiKeyOpt = program.options.find((o) => o.long === '--api-key')
@@ -289,6 +309,20 @@ describe('CLI', () => {
     it('should have exactly 8 registered commands', () => {
       const program = createProgram()
       expect(program.commands).toHaveLength(8)
+    })
+  })
+
+  describe('option conflicts', () => {
+    it('should error when --payment-signature and --pay-per-use are used together', () => {
+      const program = createProgram()
+      program.exitOverride()
+
+      expect(() => {
+        program.parse(
+          ['node', 'test', '--payment-signature', 'c2lnLWRhdGE=', '--pay-per-use', 'login'],
+          { from: 'node' },
+        )
+      }).toThrow('--payment-signature and --pay-per-use cannot be used together')
     })
   })
 

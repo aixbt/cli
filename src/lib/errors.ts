@@ -74,7 +74,10 @@ export class NetworkError extends CliError {
 }
 
 export class PaymentRequiredError extends CliError {
-  constructor(public readonly body: Record<string, unknown> | null) {
+  constructor(
+    public readonly body: Record<string, unknown> | null,
+    public readonly headers: Headers | null = null,
+  ) {
     super('Payment required', 'PAYMENT_REQUIRED')
     this.name = 'PaymentRequiredError'
   }

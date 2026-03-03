@@ -20,6 +20,7 @@ export interface ApiResponse<T> {
     hasMore: boolean
   }
   rateLimit: RateLimitInfo | null
+  paymentResponse?: Record<string, unknown> | null
 }
 
 export const TEMPLATE_REGEX = /\{([^}]+)\}/g
