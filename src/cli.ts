@@ -26,10 +26,18 @@ export function createProgram(): Command {
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')
     .option('--api-key <key>', 'API key (overrides config and env)')
+    .option('--api-url <url>', 'API base URL (overrides config and env)')
     .configureOutput({
       writeOut: (str: string) => process.stdout.write(output.colorizeHelp(str)),
       writeErr: (str: string) => process.stderr.write(output.colorizeHelp(str)),
     })
+
+  program.hook('preAction', (thisCommand) => {
+    const opts = thisCommand.optsWithGlobals()
+    if (opts.delayed && opts.payPerUse) {
+      thisCommand.error('--delayed and --pay-per-use cannot be used together')
+    }
+  })
 
   registerLoginCommand(program)
   registerConfigCommand(program)
