@@ -916,4 +916,233 @@ steps:
       })
     })
   })
+
+  // -- Foreach execution --
+
+  describe('foreach execution', () => {
+    const FOREACH_RECIPE = `
+name: foreach-test
+version: "1.0"
+description: Foreach test recipe
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: momentum
+    foreach: projects.data
+    endpoint: "GET /v2/projects/{item.id}/momentum"
+`
+
+    const FOREACH_PARAMS_RECIPE = `
+name: foreach-params-test
+version: "1.0"
+description: Foreach with params test
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: details
+    foreach: projects.data
+    endpoint: "GET /v2/projects/{item.id}"
+    params:
+      chain: "{item.chain}"
+`
+
+    it('should iterate over array from prior step and call get for each item', async () => {
+      const projectsData = [
+        { id: 'p1' },
+        { id: 'p2' },
+        { id: 'p3' },
+      ]
+
+      // Step 1: projects list
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+      // Foreach iterations
+      mockGet.mockResolvedValueOnce(mockApiResponse({ momentum: 85 }))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ momentum: 72 }))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ momentum: 91 }))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      // 1 for projects + 3 for foreach items
+      expect(mockGet).toHaveBeenCalledTimes(4)
+
+      // Verify foreach calls used correct paths with item.id resolved
+      expect(mockGet.mock.calls[1][0]).toBe('/v2/projects/p1/momentum')
+      expect(mockGet.mock.calls[2][0]).toBe('/v2/projects/p2/momentum')
+      expect(mockGet.mock.calls[3][0]).toBe('/v2/projects/p3/momentum')
+    })
+
+    it('should return empty items and no failures when source array is empty', async () => {
+      // Step 1: projects returns empty array
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      // Only 1 call for the projects step, no foreach iterations
+      expect(mockGet).toHaveBeenCalledTimes(1)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      // The foreach step data should be an empty array
+      expect(data.momentum).toEqual([])
+    })
+
+    it('should collect successes and failures when some items fail', async () => {
+      const projectsData = [
+        { id: 'p1' },
+        { id: 'p2' },
+        { id: 'p3' },
+      ]
+
+      // Step 1: projects list
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+      // Foreach: first succeeds, second fails, third succeeds
+      mockGet.mockResolvedValueOnce(mockApiResponse({ ok: true }))
+      mockGet.mockRejectedValueOnce(new Error('API error for item 2'))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ ok: true }))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(4)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const foreachData = data.momentum as unknown[]
+
+      // 2 successes in the data array
+      expect(foreachData).toHaveLength(2)
+      expect(foreachData[0]).toEqual({ ok: true })
+      expect(foreachData[1]).toEqual({ ok: true })
+    })
+
+    it('should resolve params per-item using item templating', async () => {
+      const projectsData = [
+        { id: 'proj-1', chain: 'base' },
+        { id: 'proj-2', chain: 'eth' },
+      ]
+
+      // Step 1: projects list
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+      // Foreach iterations
+      mockGet.mockResolvedValueOnce(mockApiResponse({ detail: 'one' }))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ detail: 'two' }))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_PARAMS_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(3)
+
+      // Verify paths resolved with item.id
+      expect(mockGet.mock.calls[1][0]).toBe('/v2/projects/proj-1')
+      expect(mockGet.mock.calls[2][0]).toBe('/v2/projects/proj-2')
+
+      // Verify params resolved with item.chain
+      expect(mockGet.mock.calls[1][1]).toEqual({ chain: 'base' })
+      expect(mockGet.mock.calls[2][1]).toEqual({ chain: 'eth' })
+    })
+
+    it('should produce ForeachResult with expected structure in step results', async () => {
+      const projectsData = [{ id: 'p1' }, { id: 'p2' }]
+
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+      mockGet.mockResolvedValueOnce({
+        status: 200,
+        data: { score: 10 },
+        rateLimit: { remainingPerMinute: 50, resetMinute: new Date().toISOString() },
+        pagination: undefined,
+      })
+      mockGet.mockResolvedValueOnce({
+        status: 200,
+        data: { score: 20 },
+        rateLimit: { remainingPerMinute: 49, resetMinute: new Date().toISOString() },
+        pagination: undefined,
+      })
+
+      const result = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+
+      // The foreach step data should be an array of the successful results
+      const momentumData = data.momentum as unknown[]
+      expect(momentumData).toEqual([{ score: 10 }, { score: 20 }])
+    })
+
+    it('should process all items even with low rate limit concurrency', async () => {
+      const projectsData = [
+        { id: 'p1' },
+        { id: 'p2' },
+        { id: 'p3' },
+      ]
+
+      // Step 1: projects list (returns rate limit with low remaining)
+      mockGet.mockResolvedValueOnce({
+        status: 200,
+        data: projectsData,
+        rateLimit: { remainingPerMinute: 3, resetMinute: new Date().toISOString() },
+        pagination: undefined,
+      })
+      // Foreach iterations — all should still succeed
+      mockGet.mockResolvedValueOnce(mockApiResponse({ m: 1 }))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ m: 2 }))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ m: 3 }))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      // All 4 calls should have been made (1 projects + 3 foreach)
+      expect(mockGet).toHaveBeenCalledTimes(4)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const momentumData = data.momentum as unknown[]
+      expect(momentumData).toHaveLength(3)
+      expect(momentumData).toEqual([{ m: 1 }, { m: 2 }, { m: 3 }])
+    })
+
+    it('should include failure details with error message and failed item', async () => {
+      const projectsData = [
+        { id: 'fail-item', name: 'Failing' },
+      ]
+
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+      mockGet.mockRejectedValueOnce(new Error('Not Found'))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+
+      // The data for the foreach step should be empty (no successes)
+      const data = (result as { data: Record<string, unknown> }).data
+      const momentumData = data.momentum as unknown[]
+      expect(momentumData).toEqual([])
+    })
+  })
 })

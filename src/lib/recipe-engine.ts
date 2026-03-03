@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type {
   ExecutionContext, RecipeStep, Segment, StepResult,
   RecipeAwaitingAgent, RecipeComplete, AgentStep, Recipe,
+  ForeachStep, ForeachResult, ForeachFailure, RateLimitInfo,
 } from '../types.js'
 import { isAgentStep, isForeachStep } from '../types.js'
 import { parseRecipe } from './recipe-parser.js'
@@ -188,6 +189,147 @@ export function resolveRelativeTime(expr: string): string {
   return now.toISOString()
 }
 
+// -- Foreach helpers --
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function deriveConcurrency(rateLimit: RateLimitInfo | null): number {
+  if (!rateLimit) return 3
+  const remaining = rateLimit.remainingPerMinute
+  if (remaining <= 5) return 1
+  if (remaining <= 20) return 3
+  if (remaining <= 50) return 5
+  return 10
+}
+
+function computeWaitTime(rateLimit: RateLimitInfo): number {
+  if (rateLimit.retryAfterSeconds !== undefined) {
+    return rateLimit.retryAfterSeconds * 1000
+  }
+  if (rateLimit.resetMinute) {
+    const resetTime = new Date(rateLimit.resetMinute).getTime()
+    const now = Date.now()
+    const waitMs = resetTime - now + 500
+    if (waitMs > 0) return waitMs
+  }
+  return 5000
+}
+
+interface ForeachOptions {
+  step: ForeachStep
+  items: unknown[]
+  ctx: ExecutionContext
+  clientOptions: ApiClientOptions
+  currentRateLimit: RateLimitInfo | null
+}
+
+async function executeForeach(options: ForeachOptions): Promise<ForeachResult> {
+  const { step, items, ctx, clientOptions, currentRateLimit } = options
+  const startedAt = new Date()
+
+  if (items.length === 0) {
+    const completedAt = new Date()
+    return {
+      stepId: step.id,
+      data: [],
+      rateLimit: currentRateLimit,
+      timing: {
+        startedAt: startedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+        durationMs: completedAt.getTime() - startedAt.getTime(),
+      },
+      items: [],
+      failures: [],
+    }
+  }
+
+  let concurrency = deriveConcurrency(currentRateLimit)
+  let latestRateLimit = currentRateLimit
+  const successItems: unknown[] = []
+  const failures: ForeachFailure[] = []
+  let rateLimitPaused = false
+  let totalWaitedMs = 0
+
+  let offset = 0
+  while (offset < items.length) {
+    // Check if we need to wait for rate limit reset
+    if (latestRateLimit && latestRateLimit.remainingPerMinute <= 2) {
+      rateLimitPaused = true
+      const waitMs = computeWaitTime(latestRateLimit)
+      totalWaitedMs += waitMs
+      await sleep(waitMs)
+    }
+
+    const batch = items.slice(offset, offset + concurrency)
+    offset += batch.length
+
+    const batchPromises = batch.map(async (item) => {
+      const { path } = resolveEndpoint(step.endpoint, ctx, item)
+
+      const resolvedParams: Record<string, string | number | boolean | undefined> = {}
+      if (step.params) {
+        const resolved = resolveValue(step.params, ctx, item) as Record<string, unknown>
+        for (const [key, val] of Object.entries(resolved)) {
+          if (Array.isArray(val)) {
+            resolvedParams[key] = val.join(',')
+          } else if (val === null || val === undefined) {
+            resolvedParams[key] = undefined
+          } else {
+            resolvedParams[key] = val as string | number | boolean
+          }
+        }
+      }
+
+      try {
+        const response = await get(path, resolvedParams, clientOptions)
+        return { success: true as const, data: response.data, rateLimit: response.rateLimit }
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err)
+        const status = (err as { status?: number }).status
+        return { success: false as const, item, error, status }
+      }
+    })
+
+    const batchResults = await Promise.all(batchPromises)
+
+    for (const result of batchResults) {
+      if (result.success) {
+        successItems.push(result.data)
+        if (result.rateLimit) {
+          latestRateLimit = result.rateLimit
+        }
+      } else {
+        failures.push({
+          item: result.item,
+          error: result.error,
+          status: result.status,
+        })
+      }
+    }
+
+    // Recalculate concurrency based on latest rate limit info
+    concurrency = deriveConcurrency(latestRateLimit)
+  }
+
+  const completedAt = new Date()
+
+  return {
+    stepId: step.id,
+    data: successItems,
+    rateLimit: latestRateLimit,
+    timing: {
+      startedAt: startedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
+      durationMs: completedAt.getTime() - startedAt.getTime(),
+      ...(rateLimitPaused ? { rateLimitPaused: true, waitedMs: totalWaitedMs } : {}),
+    },
+    items: successItems,
+    failures,
+  }
+}
+
 // -- Recipe execution --
 
 function applyDefaults(
@@ -246,6 +388,19 @@ async function executeStep(
   clientOptions: ApiClientOptions,
 ): Promise<StepResult> {
   const startedAt = new Date()
+
+  if (isForeachStep(step)) {
+    const sourceData = resolveValue(`{${step.foreach}}`, ctx)
+    const items = Array.isArray(sourceData) ? sourceData : []
+
+    return executeForeach({
+      step,
+      items,
+      ctx,
+      clientOptions,
+      currentRateLimit: ctx.currentRateLimit,
+    })
+  }
 
   const { path } = resolveEndpoint(
     isAgentStep(step) ? '' : step.endpoint,
