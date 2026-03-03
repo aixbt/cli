@@ -10,6 +10,8 @@ import { registerClustersCommand } from './commands/clusters.js'
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
 import { registerConfigCommand } from './commands/config.js'
+import * as output from './lib/output.js'
+import { handleTopLevelError } from './lib/errors.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
@@ -24,6 +26,10 @@ export function createProgram(): Command {
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')
     .option('--api-key <key>', 'API key (overrides config and env)')
+    .configureOutput({
+      writeOut: (str: string) => process.stdout.write(output.colorizeHelp(str)),
+      writeErr: (str: string) => process.stderr.write(output.colorizeHelp(str)),
+    })
 
   registerLoginCommand(program)
   registerConfigCommand(program)
@@ -37,14 +43,21 @@ export function createProgram(): Command {
 
 async function main(): Promise<void> {
   const program = createProgram()
-  await program.parseAsync(process.argv)
+  try {
+    await program.parseAsync(process.argv)
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'ExitPromptError') {
+      console.log()
+      process.exit(0)
+    }
+    handleTopLevelError(err, program.opts().json)
+  }
 }
 
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 
 if (isDirectRun) {
   main().catch((err: unknown) => {
-    console.error(err instanceof Error ? err.message : String(err))
-    process.exit(1)
+    handleTopLevelError(err, false)
   })
 }
