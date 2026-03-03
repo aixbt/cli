@@ -820,7 +820,7 @@ describe('executeRecipe', () => {
       const awaiting = result as { resumeCommand: string }
       expect(awaiting.resumeCommand).toContain('--resume-from step:analyze')
       expect(awaiting.resumeCommand).toContain("--input '<agent_output_json>'")
-      expect(awaiting.resumeCommand).toContain('--param chain=base')
+      expect(awaiting.resumeCommand).toContain("--chain 'base'")
     })
 
     it('should include recipe name and version in RecipeComplete', async () => {
@@ -1269,6 +1269,21 @@ describe('executeRecipe', () => {
       expect(result.status).toBe('awaiting_agent')
       const awaiting = result as { resumeCommand: string }
       expect(awaiting.resumeCommand).toContain("--input '<agent_output_json>'")
+    })
+
+    it('should shell-escape param values with special characters', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: { query: "price > 100 && name = 'test'" },
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { resumeCommand: string }
+      // Single quotes in the value should be escaped with '\''
+      expect(awaiting.resumeCommand).toContain("--query 'price > 100 && name = '\\''test'\\'''")
     })
   })
 

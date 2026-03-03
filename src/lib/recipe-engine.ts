@@ -523,11 +523,23 @@ function buildAwaitingAgentOutput(
     }
   }
 
-  const source = recipeSource ?? '--stdin'
+  const sourcePart = recipeSource ?? ''
+  const stdinFlag = recipeSource ? '' : '--stdin'
   const paramParts = Object.entries(originalParams)
-    .map(([k, v]) => `--param ${k}=${v}`)
+    .map(([k, v]) => {
+      const escaped = v.replace(/'/g, "'\\''")
+      return `--${k} '${escaped}'`
+    })
     .join(' ')
-  const resumeCommand = `aixbt recipe run ${source} --resume-from step:${agentStep.id} --input '<agent_output_json>' ${paramParts}`.trim()
+  const parts = [
+    'aixbt recipe run',
+    sourcePart,
+    stdinFlag,
+    `--resume-from step:${agentStep.id}`,
+    "--input '<agent_output_json>'",
+    paramParts,
+  ].filter(Boolean)
+  const resumeCommand = parts.join(' ')
 
   return {
     status: 'awaiting_agent',
