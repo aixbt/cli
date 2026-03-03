@@ -196,6 +196,7 @@ export function registerRecipeCommand(program: Command): void {
             resumeFromStep: opts.resumeFrom as string | undefined,
             resumeInput,
             outputDir: opts.outputDir as string | undefined,
+            recipeSource: opts.stdin ? undefined : source,
           }),
         'Recipe execution failed',
       )

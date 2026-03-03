@@ -373,6 +373,36 @@ function applyDefaults(
   return result
 }
 
+function validateResumeInput(
+  input: Record<string, unknown>,
+  returns: Record<string, string>,
+  stepId: string,
+): void {
+  const missing: string[] = []
+  for (const key of Object.keys(returns)) {
+    if (!(key in input)) {
+      missing.push(key)
+    }
+  }
+  if (missing.length > 0) {
+    throw new CliError(
+      `--input is missing required fields for step "${stepId}": ${missing.join(', ')}. Expected: ${JSON.stringify(returns)}`,
+      'INVALID_RESUME_INPUT',
+    )
+  }
+
+  // Type checking: verify arrays are arrays
+  for (const [key, expectedType] of Object.entries(returns)) {
+    const value = input[key]
+    if (expectedType.endsWith('[]') && !Array.isArray(value)) {
+      throw new CliError(
+        `--input field "${key}" should be an array (${expectedType}), got ${typeof value}`,
+        'INVALID_RESUME_INPUT',
+      )
+    }
+  }
+}
+
 function findResumeSegment(
   ctx: ExecutionContext,
   resumeStepId: string,
@@ -384,9 +414,16 @@ function findResumeSegment(
 
   for (const segment of ctx.segments) {
     if (segment.precedingAgentStep && segment.precedingAgentStep.id === stepId) {
+      if (!resumeInput) {
+        throw new CliError(
+          `--input is required when resuming from agent step "${stepId}"`,
+          'INVALID_RESUME_INPUT',
+        )
+      }
+      validateResumeInput(resumeInput, segment.precedingAgentStep.returns, stepId)
       return {
         segmentIndex: segment.index,
-        agentInput: resumeInput ?? null,
+        agentInput: resumeInput,
       }
     }
   }
@@ -449,10 +486,8 @@ async function executeStep(
     response = await get(path, resolvedParams, clientOptions)
   } catch (err) {
     if (err instanceof CliError) {
-      throw new CliError(
-        `Step "${step.id}" failed: ${err.message}`,
-        err.code,
-      )
+      err.message = `Step "${step.id}" failed: ${err.message}`
+      throw err
     }
     throw new CliError(
       `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -478,6 +513,7 @@ function buildAwaitingAgentOutput(
   ctx: ExecutionContext,
   agentStep: AgentStep,
   originalParams: Record<string, string>,
+  recipeSource?: string,
 ): RecipeAwaitingAgent {
   const data: Record<string, unknown> = {}
   for (const ref of agentStep.context) {
@@ -487,10 +523,11 @@ function buildAwaitingAgentOutput(
     }
   }
 
+  const source = recipeSource ?? '--stdin'
   const paramParts = Object.entries(originalParams)
     .map(([k, v]) => `--param ${k}=${v}`)
     .join(' ')
-  const resumeCommand = `aixbt recipe run --resume step:${agentStep.id} ${paramParts}`.trim()
+  const resumeCommand = `aixbt recipe run ${source} --resume-from step:${agentStep.id} --input '<agent_output_json>' ${paramParts}`.trim()
 
   return {
     status: 'awaiting_agent',
@@ -519,11 +556,12 @@ function buildCompleteOutput(
         const filename = `segment-${String(fileIndex).padStart(3, '0')}.json`
         const filePath = join(outputDir, filename)
         writeFileSync(filePath, JSON.stringify(result.data, null, 2))
-        data[stepId] = { file: filePath }
+        data[stepId] = { dataFile: filePath }
         fileIndex++
       }
-    } catch {
-      // Fall back to inline data so collected results aren't lost
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      console.error(`warn: Failed to write output files to ${outputDir}: ${detail}. Falling back to inline data.`)
       for (const [stepId, result] of ctx.results) {
         data[stepId] = result.data
       }
@@ -552,6 +590,7 @@ export async function executeRecipe(options: {
   resumeFromStep?: string
   resumeInput?: Record<string, unknown>
   outputDir?: string
+  recipeSource?: string
 }): Promise<RecipeAwaitingAgent | RecipeComplete> {
   const recipe = parseRecipe(options.yaml)
   validateRecipe(recipe)
@@ -600,7 +639,7 @@ export async function executeRecipe(options: {
 
     for (const step of segment.steps) {
       if (isAgentStep(step)) {
-        return buildAwaitingAgentOutput(ctx, step, options.params)
+        return buildAwaitingAgentOutput(ctx, step, options.params, options.recipeSource)
       }
 
       const result = await executeStep(step, ctx, options.clientOptions)

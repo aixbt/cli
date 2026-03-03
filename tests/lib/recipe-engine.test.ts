@@ -496,6 +496,53 @@ steps:
       limit: "{params.count}"
 `
 
+const AGENT_AT_END_RECIPE = `
+name: agent-at-end
+version: "1.0"
+description: Recipe with agent step at the end
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: signals
+    endpoint: "GET /v2/signals"
+  - id: analyze
+    type: agent
+    context: [projects, signals]
+    task: inference
+    description: "Analyze data"
+    returns:
+      summary: "string"
+`
+
+const MULTI_SEGMENT_RECIPE = `
+name: multi-segment
+version: "1.0"
+description: Recipe with two agent steps
+steps:
+  - id: surging
+    endpoint: "GET /v2/projects"
+  - id: filter
+    type: agent
+    context: [surging]
+    task: inference
+    description: "Filter projects"
+    returns:
+      projectIds: "string[]"
+  - id: signals
+    endpoint: "GET /v2/signals"
+    params:
+      projectIds: "{filter.data.projectIds}"
+  - id: analyze
+    type: agent
+    context: [signals]
+    task: synthesis
+    description: "Analyze signals"
+    returns:
+      summary: "string"
+  - id: enrichment
+    endpoint: "GET /v2/projects"
+`
+
 const RECIPE_WITH_OUTPUT_AND_ANALYSIS = `
 name: test-recipe
 version: "1.0"
@@ -771,7 +818,8 @@ describe('executeRecipe', () => {
 
       expect(result.status).toBe('awaiting_agent')
       const awaiting = result as { resumeCommand: string }
-      expect(awaiting.resumeCommand).toContain('--resume step:analyze')
+      expect(awaiting.resumeCommand).toContain('--resume-from step:analyze')
+      expect(awaiting.resumeCommand).toContain("--input '<agent_output_json>'")
       expect(awaiting.resumeCommand).toContain('--param chain=base')
     })
 
@@ -839,15 +887,15 @@ describe('executeRecipe', () => {
       const data = (result as { data: Record<string, unknown> }).data
 
       // Data should contain file references instead of inline data
-      const projectsEntry = data.projects as { file: string }
-      const signalsEntry = data.signals as { file: string }
-      expect(projectsEntry.file).toContain('segment-001.json')
-      expect(signalsEntry.file).toContain('segment-002.json')
+      const projectsEntry = data.projects as { dataFile: string }
+      const signalsEntry = data.signals as { dataFile: string }
+      expect(projectsEntry.dataFile).toContain('segment-001.json')
+      expect(signalsEntry.dataFile).toContain('segment-002.json')
 
       // Files should actually exist with correct content
-      const projectsContent = JSON.parse(readFileSync(projectsEntry.file, 'utf-8'))
+      const projectsContent = JSON.parse(readFileSync(projectsEntry.dataFile, 'utf-8'))
       expect(projectsContent).toEqual(projectsData)
-      const signalsContent = JSON.parse(readFileSync(signalsEntry.file, 'utf-8'))
+      const signalsContent = JSON.parse(readFileSync(signalsEntry.dataFile, 'utf-8'))
       expect(signalsContent).toEqual(signalsData)
     })
 
@@ -903,6 +951,324 @@ describe('executeRecipe', () => {
       expect(result.status).toBe('complete')
       const data = (result as { data: Record<string, unknown> }).data
       expect(data.projects).toEqual(projectsData)
+    })
+  })
+
+  // -- Agent step at recipe end --
+
+  describe('agent step at recipe end', () => {
+    it('should halt execution at agent step when it is the last step', async () => {
+      const projectsData = [{ id: 'p1' }]
+      const signalsData = [{ id: 's1' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_AT_END_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        status: string
+        step: string
+        task: string
+        description: string
+        returns: Record<string, string>
+        data: Record<string, unknown>
+      }
+      expect(awaiting.step).toBe('analyze')
+      expect(awaiting.task).toBe('inference')
+      expect(awaiting.description).toBe('Analyze data')
+      expect(awaiting.returns).toEqual({ summary: 'string' })
+    })
+
+    it('should include both context step data in yield output', async () => {
+      const projectsData = [{ id: 'p1', name: 'Project 1' }]
+      const signalsData = [{ id: 's1', signal: 'bullish' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_AT_END_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { data: Record<string, unknown> }
+      expect(awaiting.data.projects).toEqual(projectsData)
+      expect(awaiting.data.signals).toEqual(signalsData)
+    })
+
+    it('should not include completion output when agent step is at end', async () => {
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse([]))
+        .mockResolvedValueOnce(mockApiResponse([]))
+
+      const result = await executeRecipe({
+        yaml: AGENT_AT_END_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      // Should not have completion fields
+      expect((result as Record<string, unknown>).timestamp).toBeUndefined()
+    })
+  })
+
+  // -- Multi-segment recipe --
+
+  describe('multi-segment recipe', () => {
+    it('should yield at first agent step on initial invocation', async () => {
+      const surgingData = [{ id: 'p1' }, { id: 'p2' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        step: string
+        task: string
+        data: Record<string, unknown>
+      }
+      expect(awaiting.step).toBe('filter')
+      expect(awaiting.task).toBe('inference')
+      expect(awaiting.data.surging).toEqual(surgingData)
+    })
+
+    it('should resume from first agent step and yield at second agent step', async () => {
+      const signalsData = [{ id: 's1', signal: 'bullish' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1', 'p2'] },
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        step: string
+        task: string
+        data: Record<string, unknown>
+      }
+      expect(awaiting.step).toBe('analyze')
+      expect(awaiting.task).toBe('synthesis')
+      expect(awaiting.data.signals).toEqual(signalsData)
+    })
+
+    it('should resume from second agent step and complete recipe', async () => {
+      const enrichmentData = [{ id: 'p1', enriched: true }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(enrichmentData))
+
+      const result = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'analyze',
+        resumeInput: { summary: 'Analysis complete' },
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.enrichment).toEqual(enrichmentData)
+      expect(data.analyze).toEqual({ summary: 'Analysis complete' })
+    })
+
+    it('should complete full three-invocation flow end-to-end', async () => {
+      // Invocation 1: initial run -> yields at filter
+      const surgingData = [{ id: 'p1' }, { id: 'p2' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result1 = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+      expect(result1.status).toBe('awaiting_agent')
+      expect((result1 as { step: string }).step).toBe('filter')
+
+      // Invocation 2: resume from filter -> yields at analyze
+      mockGet.mockReset()
+      const signalsData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result2 = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1'] },
+      })
+      expect(result2.status).toBe('awaiting_agent')
+      expect((result2 as { step: string }).step).toBe('analyze')
+
+      // Invocation 3: resume from analyze -> completes
+      mockGet.mockReset()
+      const enrichmentData = [{ id: 'e1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(enrichmentData))
+
+      const result3 = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'analyze',
+        resumeInput: { summary: 'Done' },
+      })
+      expect(result3.status).toBe('complete')
+      const data = (result3 as { data: Record<string, unknown> }).data
+      expect(data.enrichment).toEqual(enrichmentData)
+      expect(data.analyze).toEqual({ summary: 'Done' })
+    })
+  })
+
+  // -- Input validation --
+
+  describe('input validation', () => {
+    it('should throw INVALID_RESUME_INPUT when resuming without --input', async () => {
+      try {
+        await executeRecipe({
+          yaml: AGENT_RECIPE,
+          params: {},
+          clientOptions: {},
+          resumeFromStep: 'analyze',
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('INVALID_RESUME_INPUT')
+        expect((err as CliError).message).toContain('--input is required')
+        expect((err as CliError).message).toContain('analyze')
+      }
+    })
+
+    it('should throw INVALID_RESUME_INPUT when --input is missing a required field', async () => {
+      try {
+        await executeRecipe({
+          yaml: AGENT_RECIPE,
+          params: {},
+          clientOptions: {},
+          resumeFromStep: 'analyze',
+          resumeInput: { wrongField: 'value' },
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('INVALID_RESUME_INPUT')
+        expect((err as CliError).message).toContain('projectIds')
+      }
+    })
+
+    it('should throw INVALID_RESUME_INPUT when array field is not an array', async () => {
+      try {
+        await executeRecipe({
+          yaml: AGENT_RECIPE,
+          params: {},
+          clientOptions: {},
+          resumeFromStep: 'analyze',
+          resumeInput: { projectIds: 'not-an-array' },
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('INVALID_RESUME_INPUT')
+        expect((err as CliError).message).toContain('projectIds')
+        expect((err as CliError).message).toContain('array')
+      }
+    })
+
+    it('should pass validation when --input has correct fields and types', async () => {
+      const deepData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(deepData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'analyze',
+        resumeInput: { projectIds: ['p1', 'p2'] },
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.analyze).toEqual({ projectIds: ['p1', 'p2'] })
+    })
+  })
+
+  // -- Resume command format --
+
+  describe('resume command format', () => {
+    it('should include file path in resumeCommand when recipeSource is provided', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        recipeSource: 'recipes/my-recipe.yaml',
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { resumeCommand: string }
+      expect(awaiting.resumeCommand).toContain('recipes/my-recipe.yaml')
+      expect(awaiting.resumeCommand).not.toContain('--stdin')
+    })
+
+    it('should include --stdin in resumeCommand when no recipeSource is provided', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { resumeCommand: string }
+      expect(awaiting.resumeCommand).toContain('--stdin')
+    })
+
+    it('should use --resume-from flag in resumeCommand', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { resumeCommand: string }
+      expect(awaiting.resumeCommand).toContain('--resume-from step:analyze')
+      // Should not use the old --resume format
+      expect(awaiting.resumeCommand).not.toMatch(/--resume\s+step:/)
+    })
+
+    it('should include --input placeholder in resumeCommand', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { resumeCommand: string }
+      expect(awaiting.resumeCommand).toContain("--input '<agent_output_json>'")
     })
   })
 
