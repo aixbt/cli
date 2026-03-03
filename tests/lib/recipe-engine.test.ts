@@ -1,6 +1,19 @@
-import { describe, it, expect } from 'vitest'
-import { resolveValue, resolveEndpoint, resolveRelativeTime } from '../../src/lib/recipe-engine.js'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { resolveValue, resolveEndpoint, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe-engine.js'
 import type { ExecutionContext, StepResult } from '../../src/types.js'
+import { CliError } from '../../src/lib/errors.js'
+import * as apiClient from '../../src/lib/api-client.js'
+
+// Mock the api-client get function to avoid real HTTP calls
+vi.mock('../../src/lib/api-client.js', async () => {
+  const actual = await vi.importActual('../../src/lib/api-client.js')
+  return {
+    ...actual,
+    get: vi.fn(),
+  }
+})
+
+const mockGet = vi.mocked(apiClient.get)
 
 // -- Test helpers --
 
@@ -401,5 +414,506 @@ describe('resolveRelativeTime', () => {
 
     expect(resultMs).toBeGreaterThanOrEqual(expected24hAgo - 2000)
     expect(resultMs).toBeLessThanOrEqual(expected24hAgo + 2000)
+  })
+})
+
+// -- executeRecipe --
+
+// Test YAML recipes
+
+const SIMPLE_RECIPE = `
+name: test-recipe
+version: "1.0"
+description: Simple test
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+`
+
+const TWO_STEP_RECIPE = `
+name: test-recipe
+version: "1.0"
+description: Two steps
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: signals
+    endpoint: "GET /v2/signals"
+`
+
+const RECIPE_WITH_VARIABLE_REFS = `
+name: test-recipe
+version: "1.0"
+description: Steps with variable references
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: signals
+    endpoint: "GET /v2/signals"
+    params:
+      projectIds: "{projects.data[*].id}"
+`
+
+const AGENT_RECIPE = `
+name: test-recipe
+version: "1.0"
+description: Recipe with agent step
+steps:
+  - id: surging
+    endpoint: "GET /v2/projects"
+    params:
+      momentum: rising
+  - id: analyze
+    type: agent
+    context: [surging]
+    task: inference
+    description: "Analyze surging projects"
+    returns:
+      projectIds: "string[]"
+  - id: deep
+    endpoint: "GET /v2/signals"
+`
+
+const RECIPE_WITH_DEFAULTS = `
+name: test-recipe
+version: "1.0"
+description: Recipe with param defaults
+params:
+  chain:
+    type: string
+    default: base
+  count:
+    type: number
+    default: 10
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+    params:
+      chain: "{params.chain}"
+      limit: "{params.count}"
+`
+
+const RECIPE_WITH_OUTPUT_AND_ANALYSIS = `
+name: test-recipe
+version: "1.0"
+description: Recipe with output and analysis
+output:
+  merge: [projects, signals]
+  join_on: projectId
+analysis:
+  task: summarize
+  instructions: "Summarize the data"
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: signals
+    endpoint: "GET /v2/signals"
+`
+
+function mockApiResponse(data: unknown) {
+  return {
+    status: 200,
+    data,
+    rateLimit: null,
+    pagination: undefined,
+  }
+}
+
+describe('executeRecipe', () => {
+  beforeEach(() => {
+    mockGet.mockReset()
+  })
+
+  // -- Core execution flow --
+
+  describe('core execution flow', () => {
+    it('should execute a simple recipe with one API step and return RecipeComplete', async () => {
+      const projectsData = [{ id: 'p1', name: 'Project 1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      expect(result.recipe).toBe('test-recipe')
+      expect(result.version).toBe('1.0')
+      expect((result as { data: Record<string, unknown> }).data.projects).toEqual(projectsData)
+    })
+
+    it('should execute two sequential steps in order', async () => {
+      const projectsData = [{ id: 'p1' }]
+      const signalsData = [{ id: 's1', projectId: 'p1' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: TWO_STEP_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.projects).toEqual(projectsData)
+      expect(data.signals).toEqual(signalsData)
+    })
+
+    it('should resolve variable references between steps', async () => {
+      const projectsData = [{ id: 'p1' }, { id: 'p2' }]
+      const signalsData = [{ id: 's1' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: RECIPE_WITH_VARIABLE_REFS,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      // The second call should have resolved {projects.data[*].id} to "p1,p2"
+      const secondCallParams = mockGet.mock.calls[1][1]
+      expect(secondCallParams).toEqual({ projectIds: 'p1,p2' })
+    })
+
+    it('should return RecipeAwaitingAgent when hitting an agent step', async () => {
+      const surgingData = [{ id: 'p1', name: 'Surging Project' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        status: string
+        step: string
+        task: string
+        description: string
+        returns: Record<string, string>
+        data: Record<string, unknown>
+        resumeCommand: string
+      }
+      expect(awaiting.step).toBe('analyze')
+      expect(awaiting.task).toBe('inference')
+      expect(awaiting.description).toBe('Analyze surging projects')
+      expect(awaiting.returns).toEqual({ projectIds: 'string[]' })
+    })
+
+    it('should include correct context data from referenced steps in agent output', async () => {
+      const surgingData = [{ id: 'p1', momentum: 95 }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { data: Record<string, unknown> }
+      expect(awaiting.data.surging).toEqual(surgingData)
+    })
+  })
+
+  // -- Resume flow --
+
+  describe('resume flow', () => {
+    it('should resume from agent step and execute remaining steps', async () => {
+      const surgingData = [{ id: 'p1' }]
+      const deepData = [{ id: 's1', signal: 'bullish' }]
+
+      // First run: execute up to agent step
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+      const firstResult = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+      expect(firstResult.status).toBe('awaiting_agent')
+
+      // Second run: resume from agent step with agent input
+      mockGet.mockReset()
+      mockGet.mockResolvedValueOnce(mockApiResponse(deepData))
+
+      const resumeResult = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'analyze',
+        resumeInput: { projectIds: ['p1', 'p2'] },
+      })
+
+      expect(resumeResult.status).toBe('complete')
+      const data = (resumeResult as { data: Record<string, unknown> }).data
+      expect(data.deep).toEqual(deepData)
+      // The agent input should be injected as the analyze step's result
+      expect(data.analyze).toEqual({ projectIds: ['p1', 'p2'] })
+    })
+
+    it('should resume correctly with step: prefix', async () => {
+      const deepData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(deepData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'step:analyze',
+        resumeInput: { projectIds: ['p1'] },
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.deep).toEqual(deepData)
+    })
+
+    it('should throw STEP_NOT_FOUND when resuming from nonexistent step', async () => {
+      await expect(
+        executeRecipe({
+          yaml: AGENT_RECIPE,
+          params: {},
+          clientOptions: {},
+          resumeFromStep: 'nonexistent',
+        }),
+      ).rejects.toThrow(CliError)
+
+      try {
+        await executeRecipe({
+          yaml: AGENT_RECIPE,
+          params: {},
+          clientOptions: {},
+          resumeFromStep: 'nonexistent',
+        })
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('STEP_NOT_FOUND')
+      }
+    })
+
+    it('should throw INVALID_RESUME_STEP when resuming from a non-agent step', async () => {
+      await expect(
+        executeRecipe({
+          yaml: AGENT_RECIPE,
+          params: {},
+          clientOptions: {},
+          resumeFromStep: 'surging',
+        }),
+      ).rejects.toThrow(CliError)
+
+      try {
+        await executeRecipe({
+          yaml: AGENT_RECIPE,
+          params: {},
+          clientOptions: {},
+          resumeFromStep: 'surging',
+        })
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('INVALID_RESUME_STEP')
+      }
+    })
+  })
+
+  // -- Output --
+
+  describe('output', () => {
+    it('should include output and analysis from YAML in RecipeComplete', async () => {
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+        .mockResolvedValueOnce(mockApiResponse([{ id: 's1' }]))
+
+      const result = await executeRecipe({
+        yaml: RECIPE_WITH_OUTPUT_AND_ANALYSIS,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const complete = result as {
+        output?: { merge?: string[]; join_on?: string }
+        analysis?: { task?: string; instructions?: string }
+      }
+      expect(complete.output).toEqual({
+        merge: ['projects', 'signals'],
+        join_on: 'projectId',
+      })
+      expect(complete.analysis).toEqual({
+        task: 'summarize',
+        instructions: 'Summarize the data',
+      })
+    })
+
+    it('should include resumeCommand in RecipeAwaitingAgent output', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([{ id: 'p1' }]))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: { chain: 'base' },
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { resumeCommand: string }
+      expect(awaiting.resumeCommand).toContain('--resume step:analyze')
+      expect(awaiting.resumeCommand).toContain('--param chain=base')
+    })
+
+    it('should include recipe name and version in RecipeComplete', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      const result = await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      expect(result.recipe).toBe('test-recipe')
+      expect(result.version).toBe('1.0')
+    })
+
+    it('should include a timestamp in RecipeComplete', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      const result = await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const complete = result as { timestamp: string }
+      expect(complete.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    })
+  })
+
+  // -- Defaults --
+
+  describe('param defaults', () => {
+    it('should apply default values when params are not provided by user', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      await executeRecipe({
+        yaml: RECIPE_WITH_DEFAULTS,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(mockGet).toHaveBeenCalledTimes(1)
+      const callParams = mockGet.mock.calls[0][1]
+      expect(callParams).toEqual({
+        chain: 'base',
+        limit: '10',
+      })
+    })
+
+    it('should let user-provided params override defaults', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      await executeRecipe({
+        yaml: RECIPE_WITH_DEFAULTS,
+        params: { chain: 'ethereum', count: '5' },
+        clientOptions: {},
+      })
+
+      expect(mockGet).toHaveBeenCalledTimes(1)
+      const callParams = mockGet.mock.calls[0][1]
+      expect(callParams).toEqual({
+        chain: 'ethereum',
+        limit: '5',
+      })
+    })
+
+    it('should partially override defaults when some params are provided', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      await executeRecipe({
+        yaml: RECIPE_WITH_DEFAULTS,
+        params: { chain: 'solana' },
+        clientOptions: {},
+      })
+
+      expect(mockGet).toHaveBeenCalledTimes(1)
+      const callParams = mockGet.mock.calls[0][1]
+      expect(callParams).toEqual({
+        chain: 'solana',
+        limit: '10',
+      })
+    })
+  })
+
+  // -- API call verification --
+
+  describe('API call behavior', () => {
+    it('should call get with the correct endpoint path', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(mockGet).toHaveBeenCalledTimes(1)
+      expect(mockGet.mock.calls[0][0]).toBe('/v2/projects')
+    })
+
+    it('should pass clientOptions through to the get function', async () => {
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      const clientOptions = { apiKey: 'test-key', apiUrl: 'https://api.test.com' }
+      await executeRecipe({
+        yaml: SIMPLE_RECIPE,
+        params: {},
+        clientOptions,
+      })
+
+      expect(mockGet.mock.calls[0][2]).toBe(clientOptions)
+    })
+
+    it('should resolve step params with undefined values removed', async () => {
+      const recipeWithOptionalParam = `
+name: test-recipe
+version: "1.0"
+description: Test
+params:
+  chain:
+    type: string
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+    params:
+      chain: "{params.chain}"
+      limit: "20"
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse([]))
+
+      await executeRecipe({
+        yaml: recipeWithOptionalParam,
+        params: {},
+        clientOptions: {},
+      })
+
+      const callParams = mockGet.mock.calls[0][1]
+      // chain should resolve to undefined since params.chain is not provided and has no default
+      expect(callParams).toEqual({
+        chain: undefined,
+        limit: '20',
+      })
+    })
   })
 })

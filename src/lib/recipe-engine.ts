@@ -1,4 +1,14 @@
-import type { ExecutionContext } from '../types.js'
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import type {
+  ExecutionContext, RecipeStep, Segment, StepResult,
+  RecipeAwaitingAgent, RecipeComplete, AgentStep, Recipe,
+} from '../types.js'
+import { isAgentStep, isForeachStep } from '../types.js'
+import { parseRecipe } from './recipe-parser.js'
+import { validateRecipe, buildSegments } from './recipe-validator.js'
+import { get, type ApiClientOptions } from './api-client.js'
+import { CliError } from './errors.js'
 
 const TEMPLATE_REGEX = /\{([^}]+)\}/g
 const RELATIVE_TIME_REGEX = /^-(\d+)(h|d|m)$/
@@ -176,4 +186,228 @@ export function resolveRelativeTime(expr: string): string {
   }
 
   return now.toISOString()
+}
+
+// -- Recipe execution --
+
+function applyDefaults(
+  recipe: Recipe,
+  provided: Record<string, string>,
+): Record<string, string> {
+  const result: Record<string, string> = { ...provided }
+
+  if (recipe.params) {
+    for (const [name, param] of Object.entries(recipe.params)) {
+      if (!(name in result) && param.default !== undefined) {
+        result[name] = String(param.default)
+      }
+    }
+  }
+
+  return result
+}
+
+function findResumeSegment(
+  ctx: ExecutionContext,
+  resumeStepId: string,
+  resumeInput?: Record<string, unknown>,
+): { segmentIndex: number; agentInput: Record<string, unknown> | null } {
+  const stepId = resumeStepId.startsWith('step:')
+    ? resumeStepId.slice('step:'.length)
+    : resumeStepId
+
+  for (const segment of ctx.segments) {
+    if (segment.precedingAgentStep && segment.precedingAgentStep.id === stepId) {
+      return {
+        segmentIndex: segment.index,
+        agentInput: resumeInput ?? null,
+      }
+    }
+  }
+
+  // Check if the step exists at all but isn't an agent step
+  const allStepIds = ctx.recipe.steps.map((s) => s.id)
+  if (allStepIds.includes(stepId)) {
+    throw new CliError(
+      `Step "${stepId}" is not an agent step and cannot be resumed from`,
+      'INVALID_RESUME_STEP',
+    )
+  }
+
+  throw new CliError(
+    `Step "${stepId}" not found in recipe`,
+    'STEP_NOT_FOUND',
+  )
+}
+
+async function executeStep(
+  step: RecipeStep,
+  ctx: ExecutionContext,
+  clientOptions: ApiClientOptions,
+): Promise<StepResult> {
+  const startedAt = new Date()
+
+  const { path } = resolveEndpoint(
+    isAgentStep(step) ? '' : step.endpoint,
+    ctx,
+  )
+
+  const resolvedParams: Record<string, string | number | boolean | undefined> = {}
+  if (!isAgentStep(step) && step.params) {
+    const resolved = resolveValue(step.params, ctx) as Record<string, unknown>
+    for (const [key, val] of Object.entries(resolved)) {
+      if (Array.isArray(val)) {
+        resolvedParams[key] = val.join(',')
+      } else if (val === null || val === undefined) {
+        resolvedParams[key] = undefined
+      } else {
+        resolvedParams[key] = val as string | number | boolean
+      }
+    }
+  }
+
+  const response = await get(path, resolvedParams, clientOptions)
+
+  const completedAt = new Date()
+
+  return {
+    stepId: step.id,
+    data: response.data,
+    rateLimit: response.rateLimit,
+    timing: {
+      startedAt: startedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
+      durationMs: completedAt.getTime() - startedAt.getTime(),
+    },
+  }
+}
+
+function buildAwaitingAgentOutput(
+  ctx: ExecutionContext,
+  agentStep: AgentStep,
+  originalParams: Record<string, string>,
+): RecipeAwaitingAgent {
+  const data: Record<string, unknown> = {}
+  for (const ref of agentStep.context) {
+    const result = ctx.results.get(ref)
+    if (result) {
+      data[ref] = result.data
+    }
+  }
+
+  const paramParts = Object.entries(originalParams)
+    .map(([k, v]) => `--param ${k}=${v}`)
+    .join(' ')
+  const resumeCommand = `aixbt recipe run --resume step:${agentStep.id} ${paramParts}`.trim()
+
+  return {
+    status: 'awaiting_agent',
+    recipe: ctx.recipe.name,
+    version: ctx.recipe.version,
+    step: agentStep.id,
+    task: agentStep.task,
+    description: agentStep.description,
+    returns: agentStep.returns,
+    data,
+    resumeCommand,
+  }
+}
+
+function buildCompleteOutput(
+  ctx: ExecutionContext,
+  outputDir?: string,
+): RecipeComplete {
+  const data: Record<string, unknown> = {}
+
+  if (outputDir) {
+    mkdirSync(outputDir, { recursive: true })
+    let fileIndex = 1
+    for (const [stepId, result] of ctx.results) {
+      const filename = `segment-${String(fileIndex).padStart(3, '0')}.json`
+      const filePath = join(outputDir, filename)
+      writeFileSync(filePath, JSON.stringify(result.data, null, 2))
+      data[stepId] = { file: filePath }
+      fileIndex++
+    }
+  } else {
+    for (const [stepId, result] of ctx.results) {
+      data[stepId] = result.data
+    }
+  }
+
+  return {
+    status: 'complete',
+    recipe: ctx.recipe.name,
+    version: ctx.recipe.version,
+    timestamp: new Date().toISOString(),
+    data,
+    output: ctx.recipe.output,
+    analysis: ctx.recipe.analysis,
+  }
+}
+
+export async function executeRecipe(options: {
+  yaml: string
+  params: Record<string, string>
+  clientOptions: ApiClientOptions
+  resumeFromStep?: string
+  resumeInput?: Record<string, unknown>
+  outputDir?: string
+}): Promise<RecipeAwaitingAgent | RecipeComplete> {
+  const recipe = parseRecipe(options.yaml)
+  validateRecipe(recipe)
+  const segments = buildSegments(recipe)
+
+  const params = applyDefaults(recipe, options.params)
+
+  const ctx: ExecutionContext = {
+    recipe,
+    params,
+    results: new Map<string, StepResult>(),
+    currentRateLimit: null,
+    currentSegmentIndex: 0,
+    segments,
+    agentInput: null,
+    resumedFromStep: options.resumeFromStep ?? null,
+  }
+
+  let startSegmentIndex = 0
+
+  if (options.resumeFromStep) {
+    const resume = findResumeSegment(ctx, options.resumeFromStep, options.resumeInput)
+    startSegmentIndex = resume.segmentIndex
+    ctx.agentInput = resume.agentInput
+  }
+
+  for (let i = startSegmentIndex; i < segments.length; i++) {
+    const segment = segments[i]
+    ctx.currentSegmentIndex = i
+
+    // If resuming and the segment has a preceding agent step, inject agent input
+    if (segment.precedingAgentStep && ctx.agentInput) {
+      ctx.results.set(segment.precedingAgentStep.id, {
+        stepId: segment.precedingAgentStep.id,
+        data: ctx.agentInput,
+        rateLimit: null,
+        timing: {
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          durationMs: 0,
+        },
+      })
+      ctx.agentInput = null
+    }
+
+    for (const step of segment.steps) {
+      if (isAgentStep(step)) {
+        return buildAwaitingAgentOutput(ctx, step, options.params)
+      }
+
+      const result = await executeStep(step, ctx, options.clientOptions)
+      ctx.results.set(step.id, result)
+      ctx.currentRateLimit = result.rateLimit
+    }
+  }
+
+  return buildCompleteOutput(ctx, options.outputDir)
 }
