@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+import { NoApiKeyError } from './errors.js'
+
 // -- Types --
 
 export interface AixbtConfig {
@@ -100,4 +102,14 @@ export function resolveConfig(flags?: {
     expiresAt: config.expiresAt,
     scopes: config.scopes ?? [],
   }
+}
+
+// -- Require API key --
+
+export function requireApiKey(flags?: { apiKey?: string }): string {
+  const resolved = resolveConfig(flags)
+  if (!resolved.apiKey) {
+    throw new NoApiKeyError()
+  }
+  return resolved.apiKey
 }
