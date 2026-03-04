@@ -529,7 +529,7 @@ describe('validateRecipeCollectIssues', () => {
         apiStep('s1', 'GET /v2/projects/{params.missing}'),
         foreachStep('s2', 'ghost.data', 'GET /v2/things'),
       ],
-      { token: { type: 'object' as any } },
+      { token: { type: 'object' as unknown as 'string' } },
     )
     // Should not throw
     const issues = validateRecipeCollectIssues(recipe)

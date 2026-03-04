@@ -3,7 +3,7 @@ import { resolveValue, resolveEndpoint, resolveRelativeTime, executeRecipe } fro
 import type { ExecutionContext, StepResult } from '../../src/types.js'
 import { CliError } from '../../src/lib/errors.js'
 import * as apiClient from '../../src/lib/api-client.js'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -922,7 +922,7 @@ describe('executeRecipe', () => {
 
       // Use a path that can't be created (file as parent)
       const blockingFile = join(tempDir, 'blocker')
-      require('node:fs').writeFileSync(blockingFile, 'x')
+      writeFileSync(blockingFile, 'x')
       const outputDir = join(blockingFile, 'subdir')
 
       const result = await executeRecipe({

@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type {
-  ExecutionContext, RecipeStep, Segment, StepResult,
+  ExecutionContext, RecipeStep, StepResult,
   RecipeAwaitingAgent, RecipeComplete, AgentStep, Recipe,
   ForeachStep, ForeachResult, ForeachFailure, RateLimitInfo,
 } from '../types.js'

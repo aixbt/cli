@@ -255,14 +255,14 @@ describe('reconstructCommand', () => {
 describe('handlePaymentRequired', () => {
   let mockExit: ReturnType<typeof vi.spyOn>
   let mockLog: ReturnType<typeof vi.spyOn>
-  let mockError: ReturnType<typeof vi.spyOn>
+
 
   beforeEach(() => {
     mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called')
     })
     mockLog = vi.spyOn(console, 'log').mockImplementation(() => {})
-    mockError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
   afterEach(() => {
@@ -517,7 +517,7 @@ describe('withPayPerUse', () => {
 describe('handlePurchasePass', () => {
   let mockExit: ReturnType<typeof vi.spyOn>
   let mockLog: ReturnType<typeof vi.spyOn>
-  let mockError: ReturnType<typeof vi.spyOn>
+
   let tempDir: string
 
   beforeEach(() => {
@@ -528,7 +528,7 @@ describe('handlePurchasePass', () => {
       throw new Error('process.exit called')
     })
     mockLog = vi.spyOn(console, 'log').mockImplementation(() => {})
-    mockError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
   afterEach(() => {
