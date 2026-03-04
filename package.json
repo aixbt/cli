@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "aixbt": "./dist/cli.js"
+    "aixbt": "dist/cli.js"
   },
   "engines": {
     "node": ">=18.0.0"
