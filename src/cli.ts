@@ -22,6 +22,7 @@ export function createProgram(): Command {
     .name('aixbt')
     .description('AIXBT intelligence CLI')
     .version(pkg.version, '-v, --version')
+    .addHelpText('before', output.banner(pkg.version))
     .option('--json', 'Output as JSON (machine-readable)')
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')

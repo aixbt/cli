@@ -8,6 +8,21 @@ const BRAND_HEX = '#00D4AA'  // AIXBT brand color (teal/green)
 const brandColor = chalk.hex(BRAND_HEX)
 const brandBold = brandColor.bold
 
+// -- Banner --
+
+export function banner(version: string): string {
+  const logo = [
+    '',
+    `    ${brandBold('▄▀█ ▀█▀ ▀▄▀ █▄▄ ▀█▀')}`,
+    `    ${brandBold('█▀█ ░█░ █░█ █▄█ ░█░')}`,
+    '',
+    `    ${chalk.dim('crypto intelligence from the terminal')}`,
+    `    ${chalk.dim(`v${version}`)}`,
+    '',
+  ]
+  return logo.join('\n')
+}
+
 // -- String formatters (return strings, do not log) --
 
 export const fmt = {
