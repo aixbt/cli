@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { createProgram } from '../../src/cli.js'
 import { setConfigPath } from '../../src/lib/config.js'
 import { handleTopLevelError } from '../../src/lib/errors.js'
+import { jsonResponse } from '../helpers.js'
 
 // -- Mock fetch globally --
 
@@ -30,20 +31,6 @@ vi.mock('@inquirer/prompts', () => ({
 }))
 
 // -- Helpers --
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers?: Record<string, string>,
-): Response {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    statusText: status === 200 ? 'OK' : 'Error',
-    headers: new Headers(headers),
-    json: () => Promise.resolve(body),
-  } as Response
-}
 
 /**
  * Simulates the main() function from cli.ts: creates a program, parses args,
@@ -108,9 +95,9 @@ describe('E2E smoke tests', () => {
         program.parse(['node', 'test', '-v'], { from: 'node' })
         expect.unreachable('should have thrown')
       } catch (err: unknown) {
-        const error = err as { exitCode?: number; code?: string }
-        expect(error.exitCode).toBe(0)
-        expect(error.code).toBe('commander.version')
+        expect(err).toBeInstanceOf(Error)
+        expect(err).toHaveProperty('exitCode', 0)
+        expect(err).toHaveProperty('code', 'commander.version')
       }
     })
 
@@ -122,9 +109,9 @@ describe('E2E smoke tests', () => {
         program.parse(['node', 'test', '--version'], { from: 'node' })
         expect.unreachable('should have thrown')
       } catch (err: unknown) {
-        const error = err as { exitCode?: number; code?: string }
-        expect(error.exitCode).toBe(0)
-        expect(error.code).toBe('commander.version')
+        expect(err).toBeInstanceOf(Error)
+        expect(err).toHaveProperty('exitCode', 0)
+        expect(err).toHaveProperty('code', 'commander.version')
       }
     })
   })
@@ -183,8 +170,7 @@ describe('E2E smoke tests', () => {
 
       // The error handler outputs JSON to console.log when --json is set
       const jsonOutput = logs.find((l) => l.includes('no_api_key'))
-      expect(jsonOutput).toBeDefined()
-
+      expect(jsonOutput).toBeTruthy()
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.error).toBe('no_api_key')
       expect(parsed.message).toBe('No API key configured')
@@ -491,8 +477,7 @@ steps:
           return false
         }
       })
-      expect(jsonLine).toBeDefined()
-
+      expect(jsonLine).toBeTruthy()
       const parsed = JSON.parse(jsonLine!)
       expect(Array.isArray(parsed) || typeof parsed === 'object').toBe(true)
     })
@@ -514,8 +499,7 @@ steps:
           return false
         }
       })
-      expect(jsonLine).toBeDefined()
-
+      expect(jsonLine).toBeTruthy()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed).toHaveProperty('error')
       expect(parsed).toHaveProperty('message')
@@ -547,8 +531,7 @@ steps:
           return false
         }
       })
-      expect(jsonLine).toBeDefined()
-
+      expect(jsonLine).toBeTruthy()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed.status).toBe('valid')
     })
@@ -582,8 +565,7 @@ steps:
           return false
         }
       })
-      expect(jsonLine).toBeDefined()
-
+      expect(jsonLine).toBeTruthy()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed.status).toBe('invalid')
       expect(parsed.issues).toBeDefined()

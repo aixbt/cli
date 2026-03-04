@@ -8,31 +8,12 @@ import { fetchRecipeFromRegistry } from '../../src/lib/registry.js'
 import { setConfigPath } from '../../src/lib/config.js'
 import { PaymentRequiredError } from '../../src/lib/errors.js'
 import type { RecipeAwaitingAgent, RecipeComplete } from '../../src/types.js'
+import { jsonResponse, apiSuccess } from '../helpers.js'
 
 // -- Mock fetch globally to intercept all HTTP calls --
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
-
-// -- Helpers --
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers?: Record<string, string>,
-): Response {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    statusText: status === 200 ? 'OK' : 'Error',
-    headers: new Headers(headers),
-    json: () => Promise.resolve(body),
-  } as Response
-}
-
-function apiSuccess(data: unknown, headers?: Record<string, string>): Response {
-  return jsonResponse(200, { status: 200, data }, headers)
-}
 
 // -- YAML Recipe fixtures --
 

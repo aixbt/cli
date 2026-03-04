@@ -6,27 +6,12 @@ import { tmpdir } from 'node:os'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../../src/lib/registry.js'
 import { setConfigPath } from '../../src/lib/config.js'
 import { CliError, ApiError } from '../../src/lib/errors.js'
+import { jsonResponse } from '../helpers.js'
 
 // -- Mock fetch globally --
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
-
-// -- Helpers --
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers?: Record<string, string>,
-): Response {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    statusText: status === 200 ? 'OK' : 'Error',
-    headers: new Headers(headers),
-    json: () => Promise.resolve(body),
-  } as Response
-}
 
 // -- Mock data --
 

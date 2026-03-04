@@ -13,39 +13,14 @@ import {
   RateLimitError,
 } from '../../src/lib/errors.js'
 
+import { jsonResponse } from '../helpers.js'
+
 // -- Mock fetch globally --
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
 // -- Helpers --
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers?: Record<string, string>,
-): Response {
-  const headerEntries = new Headers(headers)
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    statusText: statusTextFor(status),
-    headers: headerEntries,
-    json: () => Promise.resolve(body),
-  } as Response
-}
-
-function statusTextFor(status: number): string {
-  const map: Record<number, string> = {
-    200: 'OK',
-    401: 'Unauthorized',
-    402: 'Payment Required',
-    404: 'Not Found',
-    429: 'Too Many Requests',
-    500: 'Internal Server Error',
-  }
-  return map[status] ?? 'Unknown'
-}
 
 function rateLimitHeaders(overrides?: Record<string, string>): Record<string, string> {
   return {

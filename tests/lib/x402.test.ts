@@ -17,6 +17,7 @@ import type { X402PaymentRequired } from '../../src/lib/x402.js'
 import type { AuthMode } from '../../src/lib/auth.js'
 import { PaymentRequiredError } from '../../src/lib/errors.js'
 import { setConfigPath, readConfig } from '../../src/lib/config.js'
+import { jsonResponse } from '../helpers.js'
 
 // -- Mock fetch globally (needed for handlePurchasePass tests) --
 
@@ -512,20 +513,6 @@ describe('withPayPerUse', () => {
 })
 
 // -- handlePurchasePass --
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers?: Record<string, string>,
-): Response {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    statusText: status === 200 ? 'OK' : 'Error',
-    headers: new Headers(headers),
-    json: () => Promise.resolve(body),
-  } as Response
-}
 
 describe('handlePurchasePass', () => {
   let mockExit: ReturnType<typeof vi.spyOn>

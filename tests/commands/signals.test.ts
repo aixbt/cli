@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 
 import { createProgram } from '../../src/cli.js'
 import { setConfigPath } from '../../src/lib/config.js'
+import { jsonResponse } from '../helpers.js'
 
 // -- Mock fetch globally --
 
@@ -27,22 +28,6 @@ vi.mock('ora', () => ({
 vi.mock('@inquirer/prompts', () => ({
   password: vi.fn(),
 }))
-
-// -- Helpers --
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers?: Record<string, string>,
-): Response {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    statusText: status === 200 ? 'OK' : 'Error',
-    headers: new Headers(headers),
-    json: () => Promise.resolve(body),
-  } as Response
-}
 
 // -- Mock data --
 

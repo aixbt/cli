@@ -6,27 +6,12 @@ import { tmpdir } from 'node:os'
 import { resolveAuthMode, validateApiKey, buildClientOptions, type AuthMode } from '../../src/lib/auth.js'
 import { setConfigPath, writeConfig, DEFAULT_API_URL } from '../../src/lib/config.js'
 import { NoApiKeyError, AuthError } from '../../src/lib/errors.js'
+import { jsonResponse } from '../helpers.js'
 
 // -- Mock fetch globally --
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
-
-// -- Helpers --
-
-function jsonResponse(
-  status: number,
-  body: unknown,
-  headers?: Record<string, string>,
-): Response {
-  return {
-    status,
-    ok: status >= 200 && status < 300,
-    statusText: status === 200 ? 'OK' : status === 401 ? 'Unauthorized' : 'Error',
-    headers: new Headers(headers),
-    json: () => Promise.resolve(body),
-  } as Response
-}
 
 describe('auth', () => {
   let tempDir: string
