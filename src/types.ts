@@ -59,6 +59,7 @@ export interface Recipe {
   version: string
   description: string
   tier?: string
+  estimatedTokens?: number | null
   params?: Record<string, RecipeParam>
   steps: RecipeStep[]
   output?: RecipeOutput
@@ -182,6 +183,7 @@ export interface RecipeAwaitingAgent {
   description: string
   returns: Record<string, string>
   data: Record<string, unknown>
+  tokenCount: number
   resumeCommand: string
 }
 
@@ -191,6 +193,7 @@ export interface RecipeComplete {
   version: string
   timestamp: string
   data: Record<string, unknown>
+  tokenCount: number
   output?: RecipeOutput
   analysis?: RecipeAnalysis
 }

@@ -125,11 +125,7 @@ describe('recipe commands', () => {
       expect(callUrl.pathname).toBe('/v2/cli/recipes')
 
       const allOutput = logs.join('\n')
-      // Table headers should be present
-      expect(allOutput).toContain('Name')
-      expect(allOutput).toContain('Version')
-      expect(allOutput).toContain('Description')
-      // Data should be present
+      // Card entries should be present
       expect(allOutput).toContain('defi-analysis')
       expect(allOutput).toContain('market-scanner')
       expect(allOutput).toContain('2 recipes')

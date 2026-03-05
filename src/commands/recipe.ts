@@ -121,13 +121,19 @@ export function registerRecipeCommand(program: Command): void {
         return
       }
 
-      output.table(recipes as unknown as Record<string, unknown>[], [
-        { key: 'name', header: 'Name', width: 24 },
-        { key: 'version', header: 'Version', width: 10 },
-        { key: 'description', header: 'Description', width: 40 },
-        { key: 'paramCount', header: 'Params', width: 8, align: 'right' as const },
-      ])
-      output.dim(`\n${recipes.length} recipes`)
+      for (const r of recipes) {
+        console.log()
+        const tokenLabel = r.estimatedTokens
+          ? output.fmt.dim(`~${Math.round(r.estimatedTokens / 1000)}k tokens`)
+          : ''
+        console.log(`  ${output.fmt.brandBold(r.name)}  ${output.fmt.dim(`v${r.version}`)}${tokenLabel ? `  ${tokenLabel}` : ''}`)
+        console.log(`  ${r.description}`)
+        if (r.paramCount > 0) {
+          console.log(`  ${output.fmt.dim(`${r.paramCount} param${r.paramCount !== 1 ? 's' : ''} — run`)} aixbt recipe info ${r.name} ${output.fmt.dim('for details')}`)
+        }
+      }
+      console.log()
+      output.dim(`${recipes.length} recipes`)
     })
 
   recipe
@@ -162,6 +168,7 @@ export function registerRecipeCommand(program: Command): void {
           version: parsed.version,
           description: parsed.description,
           updatedAt: detail.updatedAt,
+          estimatedTokens: parsed.estimatedTokens ?? null,
           params: parsed.params ?? {},
           stepCount: parsed.steps.length,
           steps,
@@ -176,6 +183,9 @@ export function registerRecipeCommand(program: Command): void {
       output.keyValue('Description', parsed.description, 20)
       output.keyValue('Updated', detail.updatedAt, 20)
       output.keyValue('Steps', String(parsed.steps.length), 20)
+      if (parsed.estimatedTokens) {
+        output.keyValue('Est. tokens', `~${Math.round(parsed.estimatedTokens / 1000)}k`, 20)
+      }
 
       if (parsed.params && Object.keys(parsed.params).length > 0) {
         console.log()

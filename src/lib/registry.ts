@@ -6,6 +6,7 @@ export interface RecipeSummary {
   version: string
   description: string
   paramCount: number
+  estimatedTokens?: number | null
 }
 
 export interface RecipeDetail {

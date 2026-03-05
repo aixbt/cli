@@ -509,6 +509,14 @@ async function executeStep(
   }
 }
 
+/**
+ * Estimate token count from a data payload.
+ * Uses byte-length heuristic (~4 chars per token for JSON/English).
+ */
+function estimateTokenCount(data: unknown): number {
+  return Math.ceil(JSON.stringify(data).length / 4)
+}
+
 function buildAwaitingAgentOutput(
   ctx: ExecutionContext,
   agentStep: AgentStep,
@@ -550,6 +558,7 @@ function buildAwaitingAgentOutput(
     description: agentStep.description,
     returns: agentStep.returns,
     data,
+    tokenCount: estimateTokenCount(data),
     resumeCommand,
   }
 }
@@ -590,6 +599,7 @@ function buildCompleteOutput(
     version: ctx.recipe.version,
     timestamp: new Date().toISOString(),
     data,
+    tokenCount: estimateTokenCount(data),
     output: ctx.recipe.output,
     analysis: ctx.recipe.analysis,
   }

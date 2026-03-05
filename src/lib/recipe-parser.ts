@@ -279,6 +279,18 @@ export function parseRecipe(yamlString: string): Recipe {
     }
   }
 
+  // Validate estimatedTokens
+  let estimatedTokens: number | null | undefined
+  if (doc.estimatedTokens !== undefined) {
+    if (doc.estimatedTokens === null) {
+      estimatedTokens = null
+    } else if (typeof doc.estimatedTokens === 'number' && Number.isFinite(doc.estimatedTokens)) {
+      estimatedTokens = doc.estimatedTokens
+    } else {
+      issues.push({ path: 'estimatedTokens', message: 'estimatedTokens must be a number or null' })
+    }
+  }
+
   // Validate steps
   if (!Array.isArray(doc.steps) || doc.steps.length === 0) {
     issues.push({ path: 'steps', message: 'steps is required and must be a non-empty array' })
@@ -317,6 +329,7 @@ export function parseRecipe(yamlString: string): Recipe {
     version,
     description,
     tier,
+    ...(estimatedTokens !== undefined ? { estimatedTokens } : {}),
     params,
     steps,
     output,
