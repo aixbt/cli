@@ -20,7 +20,7 @@ export function createProgram(): Command {
 
   program
     .name('aixbt')
-    .description('AIXBT intelligence CLI')
+    .description('')
     .version(pkg.version, '-v, --version')
     .addHelpText('before', output.banner(pkg.version))
     .option('--json', 'Output as JSON (machine-readable)')

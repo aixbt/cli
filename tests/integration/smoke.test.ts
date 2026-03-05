@@ -138,7 +138,7 @@ describe('E2E smoke tests', () => {
         const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
 
         expect(stripped).toContain('aixbt')
-        expect(stripped).toContain('AIXBT intelligence CLI')
+        expect(stripped).toContain('Crypto intelligence API')
         expect(stripped).toContain('login')
         expect(stripped).toContain('projects')
         expect(stripped).toContain('signals')

@@ -4,23 +4,22 @@ import type { Ora } from 'ora'
 
 // -- Brand --
 
-const BRAND_HEX = '#00D4AA'  // AIXBT brand color (teal/green)
+const BRAND_HEX = '#b07de3'  // AIXBT brand purple
 const brandColor = chalk.hex(BRAND_HEX)
 const brandBold = brandColor.bold
 
 // -- Banner --
 
 export function banner(version: string): string {
-  const logo = [
+  const d = chalk.dim
+  return [
     '',
-    `    ${brandBold('▄▀█ ▀█▀ ▀▄▀ █▄▄ ▀█▀')}`,
-    `    ${brandBold('█▀█ ░█░ █░█ █▄█ ░█░')}`,
+    `  ${brandBold('aixbt')} ${d(`v${version}`)}`,
     '',
-    `    ${chalk.dim('crypto intelligence from the terminal')}`,
-    `    ${chalk.dim(`v${version}`)}`,
+    `  ${d('Crypto intelligence API & YAML pipeline recipes.')}`,
+    `  ${d('https://docs.aixbt.tech/cli')}`,
     '',
-  ]
-  return logo.join('\n')
+  ].join('\n')
 }
 
 // -- String formatters (return strings, do not log) --
