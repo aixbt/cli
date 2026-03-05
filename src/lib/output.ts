@@ -17,7 +17,7 @@ export function banner(version: string): string {
     `  ${brandBold('aixbt')} ${d(`v${version}`)}`,
     '',
     `  ${d('Crypto intelligence API & YAML pipeline recipes.')}`,
-    `  ${d('https://docs.aixbt.tech/cli')}`,
+    `  ${d('https://docs.aixbt.tech/builders/cli')}`,
     '',
   ].join('\n')
 }
