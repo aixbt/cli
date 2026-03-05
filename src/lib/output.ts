@@ -14,7 +14,7 @@ export function banner(version: string): string {
   const d = chalk.dim
   return [
     '',
-    `  ${brandBold('aixbt')} ${d(`v${version}`)}`,
+    `  ${chalk.bold.white('aixbt')} ${d(`v${version}`)}`,
     '',
     `  ${d('Crypto intelligence API & YAML pipeline recipes.')}`,
     `  ${d('https://docs.aixbt.tech/builders/cli')}`,
@@ -66,7 +66,7 @@ export function dim(msg: string): void {
 }
 
 export function label(key: string, value: string): void {
-  console.log(`${brandBold(key + ':')}  ${value}`)
+  console.log(`${chalk.bold.white(key + ':')}  ${value}`)
 }
 
 export function keyValue(key: string, value: string, pad = 18): void {
@@ -178,8 +178,8 @@ export function colorizeHelp(text: string): string {
   return text
     .split('\n')
     .map(line => {
-      if (line.startsWith('Usage:')) return brandBold(line)
-      if (/^(Options|Commands):/.test(line)) return brandBold(line)
+      if (line.startsWith('Usage:')) return chalk.bold.white(line)
+      if (/^(Options|Commands):/.test(line)) return chalk.bold.white(line)
       if (/^\s{2,}\S/.test(line)) {
         const match = line.match(/^(\s+)([\w<>[\].\-,/ |]+?)(\s{2,}.+)$/)
         if (match) {
