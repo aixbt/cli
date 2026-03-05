@@ -79,7 +79,7 @@ export function clearConfig(): void {
 
 // -- Resolution (3-layer: flag > env > config) --
 
-export const DEFAULT_API_URL = 'https://api.aixbt.tech'
+export const DEFAULT_API_URL = 'https://core-api.aixbt.tech'
 
 export interface ResolvedConfig {
   apiKey: string | undefined

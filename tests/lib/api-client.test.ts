@@ -513,7 +513,7 @@ describe('api-client', () => {
       await get('/v1/projects')
 
       const callUrl = mockFetch.mock.calls[0][0] as string
-      expect(callUrl).toMatch(/^https:\/\/api\.aixbt\.tech\/v1\/projects/)
+      expect(callUrl).toMatch(/^https:\/\/core-api\.aixbt\.tech\/v1\/projects/)
     })
 
     it('should use custom apiUrl when provided', async () => {
