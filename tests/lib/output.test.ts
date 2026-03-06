@@ -383,8 +383,10 @@ describe('outputResult', () => {
 
     expect(mockLog).toHaveBeenCalledOnce()
     const output = mockLog.mock.calls[0][0] as string
-    expect(typeof output).toBe('string')
-    expect(output).not.toBe(JSON.stringify(data, null, 2))
+    expect(output).toContain('test')
+    expect(output).toContain('name')
+    // TOON uses columnar format for arrays, not JSON object syntax
+    expect(output).not.toContain('"name"')
   })
 
   it('should output "No results." table for empty data in table format', () => {
@@ -416,23 +418,28 @@ describe('toon', () => {
     vi.restoreAllMocks()
   })
 
-  it('should call encode and write to stdout', () => {
+  it('should encode object with key-value pairs', () => {
     const data = { name: 'test', count: 42 }
     toon(data)
 
     expect(mockLog).toHaveBeenCalledOnce()
     const output = mockLog.mock.calls[0][0] as string
-    expect(typeof output).toBe('string')
-    expect(output).not.toBe(JSON.stringify(data, null, 2))
+    expect(output).toContain('name: test')
+    expect(output).toContain('count: 42')
+    expect(output).not.toContain('{')
   })
 
-  it('should handle arrays', () => {
+  it('should encode arrays in columnar format', () => {
     const data = [{ name: 'a' }, { name: 'b' }]
     toon(data)
 
     expect(mockLog).toHaveBeenCalledOnce()
     const output = mockLog.mock.calls[0][0] as string
-    expect(typeof output).toBe('string')
+    expect(output).toContain('a')
+    expect(output).toContain('b')
+    expect(output).toContain('name')
+    // TOON does not use JSON's quoted key syntax
+    expect(output).not.toContain('"name"')
   })
 })
 
