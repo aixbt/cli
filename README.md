@@ -12,7 +12,7 @@
 - **Direct commands** that mirror API endpoints for projects, signals, and clusters
 - **A recipe engine** that executes declarative YAML workflows combining multiple API calls
 - **Agent integration** via a yield/resume pattern -- agents bring their own LLM, the CLI provides data and analytical framing
-- **Dual output modes**: human-readable tables for terminal use, and `--json` for machine consumption
+- **Three output formats**: human-readable tables (default), JSON (`-f json`), and TOON (`-f toon`) for token-efficient LLM consumption
 
 ## Installation
 
@@ -120,7 +120,7 @@ aixbt projects chains
 aixbt projects --chain solana --sort-by momentumScore
 
 # Project details with JSON output
-aixbt --json projects 507f1f77bcf86cd799439011
+aixbt -f json projects 507f1f77bcf86cd799439011
 
 # Momentum history for last 7 days
 aixbt projects momentum 507f1f77bcf86cd799439011 --start 2025-01-01T00:00:00Z
@@ -146,7 +146,7 @@ aixbt signals [--page <n>] [--limit <n>] [--project-ids <ids>] [--names <names>]
 aixbt signals --names "Bitcoin"
 
 # Signals in a specific category, as JSON
-aixbt --json signals --categories "DeFi" --limit 50
+aixbt -f json signals --categories "DeFi" --limit 50
 
 # Signals detected in the last 24 hours
 aixbt signals --detected-after 2025-01-15T00:00:00Z
@@ -164,7 +164,7 @@ aixbt clusters
 
 ```bash
 # List all clusters as JSON
-aixbt --json clusters
+aixbt -f json clusters
 ```
 
 Note: Pay-per-use is not available for the clusters endpoint. Use an API key or `--delayed`.
@@ -187,7 +187,7 @@ aixbt recipe clone <name> [--out <path>]
 aixbt recipe validate <file>
 
 # Run a recipe
-aixbt recipe run <source> [--format raw|prompt] [--resume-from step:<id>]
+aixbt recipe run <source> [--resume-from step:<id>]
                           [--input <json>] [--output-dir <path>] [--stdin]
                           [--<param> <value> ...]
 ```
@@ -209,9 +209,6 @@ aixbt recipe run ./custom-analysis.yaml --chain ethereum --limit 10
 
 # Run from stdin
 cat recipe.yaml | aixbt recipe run --stdin --chain solana
-
-# Run with raw output (no analysis framing)
-aixbt recipe run market-scanner --chain solana --format raw
 
 # Write large results to files instead of stdout
 aixbt recipe run market-scanner --chain solana --output-dir ./results/
@@ -258,7 +255,7 @@ These options apply to all commands:
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Output as JSON (machine-readable, all data to stdout) |
+| `-f, --format <mode>` | Output format: `table` (default), `json`, or `toon` |
 | `--delayed` | Use free tier with delayed data (no auth required) |
 | `--pay-per-use` | Pay per API call via x402 |
 | `--payment-signature <base64>` | Payment proof for x402 |
@@ -356,7 +353,7 @@ The CLI is designed to be used by AI agents as a data and analysis tool. Agents 
 
 ```bash
 # Step 1: Run a recipe in JSON mode
-aixbt --json recipe run market-scanner --chain solana
+aixbt -f json recipe run market-scanner --chain solana
 ```
 
 If the recipe completes without agent steps, you get a `status: "complete"` response with all data.
@@ -390,14 +387,14 @@ The agent reads the `data`, `task`, and `description` fields, processes them wit
 ### Step 3: Resume the Recipe
 
 ```bash
-aixbt --json recipe run market-scanner --chain solana \
+aixbt -f json recipe run market-scanner --chain solana \
   --resume-from step:analyze \
   --input '{"summary": "Strong momentum in DeFi tokens...", "insights": [{"project": "...", "score": 95}]}'
 ```
 
 ### Key Points for Agents
 
-- Always use `--json` mode -- all output is machine-parseable JSON
+- Always use `-f json` or `-f toon` mode -- all output is machine-parseable
 - Error responses include structured error codes and actionable suggestions
 - The `resumeCommand` in `awaiting_agent` output provides the exact command template
 - The `returns` field specifies the expected schema for `--input`
@@ -437,7 +434,7 @@ aixbt --pay-per-use projects list --chain solana
 aixbt projects list --chain solana --payment-signature <BASE64_PAYMENT_PROOF>
 ```
 
-In `--json` mode, payment details are returned as structured JSON with a `status: "payment_required"` field, including the amount, network, pay-to address, and a retry command template.
+With `-f json` or `-f toon`, payment details are returned as structured output with a `status: "payment_required"` field, including the amount, network, pay-to address, and a retry command template.
 
 ## Configuration
 
