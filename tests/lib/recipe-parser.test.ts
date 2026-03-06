@@ -167,10 +167,10 @@ steps:
       summary: string
       score: number
 output:
-  merge:
+  combine:
     - fetch-projects
     - fetch-details
-  join_on: "id"
+  key: "id"
   include:
     - name
     - score
@@ -192,8 +192,8 @@ analysis:
       expect(recipe.params!.limit.default).toBe(10)
       expect(recipe.steps).toHaveLength(3)
       expect(recipe.output).toBeDefined()
-      expect(recipe.output!.merge).toEqual(['fetch-projects', 'fetch-details'])
-      expect(recipe.output!.join_on).toBe('id')
+      expect(recipe.output!.combine).toEqual(['fetch-projects', 'fetch-details'])
+      expect(recipe.output!.key).toBe('id')
       expect(recipe.output!.include).toEqual(['name', 'score'])
       expect(recipe.analysis).toBeDefined()
       expect(recipe.analysis!.instructions).toBe('Summarize the data')
@@ -664,70 +664,70 @@ steps:
   // -- Output block validation --
 
   describe('output block validation', () => {
-    it('should parse valid output with merge, join_on, and include', () => {
+    it('should parse valid output with combine, key, and include', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
 output:
-  merge:
+  combine:
     - step1
-  join_on: "id"
+  key: "id"
   include:
     - name
     - score
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.output).toBeDefined()
-      expect(recipe.output!.merge).toEqual(['step1'])
-      expect(recipe.output!.join_on).toBe('id')
+      expect(recipe.output!.combine).toEqual(['step1'])
+      expect(recipe.output!.key).toBe('id')
       expect(recipe.output!.include).toEqual(['name', 'score'])
     })
 
-    it('should throw when merge is not an array', () => {
+    it('should throw when combine is not an array', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
 output:
-  merge: "step1"
+  combine: "step1"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('merge must be an array of strings'),
+        expect.stringContaining('combine must be an array of strings'),
       )
     })
 
-    it('should throw when merge contains non-strings', () => {
+    it('should throw when combine contains non-strings', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
 output:
-  merge:
+  combine:
     - 123
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('merge must be an array of strings'),
+        expect.stringContaining('combine must be an array of strings'),
       )
     })
 
-    it('should throw when join_on is not a string', () => {
+    it('should throw when key is not a string', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
 output:
-  join_on: 123
+  key: 123
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('join_on must be a string'),
+        expect.stringContaining('key must be a string'),
       )
     })
 

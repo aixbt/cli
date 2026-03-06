@@ -3,6 +3,7 @@ import { password } from '@inquirer/prompts'
 import { readConfig, writeConfig, resolveConfig } from '../lib/config.js'
 import { validateApiKey, formatExpiry, isExpiringSoon } from '../lib/auth.js'
 import * as output from '../lib/output.js'
+import type { OutputFormat } from '../lib/output.js'
 import { CliError } from '../lib/errors.js'
 import { handlePurchasePass } from '../lib/x402.js'
 
@@ -16,7 +17,7 @@ export function registerLoginCommand(program: Command): void {
     .option('--payment-signature <base64>', 'Payment signature for x402 pass purchase')
     .action(async (_opts, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const isJson = opts.json === true
+      const outputFormat = (opts.format as OutputFormat) ?? 'table'
 
       // Handle purchase-pass flow
       if (opts.purchasePass !== undefined) {
@@ -24,7 +25,7 @@ export function registerLoginCommand(program: Command): void {
         await handlePurchasePass(
           duration,
           opts.paymentSignature as string | undefined,
-          isJson,
+          outputFormat,
         )
         return
       }
@@ -49,7 +50,7 @@ export function registerLoginCommand(program: Command): void {
       // Validate key against API
       const keyInfo = await output.withSpinner(
         'Validating API key...',
-        isJson,
+        outputFormat,
         () => validateApiKey(apiKey, opts.apiUrl as string | undefined),
         'Validation failed',
       )
@@ -62,13 +63,13 @@ export function registerLoginCommand(program: Command): void {
       config.scopes = keyInfo.scopes
       writeConfig(config)
 
-      if (isJson) {
-        output.json({
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured({
           status: 'authenticated',
           keyType: keyInfo.type,
           scopes: keyInfo.scopes,
           expiresAt: keyInfo.expiresAt,
-        })
+        }, outputFormat)
       } else {
         output.success('Authenticated successfully')
         output.keyValue('Key type', keyInfo.type)
@@ -83,7 +84,7 @@ export function registerLoginCommand(program: Command): void {
     .description('Remove stored API credentials')
     .action((_opts, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const isJson = opts.json === true
+      const outputFormat = (opts.format as OutputFormat) ?? 'table'
 
       const config = readConfig()
       delete config.apiKey
@@ -92,8 +93,8 @@ export function registerLoginCommand(program: Command): void {
       delete config.scopes
       writeConfig(config)
 
-      if (isJson) {
-        output.json({ status: 'logged_out' })
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured({ status: 'logged_out' }, outputFormat)
       } else {
         output.success('Logged out. API key removed from config.')
       }
@@ -105,7 +106,7 @@ export function registerLoginCommand(program: Command): void {
     .description('Show current authentication status')
     .action(async (_opts, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const isJson = opts.json === true
+      const outputFormat = (opts.format as OutputFormat) ?? 'table'
 
       const resolved = resolveConfig({
         apiKey: opts.apiKey as string | undefined,
@@ -113,8 +114,8 @@ export function registerLoginCommand(program: Command): void {
       })
 
       if (!resolved.apiKey) {
-        if (isJson) {
-          output.json({ authenticated: false })
+        if (output.isStructuredFormat(outputFormat)) {
+          output.outputStructured({ authenticated: false }, outputFormat)
         } else {
           output.info('Not authenticated. Run: aixbt login')
         }
@@ -124,7 +125,7 @@ export function registerLoginCommand(program: Command): void {
       // Always validate against API
       const keyInfo = await output.withSpinner(
         'Checking authentication...',
-        isJson,
+        outputFormat,
         () => validateApiKey(resolved.apiKey!, resolved.apiUrl),
         'Authentication check failed',
       )
@@ -132,15 +133,15 @@ export function registerLoginCommand(program: Command): void {
       // Check expiry warning
       const expiryWarning = isExpiringSoon(keyInfo.expiresAt)
 
-      if (isJson) {
-        output.json({
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured({
           authenticated: true,
           key: output.maskApiKey(resolved.apiKey),
           keyType: keyInfo.type,
           scopes: keyInfo.scopes,
           expiresAt: keyInfo.expiresAt,
           expiringSoon: expiryWarning,
-        })
+        }, outputFormat)
       } else {
         output.keyValue('Key', output.maskApiKey(resolved.apiKey))
         output.keyValue('Key type', keyInfo.type)

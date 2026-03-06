@@ -117,7 +117,7 @@ describe('config commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'config', 'get', 'apiUrl'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'get', 'apiUrl'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"apiUrl"'))
       expect(jsonOutput).toBeDefined()
@@ -134,7 +134,7 @@ describe('config commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'config', 'get'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'get'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"apiKey"'))
       expect(jsonOutput).toBeDefined()
@@ -150,7 +150,7 @@ describe('config commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'config', 'get', 'apiKey'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'get', 'apiKey'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"apiKey"'))
       expect(jsonOutput).toBeDefined()
@@ -201,7 +201,7 @@ describe('config commands', () => {
     it('should output JSON confirmation with --json', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'config', 'set', 'apiUrl', 'https://new.api.com'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'set', 'apiUrl', 'https://new.api.com'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"key"'))
       expect(jsonOutput).toBeDefined()
@@ -213,7 +213,7 @@ describe('config commands', () => {
     it('should output JSON with array value for scopes with --json', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'config', 'set', 'scopes', 'read,write'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'set', 'scopes', 'read,write'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"key"'))
       expect(jsonOutput).toBeDefined()

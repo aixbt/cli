@@ -8,6 +8,7 @@ import { parseRecipe } from '../lib/recipe-parser.js'
 import { validateRecipeCollectIssues } from '../lib/recipe-validator.js'
 import { CliError, RecipeValidationError } from '../lib/errors.js'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../lib/registry.js'
+import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
 
 // -- Helpers --
@@ -15,17 +16,17 @@ import * as output from '../lib/output.js'
 function reportValidationResults(
   file: string,
   issues: Array<{ path: string; message: string }>,
-  isJson: boolean,
+  outputFormat: OutputFormat,
 ): void {
   if (issues.length === 0) return
 
-  if (isJson) {
-    output.json({
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured({
       status: 'invalid',
       file,
       issueCount: issues.length,
       issues,
-    })
+    }, outputFormat)
   } else {
     output.error(`${file} has ${issues.length} issue${issues.length !== 1 ? 's' : ''}:`)
     console.error()
@@ -58,15 +59,15 @@ function extractDynamicParams(cmd: Command): Record<string, string> {
   return params
 }
 
-function printValidRecipeSummary(file: string, recipe: Recipe, isJson: boolean): void {
-  if (isJson) {
-    output.json({
+function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: OutputFormat): void {
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured({
       status: 'valid',
       recipe: recipe.name,
       version: recipe.version,
       stepCount: recipe.steps.length,
       paramCount: recipe.params ? Object.keys(recipe.params).length : 0,
-    })
+    }, outputFormat)
     return
   }
 
@@ -102,17 +103,17 @@ export function registerRecipeCommand(program: Command): void {
     .description('List available recipes from the AIXBT registry')
     .action(async (_opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const isJson = globalOpts.json === true
+      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
 
       const recipes = await output.withSpinner(
         'Fetching recipes...',
-        isJson,
+        outputFormat,
         () => fetchRecipeList({ apiUrl: globalOpts.apiUrl as string | undefined }),
         'Failed to fetch recipes',
       )
 
-      if (isJson) {
-        output.json(recipes)
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured(recipes, outputFormat)
         return
       }
 
@@ -141,11 +142,11 @@ export function registerRecipeCommand(program: Command): void {
     .description('Show details of a recipe from the AIXBT registry')
     .action(async (name: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const isJson = globalOpts.json === true
+      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
 
       const detail = await output.withSpinner(
         'Fetching recipe...',
-        isJson,
+        outputFormat,
         () => fetchRecipeDetail(name, { apiUrl: globalOpts.apiUrl as string | undefined }),
         'Failed to fetch recipe',
       )
@@ -162,8 +163,8 @@ export function registerRecipeCommand(program: Command): void {
         return { id: step.id, type: 'api' as const, endpoint: step.endpoint }
       })
 
-      if (isJson) {
-        output.json({
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured({
           name: parsed.name,
           version: parsed.version,
           description: parsed.description,
@@ -174,7 +175,7 @@ export function registerRecipeCommand(program: Command): void {
           steps,
           hasAnalysis: !!parsed.analysis?.instructions,
           yaml: detail.yaml,
-        })
+        }, outputFormat)
         return
       }
 
@@ -223,12 +224,12 @@ export function registerRecipeCommand(program: Command): void {
     .option('--out <path>', 'Output file path (default: ./<name>.yaml)')
     .action(async (name: string, opts: Record<string, unknown>, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const isJson = globalOpts.json === true
+      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
       const outPath = (opts.out as string) ?? `./${name}.yaml`
 
       if (existsSync(outPath)) {
-        if (isJson) {
-          output.json({ error: 'FILE_EXISTS', message: `File already exists: ${outPath}`, path: outPath })
+        if (output.isStructuredFormat(outputFormat)) {
+          output.outputStructured({ error: 'FILE_EXISTS', message: `File already exists: ${outPath}`, path: outPath }, outputFormat)
         } else {
           output.error(`File already exists: ${outPath}`)
           output.dim('Use --out to specify a different path')
@@ -238,7 +239,7 @@ export function registerRecipeCommand(program: Command): void {
 
       const detail = await output.withSpinner(
         `Fetching recipe "${name}"...`,
-        isJson,
+        outputFormat,
         () => fetchRecipeDetail(name, { apiUrl: globalOpts.apiUrl as string | undefined }),
         `Failed to fetch recipe "${name}"`,
       )
@@ -250,8 +251,8 @@ export function registerRecipeCommand(program: Command): void {
         throw new CliError(`Failed to write ${outPath}: ${msg}`, 'WRITE_FAILED')
       }
 
-      if (isJson) {
-        output.json({ status: 'cloned', name, path: outPath })
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured({ status: 'cloned', name, path: outPath }, outputFormat)
       } else {
         output.success(`Recipe saved to ${outPath}`)
         output.dim(`Run with: aixbt recipe run ${outPath}`)
@@ -263,11 +264,11 @@ export function registerRecipeCommand(program: Command): void {
     .description('Validate a recipe YAML file without executing')
     .action(async (file: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const isJson = globalOpts.json === true
+      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
 
       if (!existsSync(file)) {
-        if (isJson) {
-          output.json({ status: 'invalid', file, issueCount: 1, issues: [{ path: '', message: `File not found: ${file}` }] })
+        if (output.isStructuredFormat(outputFormat)) {
+          output.outputStructured({ status: 'invalid', file, issueCount: 1, issues: [{ path: '', message: `File not found: ${file}` }] }, outputFormat)
         } else {
           output.error(`File not found: ${file}`)
         }
@@ -281,7 +282,7 @@ export function registerRecipeCommand(program: Command): void {
         recipe = parseRecipe(yamlString)
       } catch (err) {
         if (err instanceof RecipeValidationError) {
-          reportValidationResults(file, err.issues, isJson)
+          reportValidationResults(file, err.issues, outputFormat)
           process.exit(1)
         }
         throw err
@@ -289,24 +290,23 @@ export function registerRecipeCommand(program: Command): void {
 
       const issues = validateRecipeCollectIssues(recipe)
       if (issues.length > 0) {
-        reportValidationResults(file, issues, isJson)
+        reportValidationResults(file, issues, outputFormat)
         process.exit(1)
       }
 
-      printValidRecipeSummary(file, recipe, isJson)
+      printValidRecipeSummary(file, recipe, outputFormat)
     })
 
   recipe
     .command('run [source]')
     .description('Execute a recipe (file path, registry name, or --stdin)')
     .option('--stdin', 'Read recipe YAML from stdin')
-    .option('--format <mode>', 'Output format: prompt (default) or raw', 'prompt')
     .option('--resume-from <step>', 'Resume from an agent step (step:<id>)')
     .option('--input <json>', 'Agent step result JSON (used with --resume-from)')
     .option('--output-dir <path>', 'Write segment data to files instead of stdout')
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
-      const { clientOpts: clientOptions, isJson } = getClientOptions(cmd)
+      const { clientOpts: clientOptions, outputFormat } = getClientOptions(cmd)
 
       let yaml: string
       if (opts.stdin) {
@@ -314,8 +314,8 @@ export function registerRecipeCommand(program: Command): void {
       } else if (source && existsSync(source)) {
         yaml = readFileSync(source, 'utf-8')
       } else if (source && (source.includes('/') || source.endsWith('.yaml') || source.endsWith('.yml'))) {
-        if (isJson) {
-          output.json({ error: 'FILE_NOT_FOUND', message: `File not found: ${source}` })
+        if (output.isStructuredFormat(outputFormat)) {
+          output.outputStructured({ error: 'FILE_NOT_FOUND', message: `File not found: ${source}` }, outputFormat)
         } else {
           output.error(`File not found: ${source}`)
         }
@@ -323,8 +323,8 @@ export function registerRecipeCommand(program: Command): void {
       } else if (source) {
         yaml = await fetchRecipeFromRegistry(source, clientOptions)
       } else {
-        if (isJson) {
-          output.json({ error: 'NO_SOURCE', message: 'Provide a recipe file path, registry name, or --stdin' })
+        if (output.isStructuredFormat(outputFormat)) {
+          output.outputStructured({ error: 'NO_SOURCE', message: 'Provide a recipe file path, registry name, or --stdin' }, outputFormat)
         } else {
           output.error('Provide a recipe file path, registry name, or --stdin')
         }
@@ -339,8 +339,8 @@ export function registerRecipeCommand(program: Command): void {
           resumeInput = JSON.parse(opts.input as string) as Record<string, unknown>
         } catch (err) {
           const detail = err instanceof Error ? err.message : 'parse error'
-          if (isJson) {
-            output.json({ error: 'INVALID_INPUT', message: `Invalid JSON for --input: ${detail}` })
+          if (output.isStructuredFormat(outputFormat)) {
+            output.outputStructured({ error: 'INVALID_INPUT', message: `Invalid JSON for --input: ${detail}` }, outputFormat)
           } else {
             output.error(`Invalid JSON for --input: ${detail}`)
           }
@@ -350,7 +350,7 @@ export function registerRecipeCommand(program: Command): void {
 
       const result = await output.withSpinner(
         'Executing recipe...',
-        isJson,
+        outputFormat,
         () =>
           executeRecipe({
             yaml,
@@ -364,8 +364,8 @@ export function registerRecipeCommand(program: Command): void {
         'Recipe execution failed',
       )
 
-      if (opts.format === 'raw' && result.status === 'complete') {
-        output.json({ status: 'complete', data: result.data })
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured(result, outputFormat)
       } else {
         output.json(result)
       }

@@ -147,7 +147,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'projects'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects'], { from: 'node' })
 
       // Verify the correct API endpoint was called
       expect(mockFetch).toHaveBeenCalledTimes(1)
@@ -174,7 +174,7 @@ describe('projects commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'projects', '--chain', 'ethereum', '--min-momentum', '50', '--limit', '10'],
+        ['node', 'aixbt', '--format', 'json', 'projects', '--chain', 'ethereum', '--min-momentum', '50', '--limit', '10'],
         { from: 'node' },
       )
 
@@ -249,7 +249,7 @@ describe('projects commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'projects', '--has-token', 'true', '--exclude-stables'],
+        ['node', 'aixbt', '--format', 'json', 'projects', '--has-token', 'true', '--exclude-stables'],
         { from: 'node' },
       )
 
@@ -269,7 +269,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'projects', 'proj-1'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects', 'proj-1'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -312,7 +312,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'projects', 'proj/special'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects', 'proj/special'], { from: 'node' })
 
       const callUrl = mockFetch.mock.calls[0][0] as string
       expect(callUrl).toContain('/v2/projects/proj%2Fspecial')
@@ -329,7 +329,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'projects', 'momentum', 'proj-1'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects', 'momentum', 'proj-1'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -350,7 +350,7 @@ describe('projects commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'projects', 'momentum', 'proj-1', '--start', '2026-01-01', '--end', '2026-02-01'],
+        ['node', 'aixbt', '--format', 'json', 'projects', 'momentum', 'proj-1', '--start', '2026-01-01', '--end', '2026-02-01'],
         { from: 'node' },
       )
 
@@ -400,7 +400,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'projects', 'chains'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects', 'chains'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -454,7 +454,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', '--delayed', 'projects'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', '--delayed', 'projects'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
@@ -469,7 +469,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'projects'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects'], { from: 'node' })
 
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
       expect(headers['X-API-Key']).toBe('test-key-123')

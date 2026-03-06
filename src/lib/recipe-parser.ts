@@ -162,19 +162,19 @@ function validateOutputBlock(
   const output = raw as Record<string, unknown>
   const result: Recipe['output'] = {}
 
-  if ('merge' in output) {
-    if (!Array.isArray(output.merge) || !output.merge.every((v) => typeof v === 'string')) {
-      issues.push({ path: 'output.merge', message: 'merge must be an array of strings' })
+  if ('combine' in output) {
+    if (!Array.isArray(output.combine) || !output.combine.every((v) => typeof v === 'string')) {
+      issues.push({ path: 'output.combine', message: 'combine must be an array of strings' })
     } else {
-      result.merge = output.merge as string[]
+      result.combine = output.combine as string[]
     }
   }
 
-  if ('join_on' in output) {
-    if (typeof output.join_on !== 'string') {
-      issues.push({ path: 'output.join_on', message: 'join_on must be a string' })
+  if ('key' in output) {
+    if (typeof output.key !== 'string') {
+      issues.push({ path: 'output.key', message: 'key must be a string' })
     } else {
-      result.join_on = output.join_on
+      result.key = output.key
     }
   }
 

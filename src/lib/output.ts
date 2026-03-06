@@ -1,6 +1,15 @@
 import chalk from 'chalk'
 import ora from 'ora'
 import type { Ora } from 'ora'
+import { encode } from '@toon-format/toon'
+
+export type OutputFormat = 'table' | 'json' | 'toon'
+export type StructuredFormat = 'json' | 'toon'
+
+/** Returns true for formats that produce structured (machine-readable) output. */
+export function isStructuredFormat(format: OutputFormat): format is StructuredFormat {
+  return format !== 'table'
+}
 
 // -- Brand --
 
@@ -95,11 +104,11 @@ export function spinner(text: string): Ora {
 
 export async function withSpinner<T>(
   text: string,
-  isJson: boolean,
+  outputFormat: OutputFormat,
   fn: () => Promise<T>,
   failText?: string,
 ): Promise<T> {
-  const spin = isJson ? null : spinner(text)
+  const spin = isStructuredFormat(outputFormat) ? null : spinner(text)
   try {
     const result = await fn()
     spin?.succeed()
@@ -187,6 +196,26 @@ export function json(data: unknown): void {
   console.log(JSON.stringify(data, null, 2))
 }
 
+export function toon(data: unknown): void {
+  try {
+    console.log(encode(data))
+  } catch {
+    json(data)
+  }
+}
+
+/** Output data in the specified structured format (json or toon). */
+export function outputStructured(data: unknown, outputFormat: StructuredFormat): void {
+  switch (outputFormat) {
+    case 'json':
+      json(data)
+      break
+    case 'toon':
+      toon(data)
+      break
+  }
+}
+
 // -- Help colorizer --
 
 export function colorizeHelp(text: string): string {
@@ -212,11 +241,17 @@ export function colorizeHelp(text: string): string {
 export function outputResult<T extends Record<string, unknown>>(
   data: T[],
   columns: TableColumn[],
-  isJson: boolean,
+  outputFormat: OutputFormat,
 ): void {
-  if (isJson) {
-    json(data)
-  } else {
-    table(data, columns)
+  switch (outputFormat) {
+    case 'json':
+      json(data)
+      break
+    case 'toon':
+      toon(data)
+      break
+    case 'table':
+      table(data, columns)
+      break
   }
 }

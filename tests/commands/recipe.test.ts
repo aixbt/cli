@@ -138,7 +138,7 @@ describe('recipe commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'list'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'list'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
 
@@ -172,7 +172,7 @@ describe('recipe commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'list'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'list'], { from: 'node' })
 
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
       expect(headers['X-API-Key']).toBeUndefined()
@@ -238,13 +238,13 @@ describe('recipe commands', () => {
       expect(allErrors).toContain('File not found')
     })
 
-    it('should output JSON with status valid for a valid recipe when --json is used', async () => {
+    it('should output JSON with status valid for a valid recipe when --format json is used', async () => {
       const recipeFile = join(tempDir, 'valid.yaml')
       writeFileSync(recipeFile, VALID_RECIPE_YAML)
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'validate', recipeFile], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'validate', recipeFile], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
@@ -255,7 +255,7 @@ describe('recipe commands', () => {
       expect(parsed.stepCount).toBe(1)
     })
 
-    it('should output JSON with status invalid for an invalid recipe when --json is used', async () => {
+    it('should output JSON with status invalid for an invalid recipe when --format json is used', async () => {
       const recipeFile = join(tempDir, 'invalid.yaml')
       writeFileSync(recipeFile, INVALID_RECIPE_YAML_NO_NAME)
 
@@ -263,7 +263,7 @@ describe('recipe commands', () => {
       program.exitOverride()
 
       await expect(
-        program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'validate', recipeFile], { from: 'node' }),
+        program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'validate', recipeFile], { from: 'node' }),
       ).rejects.toThrow()
 
       expect(mockExit).toHaveBeenCalledWith(1)
@@ -275,14 +275,14 @@ describe('recipe commands', () => {
       expect(parsed.issues).toBeInstanceOf(Array)
     })
 
-    it('should output JSON with file-not-found error when --json is used and file is missing', async () => {
+    it('should output JSON with file-not-found error when --format json is used and file is missing', async () => {
       const missingFile = join(tempDir, 'nonexistent.yaml')
 
       const program = createProgram()
       program.exitOverride()
 
       await expect(
-        program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'validate', missingFile], { from: 'node' }),
+        program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'validate', missingFile], { from: 'node' }),
       ).rejects.toThrow()
 
       expect(mockExit).toHaveBeenCalledWith(1)
@@ -299,7 +299,7 @@ describe('recipe commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'validate', recipeFile], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'validate', recipeFile], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
@@ -328,7 +328,7 @@ describe('recipe commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'recipe', 'run', recipeFile],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'run', recipeFile],
         { from: 'node' },
       )
 
@@ -350,7 +350,7 @@ describe('recipe commands', () => {
       program.exitOverride()
 
       await expect(
-        program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'run'], { from: 'node' }),
+        program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'run'], { from: 'node' }),
       ).rejects.toThrow()
 
       expect(mockExit).toHaveBeenCalledWith(1)
@@ -365,7 +365,7 @@ describe('recipe commands', () => {
       program.exitOverride()
 
       await expect(
-        program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'run', './nonexistent.yaml'], { from: 'node' }),
+        program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'run', './nonexistent.yaml'], { from: 'node' }),
       ).rejects.toThrow()
 
       expect(mockExit).toHaveBeenCalledWith(1)
@@ -375,7 +375,7 @@ describe('recipe commands', () => {
       expect(parsed.error).toBe('FILE_NOT_FOUND')
     })
 
-    it('should output only data when --format raw is used', async () => {
+    it('should output recipe result as JSON when --format json is used', async () => {
       const recipeFile = join(tempDir, 'raw.yaml')
       writeFileSync(recipeFile, VALID_RECIPE_YAML)
 
@@ -387,19 +387,15 @@ describe('recipe commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'recipe', 'run', '--format', 'raw', recipeFile],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'run', recipeFile],
         { from: 'node' },
       )
 
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      // With --format raw, should have status and data but NOT analysis/output
       expect(parsed.status).toBe('complete')
       expect(parsed.data).toBeDefined()
-      // Should not include output or analysis keys when format is raw
-      expect(parsed.output).toBeUndefined()
-      expect(parsed.analysis).toBeUndefined()
     })
 
     it('should include output and analysis blocks when --format is prompt (default)', async () => {
@@ -424,7 +420,7 @@ analysis:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'recipe', 'run', recipeFile],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'run', recipeFile],
         { from: 'node' },
       )
 
@@ -459,7 +455,7 @@ analysis:
 
       await expect(
         program.parseAsync(
-          ['node', 'aixbt', '--json', 'recipe', 'run', '--resume-from', 'step:agent1', '--input', 'not-json', recipeFile],
+          ['node', 'aixbt', '--format', 'json', 'recipe', 'run', '--resume-from', 'step:agent1', '--input', 'not-json', recipeFile],
           { from: 'node' },
         ),
       ).rejects.toThrow()
@@ -484,7 +480,7 @@ analysis:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', '--delayed', 'recipe', 'run', recipeFile],
+        ['node', 'aixbt', '--format', 'json', '--delayed', 'recipe', 'run', recipeFile],
         { from: 'node' },
       )
 
@@ -521,7 +517,7 @@ steps:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'recipe', 'run', 'my-recipe'],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'run', 'my-recipe'],
         { from: 'node' },
       )
 
@@ -548,7 +544,7 @@ steps:
 
       await expect(
         program.parseAsync(
-          ['node', 'aixbt', '--json', 'recipe', 'run', './nonexistent/recipe.yaml'],
+          ['node', 'aixbt', '--format', 'json', 'recipe', 'run', './nonexistent/recipe.yaml'],
           { from: 'node' },
         ),
       ).rejects.toThrow()
@@ -566,7 +562,7 @@ steps:
 
       await expect(
         program.parseAsync(
-          ['node', 'aixbt', '--json', 'recipe', 'run', 'missing.yml'],
+          ['node', 'aixbt', '--format', 'json', 'recipe', 'run', 'missing.yml'],
           { from: 'node' },
         ),
       ).rejects.toThrow()
@@ -584,7 +580,7 @@ steps:
 
       await expect(
         program.parseAsync(
-          ['node', 'aixbt', '--json', 'recipe', 'run', 'recipes/my-recipe'],
+          ['node', 'aixbt', '--format', 'json', 'recipe', 'run', 'recipes/my-recipe'],
           { from: 'node' },
         ),
       ).rejects.toThrow()
@@ -654,7 +650,7 @@ analysis:
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'info', 'test_recipe'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'info', 'test_recipe'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -716,7 +712,7 @@ analysis:
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'info', 'mixed_recipe'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'info', 'mixed_recipe'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"name"'))
       expect(jsonOutput).toBeDefined()
@@ -761,7 +757,7 @@ analysis:
       program.exitOverride()
 
       await expect(
-        program.parseAsync(['node', 'aixbt', '--json', 'recipe', 'info', 'nonexistent'], { from: 'node' }),
+        program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'info', 'nonexistent'], { from: 'node' }),
       ).rejects.toThrow()
 
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -797,7 +793,7 @@ steps:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'recipe', 'clone', 'my-recipe', '--out', outPath],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', outPath],
         { from: 'node' },
       )
 
@@ -867,7 +863,7 @@ steps:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'recipe', 'clone', 'my-recipe', '--out', customPath],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', customPath],
         { from: 'node' },
       )
 
@@ -891,7 +887,7 @@ steps:
 
       await expect(
         program.parseAsync(
-          ['node', 'aixbt', '--json', 'recipe', 'clone', 'my-recipe', '--out', outPath],
+          ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', outPath],
           { from: 'node' },
         ),
       ).rejects.toThrow()
@@ -931,7 +927,7 @@ steps:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--json', 'recipe', 'clone', recipeName],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', recipeName],
         { from: 'node' },
       )
 

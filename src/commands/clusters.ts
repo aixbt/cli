@@ -27,7 +27,7 @@ export function registerClustersCommand(program: Command): void {
     .command('clusters')
     .description('Browse and inspect signal clusters')
     .action(async (_opts: unknown, cmd: Command) => {
-      const { clientOpts, authMode, isJson } = getClientOptions(cmd)
+      const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
 
       if (authMode.mode === 'pay-per-use') {
         throw new CliError(
@@ -38,13 +38,13 @@ export function registerClustersCommand(program: Command): void {
 
       const result = await output.withSpinner(
         'Fetching clusters...',
-        isJson,
+        outputFormat,
         () => get<ClusterData[]>('/v2/clusters', undefined, clientOpts),
         'Failed to fetch clusters',
       )
 
-      if (isJson) {
-        output.json(result.data)
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured(result.data, outputFormat)
         return
       }
 

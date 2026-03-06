@@ -106,7 +106,7 @@ describe('signals commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -133,7 +133,7 @@ describe('signals commands', () => {
       program.exitOverride()
       await program.parseAsync(
         [
-          'node', 'aixbt', '--json', 'signals',
+          'node', 'aixbt', '--format', 'json', 'signals',
           '--cluster-ids', 'c1,c2',
           '--categories', 'DeFi',
           '--detected-after', '2026-01-01',
@@ -156,7 +156,7 @@ describe('signals commands', () => {
       program.exitOverride()
       await program.parseAsync(
         [
-          'node', 'aixbt', '--json', 'signals',
+          'node', 'aixbt', '--format', 'json', 'signals',
           '--detected-after', '2026-01-01',
           '--detected-before', '2026-02-01',
           '--reinforced-after', '2026-01-15',
@@ -181,7 +181,7 @@ describe('signals commands', () => {
       program.exitOverride()
       await program.parseAsync(
         [
-          'node', 'aixbt', '--json', 'signals',
+          'node', 'aixbt', '--format', 'json', 'signals',
           '--project-ids', 'proj-1,proj-2',
           '--names', 'Bitcoin,Ethereum',
           '--x-handles', 'bitcoin,ethereum',
@@ -286,7 +286,7 @@ describe('signals commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', '--delayed', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', '--delayed', 'signals'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
@@ -300,7 +300,7 @@ describe('signals commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals'], { from: 'node' })
 
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
       expect(headers['X-API-Key']).toBe('test-key-123')

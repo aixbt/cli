@@ -18,6 +18,7 @@ describe('CLI', () => {
     expect(commandNames).toContain('signals')
     expect(commandNames).toContain('clusters')
     expect(commandNames).toContain('recipe')
+    expect(commandNames).toContain('completion')
   })
 
   describe('banner', () => {
@@ -32,16 +33,16 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = output.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('aixbt')
-      expect(stripped).toContain('Crypto intelligence API')
+      expect(stripped).toContain('Guide:')
     })
   })
 
   describe('global options', () => {
-    it('should have --json option registered', () => {
+    it('should have --format option registered', () => {
       const program = createProgram()
-      const jsonOpt = program.options.find((o) => o.long === '--json')
-      expect(jsonOpt).toBeDefined()
-      expect(jsonOpt!.description).toBe('Output as JSON (machine-readable)')
+      const formatOpt = program.options.find((o) => o.long === '--format')
+      expect(formatOpt).toBeDefined()
+      expect(formatOpt!.description).toBe('Output format: table, json, toon')
     })
 
     it('should have --delayed option registered', () => {
@@ -91,12 +92,25 @@ describe('CLI', () => {
       expect(apiKeyOpt!.required).toBe(true)
     })
 
-    it('should parse --json flag correctly', () => {
+    it('should parse --format json correctly', () => {
       const program = createProgram()
       program.exitOverride()
-      // Use 'login' subcommand to avoid Commander displaying help for no-action root
-      program.parse(['node', 'test', '--json', 'login'], { from: 'node' })
-      expect(program.opts().json).toBe(true)
+      program.parse(['node', 'test', '--format', 'json', 'login'], { from: 'node' })
+      expect(program.opts().format).toBe('json')
+    })
+
+    it('should parse --format toon correctly', () => {
+      const program = createProgram()
+      program.exitOverride()
+      program.parse(['node', 'test', '--format', 'toon', 'login'], { from: 'node' })
+      expect(program.opts().format).toBe('toon')
+    })
+
+    it('should parse -f shorthand correctly', () => {
+      const program = createProgram()
+      program.exitOverride()
+      program.parse(['node', 'test', '-f', 'toon', 'login'], { from: 'node' })
+      expect(program.opts().format).toBe('toon')
     })
 
     it('should parse --delayed flag correctly', () => {
@@ -125,24 +139,22 @@ describe('CLI', () => {
       expect(program.opts().apiKey).toBe('my-secret-key')
     })
 
-    it('should default all global options to undefined when not passed', () => {
+    it('should default format to table and other global options to undefined when not passed', () => {
       const program = createProgram()
       program.exitOverride()
       program.parse(['node', 'test', 'login'], { from: 'node' })
       const opts = program.opts()
-      expect(opts.json).toBeUndefined()
+      expect(opts.format).toBe('table')
       expect(opts.delayed).toBeUndefined()
       expect(opts.payPerUse).toBeUndefined()
       expect(opts.apiKey).toBeUndefined()
     })
 
-    it('should have --json as a boolean flag (no argument)', () => {
+    it('should have --format with choices validation', () => {
       const program = createProgram()
-      const jsonOpt = program.options.find((o) => o.long === '--json')
-      expect(jsonOpt).toBeDefined()
-      // Boolean flags have no required or optional argument
-      expect(jsonOpt!.required).toBe(false)
-      expect(jsonOpt!.optional).toBe(false)
+      const formatOpt = program.options.find((o) => o.long === '--format')
+      expect(formatOpt).toBeDefined()
+      expect(formatOpt!.argChoices).toEqual(['table', 'json', 'toon'])
     })
 
     it('should have --delayed as a boolean flag (no argument)', () => {
@@ -223,7 +235,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('aixbt')
-      expect(stripped).toContain('Crypto intelligence API')
+      expect(stripped).toContain('Guide:')
     })
 
     it('should have writeOut configured to use process.stdout.write', () => {
@@ -288,7 +300,8 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
 
-      expect(stripped).toContain('--json')
+      expect(stripped).toContain('--format')
+      expect(stripped).toContain('-f')
       expect(stripped).toContain('--delayed')
       expect(stripped).toContain('--pay-per-use')
       expect(stripped).toContain('--api-key')
@@ -315,9 +328,9 @@ describe('CLI', () => {
   })
 
   describe('command count', () => {
-    it('should have exactly 8 registered commands', () => {
+    it('should have exactly 9 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(8)
+      expect(program.commands).toHaveLength(9)
     })
   })
 
@@ -348,11 +361,11 @@ describe('CLI', () => {
       const program2 = createProgram()
       program2.exitOverride()
 
-      program1.parse(['node', 'test', '--json', 'login'], { from: 'node' })
+      program1.parse(['node', 'test', '--format', 'json', 'login'], { from: 'node' })
 
       // program2 should not be affected by program1's parsing
       program2.parse(['node', 'test', 'login'], { from: 'node' })
-      expect(program2.opts().json).toBeUndefined()
+      expect(program2.opts().format).toBe('table')
     })
   })
 })

@@ -435,22 +435,22 @@ cat recipe.yaml | aixbt recipe run --stdin \
 
 ## Output Block
 
-The optional `output` block configures how step results are assembled in the final output. It is passed through verbatim in the `RecipeComplete` payload for the consuming agent to interpret.
+The optional `output` block describes how step results relate to each other. It is passed through verbatim in the `RecipeComplete` payload for consumers to interpret.
 
-| Field      | Type     | Description                                          |
-|------------|----------|------------------------------------------------------|
-| `merge`    | string[] | List of step IDs whose data to merge into one array  |
-| `join_on`  | string   | Field name to join merged data on                    |
-| `include`  | string[] | List of step IDs to include in the output            |
+| Field      | Type     | Description                                              |
+|------------|----------|----------------------------------------------------------|
+| `combine`  | string[] | Step IDs whose data represents the same entities         |
+| `key`      | string   | Shared field that relates the combined datasets           |
+| `include`  | string[] | Step IDs to include as reference data alongside combined  |
 
-The CLI does not perform the merge or join itself -- it passes these directives through so the consuming agent can assemble the data as instructed.
+The CLI does not combine or transform the data itself -- it passes these directives through so consumers can assemble the data as needed.
 
 ```yaml
 output:
-  merge:
+  combine:
     - projects
     - details
-  join_on: "id"
+  key: "id"
   include:
     - projects
     - details
@@ -500,8 +500,8 @@ When all steps finish (or all steps in the final segment after the last agent re
     "signals": [ ... ]
   },
   "output": {
-    "merge": ["projects", "details"],
-    "join_on": "id",
+    "combine": ["projects", "details"],
+    "key": "id",
     "include": ["projects", "details", "signals"]
   },
   "analysis": {

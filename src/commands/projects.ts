@@ -144,7 +144,7 @@ export function registerProjectsCommand(program: Command): void {
 // -- Handlers --
 
 async function handleProjectList(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, isJson } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
@@ -164,18 +164,18 @@ async function handleProjectList(cmd: Command): Promise<void> {
 
   const result = await output.withSpinner(
     'Fetching projects...',
-    isJson,
+    outputFormat,
     () => withPayPerUse(
       () => get<ProjectData[]>('/v2/projects', params, clientOpts),
       authMode,
       reconstructCommand('aixbt projects', opts),
-      isJson,
+      outputFormat,
     ),
     'Failed to fetch projects',
   )
 
-  if (isJson) {
-    output.json(result.data)
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured(result.data, outputFormat)
     return
   }
 
@@ -192,25 +192,25 @@ async function handleProjectList(cmd: Command): Promise<void> {
 }
 
 async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
-  const { clientOpts, authMode, isJson } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const result = await output.withSpinner(
     'Fetching project...',
-    isJson,
+    outputFormat,
     () => withPayPerUse(
       () => get<ProjectData>(`/v2/projects/${encodeURIComponent(id)}`, undefined, clientOpts),
       authMode,
       reconstructCommand(`aixbt projects ${id}`, opts),
-      isJson,
+      outputFormat,
     ),
     'Failed to fetch project',
   )
 
   const project = result.data
 
-  if (isJson) {
-    output.json(project)
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured(project, outputFormat)
     return
   }
 
@@ -276,7 +276,7 @@ async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
 }
 
 async function handleMomentum(id: string, cmd: Command): Promise<void> {
-  const { clientOpts, authMode, isJson } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
@@ -286,20 +286,20 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
 
   const result = await output.withSpinner(
     'Fetching momentum history...',
-    isJson,
+    outputFormat,
     () => withPayPerUse(
       () => get<MomentumData>(`/v2/projects/${encodeURIComponent(id)}/momentum`, params, clientOpts),
       authMode,
       reconstructCommand(`aixbt projects momentum ${id}`, opts),
-      isJson,
+      outputFormat,
     ),
     'Failed to fetch momentum',
   )
 
   const momentum = result.data
 
-  if (isJson) {
-    output.json(momentum)
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured(momentum, outputFormat)
     return
   }
 
@@ -330,25 +330,25 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
 }
 
 async function handleChains(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, isJson } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const result = await output.withSpinner(
     'Fetching chains...',
-    isJson,
+    outputFormat,
     () => withPayPerUse(
       () => get<string[]>('/v2/projects/chains', undefined, clientOpts),
       authMode,
       reconstructCommand('aixbt projects chains', opts),
-      isJson,
+      outputFormat,
     ),
     'Failed to fetch chains',
   )
 
   const chains = result.data
 
-  if (isJson) {
-    output.json(chains)
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured(chains, outputFormat)
     return
   }
 
