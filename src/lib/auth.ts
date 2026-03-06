@@ -2,6 +2,7 @@ import type { Command } from 'commander'
 import { resolveConfig, type ResolvedConfig } from './config.js'
 import { NoApiKeyError } from './errors.js'
 import { get, type ApiClientOptions } from './api-client.js'
+import type { OutputFormat } from './output.js'
 
 // Auth mode discriminated union
 export type AuthMode =
@@ -80,10 +81,10 @@ export function isExpiringSoon(expiresAt: string): boolean {
 export function getClientOptions(cmd: Command): {
   clientOpts: ApiClientOptions
   authMode: AuthMode
-  isJson: boolean
+  outputFormat: OutputFormat
 } {
   const opts = cmd.optsWithGlobals()
-  const isJson = opts.json === true
+  const outputFormat = (opts.format as OutputFormat) ?? 'table'
   const authMode = resolveAuthMode({
     delayed: opts.delayed as boolean | undefined,
     payPerUse: opts.payPerUse as boolean | undefined,
@@ -94,5 +95,5 @@ export function getClientOptions(cmd: Command): {
     apiUrl: opts.apiUrl as string | undefined,
     paymentSignature: opts.paymentSignature as string | undefined,
   })
-  return { clientOpts, authMode, isJson }
+  return { clientOpts, authMode, outputFormat }
 }
