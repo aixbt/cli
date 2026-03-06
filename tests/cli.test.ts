@@ -18,6 +18,7 @@ describe('CLI', () => {
     expect(commandNames).toContain('signals')
     expect(commandNames).toContain('clusters')
     expect(commandNames).toContain('recipe')
+    expect(commandNames).toContain('completion')
   })
 
   describe('banner', () => {
