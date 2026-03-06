@@ -364,6 +364,10 @@ export function registerRecipeCommand(program: Command): void {
         'Recipe execution failed',
       )
 
-      output.outputStructured(result, outputFormat)
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured(result, outputFormat)
+      } else {
+        output.json(result)
+      }
     })
 }

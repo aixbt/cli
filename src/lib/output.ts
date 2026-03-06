@@ -4,9 +4,10 @@ import type { Ora } from 'ora'
 import { encode } from '@toon-format/toon'
 
 export type OutputFormat = 'table' | 'json' | 'toon'
+export type StructuredFormat = 'json' | 'toon'
 
 /** Returns true for formats that produce structured (machine-readable) output. */
-export function isStructuredFormat(format: OutputFormat): boolean {
+export function isStructuredFormat(format: OutputFormat): format is StructuredFormat {
   return format !== 'table'
 }
 
@@ -204,16 +205,13 @@ export function toon(data: unknown): void {
 }
 
 /** Output data in the specified structured format (json or toon). */
-export function outputStructured(data: unknown, outputFormat: OutputFormat): void {
+export function outputStructured(data: unknown, outputFormat: StructuredFormat): void {
   switch (outputFormat) {
     case 'json':
       json(data)
       break
     case 'toon':
       toon(data)
-      break
-    case 'table':
-      json(data)
       break
   }
 }

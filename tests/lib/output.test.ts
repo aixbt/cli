@@ -483,13 +483,6 @@ describe('outputStructured', () => {
     expect(output).not.toBe(JSON.stringify(data, null, 2))
   })
 
-  it('should fall back to JSON for table format', () => {
-    const data = { key: 'value' }
-    outputStructured(data, 'table')
-
-    expect(mockLog).toHaveBeenCalledOnce()
-    expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2))
-  })
 })
 
 // -- colorizeHelp --
