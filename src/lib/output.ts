@@ -10,14 +10,29 @@ const brandBold = brandColor.bold
 
 // -- Banner --
 
+const GREETINGS = [
+  'Sidelined?',
+  'Trenches never sleep',
+  'Buy high sell higher',
+  'Believe in something',
+  'Still early',
+]
+
+const P = chalk.rgb(148, 104, 196) // purple-300
+const C = chalk.rgb(70, 173, 195)  // cyan-500
+const G = chalk.rgb(50, 50, 61)    // gray-400
+
 export function banner(version: string): string {
   const d = chalk.dim
+  const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
   return [
     '',
-    `  ${chalk.bold.white('aixbt')} ${d(`v${version}`)}`,
+    `    ${P('▄██▄██▄')}   ${chalk.bold.white('aixbt')}`,
+    `   ${P('██')}${chalk.black.bgRgb(148, 104, 196)('▀')}${chalk.white.bgRgb(148, 104, 196)('▀')}${chalk.black.bgRgb(148, 104, 196)('▀▀')}${chalk.white.bgRgb(148, 104, 196)('▀')}${P('▀')}`,
+    `  ${P('████')}${C.bgRgb(148, 104, 196)('▀▀▀')}${C('▀')}    ${chalk.cyan(greeting)}`,
+    `  ${G('▀▀▀▀▀▀▀')}`,
     '',
-    `  ${d('Crypto intelligence API & YAML pipeline recipes.')}`,
-    `  ${d('https://docs.aixbt.tech/builders/cli')}`,
+    `${chalk.bold.white('Guide:')} ${d('https://docs.aixbt.tech/builders/cli')}`,
     '',
   ].join('\n')
 }
@@ -178,6 +193,7 @@ export function colorizeHelp(text: string): string {
   return text
     .split('\n')
     .map(line => {
+      if (line.includes('\x1b[')) return line // already styled (e.g. banner)
       if (line.startsWith('Usage:')) return chalk.bold.white(line)
       if (/^(Options|Commands):/.test(line)) return chalk.bold.white(line)
       if (/^\s{2,}\S/.test(line)) {
