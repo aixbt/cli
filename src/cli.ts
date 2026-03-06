@@ -10,6 +10,7 @@ import { registerClustersCommand } from './commands/clusters.js'
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
 import { registerConfigCommand } from './commands/config.js'
+import { registerCompletionCommand } from './commands/completion.js'
 import * as output from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
 
@@ -53,6 +54,7 @@ export function createProgram(): Command {
   registerSignalsCommand(program)
   registerClustersCommand(program)
   registerRecipeCommand(program)
+  registerCompletionCommand(program)
 
   return program
 }
