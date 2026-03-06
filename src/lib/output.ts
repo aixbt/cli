@@ -196,7 +196,11 @@ export function json(data: unknown): void {
 }
 
 export function toon(data: unknown): void {
-  console.log(encode(data))
+  try {
+    console.log(encode(data))
+  } catch {
+    json(data)
+  }
 }
 
 /** Output data in the specified structured format (json or toon). */

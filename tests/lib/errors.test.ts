@@ -267,6 +267,21 @@ describe('handleTopLevelError', () => {
     })
   })
 
+  describe('CliError in TOON mode', () => {
+    it('should output structured TOON to stdout and exit with error exitCode', () => {
+      const err = new CliError('something failed', 'FAIL_CODE')
+
+      expect(() => handleTopLevelError(err, 'toon')).toThrow('process.exit called')
+
+      expect(mockLog).toHaveBeenCalledOnce()
+      const output = mockLog.mock.calls[0][0] as string
+      expect(typeof output).toBe('string')
+      // TOON output should not be JSON-formatted
+      expect(output).not.toBe(JSON.stringify(err.toJSON(), null, 2))
+      expect(mockExit).toHaveBeenCalledWith(1)
+    })
+  })
+
   describe('CliError in human mode', () => {
     it('should output to stderr and exit with error exitCode', () => {
       const err = new CliError('something failed', 'FAIL_CODE')

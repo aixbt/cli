@@ -98,6 +98,20 @@ describe('CLI', () => {
       expect(program.opts().format).toBe('json')
     })
 
+    it('should parse --format toon correctly', () => {
+      const program = createProgram()
+      program.exitOverride()
+      program.parse(['node', 'test', '--format', 'toon', 'login'], { from: 'node' })
+      expect(program.opts().format).toBe('toon')
+    })
+
+    it('should parse -f shorthand correctly', () => {
+      const program = createProgram()
+      program.exitOverride()
+      program.parse(['node', 'test', '-f', 'toon', 'login'], { from: 'node' })
+      expect(program.opts().format).toBe('toon')
+    })
+
     it('should parse --delayed flag correctly', () => {
       const program = createProgram()
       program.exitOverride()
