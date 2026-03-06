@@ -101,8 +101,8 @@ export interface AgentStep {
 }
 
 export interface RecipeOutput {
-  merge?: string[]
-  join_on?: string
+  combine?: string[]
+  key?: string
   include?: string[]
 }
 

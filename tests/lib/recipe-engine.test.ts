@@ -548,8 +548,8 @@ name: test-recipe
 version: "1.0"
 description: Recipe with output and analysis
 output:
-  merge: [projects, signals]
-  join_on: projectId
+  combine: [projects, signals]
+  key: projectId
 analysis:
   task: summarize
   instructions: "Summarize the data"
@@ -794,12 +794,12 @@ describe('executeRecipe', () => {
 
       expect(result.status).toBe('complete')
       const complete = result as {
-        output?: { merge?: string[]; join_on?: string }
+        output?: { combine?: string[]; key?: string }
         analysis?: { task?: string; instructions?: string }
       }
       expect(complete.output).toEqual({
-        merge: ['projects', 'signals'],
-        join_on: 'projectId',
+        combine: ['projects', 'signals'],
+        key: 'projectId',
       })
       expect(complete.analysis).toEqual({
         task: 'summarize',
