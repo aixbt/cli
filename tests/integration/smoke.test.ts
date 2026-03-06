@@ -41,7 +41,7 @@ async function runCli(args: string[]): Promise<void> {
   try {
     await program.parseAsync(args, { from: 'node' })
   } catch (err: unknown) {
-    handleTopLevelError(err, program.opts().json)
+    handleTopLevelError(err, (program.opts().format as 'table' | 'json' | 'toon') ?? 'table')
   }
 }
 
@@ -138,13 +138,13 @@ describe('E2E smoke tests', () => {
         const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
 
         expect(stripped).toContain('aixbt')
-        expect(stripped).toContain('Crypto intelligence API')
+        expect(stripped).toContain('Guide:')
         expect(stripped).toContain('login')
         expect(stripped).toContain('projects')
         expect(stripped).toContain('signals')
         expect(stripped).toContain('clusters')
         expect(stripped).toContain('recipe')
-        expect(stripped).toContain('--json')
+        expect(stripped).toContain('--format')
         expect(stripped).toContain('--delayed')
         expect(stripped).toContain('--pay-per-use')
       } finally {
@@ -163,7 +163,7 @@ describe('E2E smoke tests', () => {
       delete process.env.AIXBT_API_KEY
 
       try {
-        await runCli(['node', 'test', '--json', 'projects'])
+        await runCli(['node', 'test', '--format', 'json', 'projects'])
       } catch {
         // handleTopLevelError calls process.exit which we've mocked to throw
       }
@@ -217,7 +217,7 @@ describe('E2E smoke tests', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'test', '--json', 'projects'], { from: 'node' })
+      await program.parseAsync(['node', 'test', '--format', 'json', 'projects'], { from: 'node' })
 
       // Verify fetch was called
       expect(mockFetch).toHaveBeenCalledTimes(1)
@@ -261,7 +261,7 @@ steps:
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'test', '--json', 'recipe', 'validate', filePath], { from: 'node' })
+      await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
 
       const jsonOutput = logs.find((l) => l.includes('valid'))
       expect(jsonOutput).toBeDefined()
@@ -287,7 +287,7 @@ steps:
       program.exitOverride()
 
       try {
-        await program.parseAsync(['node', 'test', '--json', 'recipe', 'validate', filePath], { from: 'node' })
+        await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
       } catch {
         // process.exit called
       }
@@ -309,7 +309,7 @@ steps:
       program.exitOverride()
 
       try {
-        await program.parseAsync(['node', 'test', '--json', 'recipe', 'validate', filePath], { from: 'node' })
+        await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
       } catch {
         // process.exit called
       }
@@ -346,7 +346,7 @@ steps:
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'test', '--json', 'recipe', 'run', filePath], { from: 'node' })
+      await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'run', filePath], { from: 'node' })
 
       const jsonOutput = logs.find((l) => l.includes('complete'))
       expect(jsonOutput).toBeDefined()
@@ -366,7 +366,7 @@ steps:
       delete process.env.AIXBT_API_KEY
 
       try {
-        await runCli(['node', 'test', '--json', 'projects'])
+        await runCli(['node', 'test', '--format', 'json', 'projects'])
       } catch {
         // process.exit throws
       }
@@ -384,7 +384,7 @@ steps:
       program.exitOverride()
 
       try {
-        await program.parseAsync(['node', 'test', '--json', 'recipe', 'validate', filePath], { from: 'node' })
+        await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
       } catch {
         // process.exit throws or Commander throws
       }
@@ -401,7 +401,7 @@ steps:
       program.exitOverride()
 
       try {
-        await program.parseAsync(['node', 'test', '--json', 'recipe', 'run', filePath], { from: 'node' })
+        await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'run', filePath], { from: 'node' })
       } catch {
         // process.exit throws
       }
@@ -424,7 +424,7 @@ steps:
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'test', '--json', 'projects'], { from: 'node' })
+      await program.parseAsync(['node', 'test', '--format', 'json', 'projects'], { from: 'node' })
 
       // Data should be in logs (console.log -> stdout), not errors (console.error -> stderr)
       const jsonData = logs.find((l) => l.includes('p1'))
@@ -466,7 +466,7 @@ steps:
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'test', '--json', 'projects'], { from: 'node' })
+      await program.parseAsync(['node', 'test', '--format', 'json', 'projects'], { from: 'node' })
 
       // Find the JSON output line
       const jsonLine = logs.find((l) => {
@@ -486,7 +486,7 @@ steps:
       delete process.env.AIXBT_API_KEY
 
       try {
-        await runCli(['node', 'test', '--json', 'projects'])
+        await runCli(['node', 'test', '--format', 'json', 'projects'])
       } catch {
         // process.exit throws
       }
@@ -521,7 +521,7 @@ steps:
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'test', '--json', 'recipe', 'validate', filePath], { from: 'node' })
+      await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
 
       const jsonLine = logs.find((l) => {
         try {
@@ -552,7 +552,7 @@ steps:
       program.exitOverride()
 
       try {
-        await program.parseAsync(['node', 'test', '--json', 'recipe', 'validate', filePath], { from: 'node' })
+        await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
       } catch {
         // process.exit throws
       }

@@ -10,6 +10,9 @@ import {
   label,
   keyValue,
   json,
+  toon,
+  isStructuredFormat,
+  outputStructured,
   maskApiKey,
   table,
   outputResult,
@@ -356,17 +359,17 @@ describe('outputResult', () => {
     { key: 'name', header: 'Name' },
   ]
 
-  it('should output JSON when isJson is true', () => {
+  it('should output JSON when format is json', () => {
     const data = [{ name: 'test' }]
-    outputResult(data, columns, true)
+    outputResult(data, columns, 'json')
 
     expect(mockLog).toHaveBeenCalledOnce()
     expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2))
   })
 
-  it('should output table when isJson is false', () => {
+  it('should output table when format is table', () => {
     const data = [{ name: 'test' }]
-    outputResult(data, columns, false)
+    outputResult(data, columns, 'table')
 
     // Table produces: header + separator + data row = 3 calls
     expect(mockLog).toHaveBeenCalledTimes(3)
@@ -374,19 +377,118 @@ describe('outputResult', () => {
     expect(headerLine).toContain('Name')
   })
 
-  it('should output "No results." table for empty data in non-JSON mode', () => {
-    outputResult([], columns, false)
+  it('should output TOON when format is toon', () => {
+    const data = [{ name: 'test' }]
+    outputResult(data, columns, 'toon')
+
+    expect(mockLog).toHaveBeenCalledOnce()
+    const output = mockLog.mock.calls[0][0] as string
+    expect(typeof output).toBe('string')
+    expect(output).not.toBe(JSON.stringify(data, null, 2))
+  })
+
+  it('should output "No results." table for empty data in table format', () => {
+    outputResult([], columns, 'table')
 
     expect(mockLog).toHaveBeenCalledOnce()
     const output = stripAnsi(mockLog.mock.calls[0][0] as string)
     expect(output).toBe('No results.')
   })
 
-  it('should output empty JSON array for empty data in JSON mode', () => {
-    outputResult([], columns, true)
+  it('should output empty JSON array for empty data in json format', () => {
+    outputResult([], columns, 'json')
 
     expect(mockLog).toHaveBeenCalledOnce()
     expect(mockLog).toHaveBeenCalledWith('[]')
+  })
+})
+
+// -- toon --
+
+describe('toon', () => {
+  let mockLog: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    mockLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('should call encode and write to stdout', () => {
+    const data = { name: 'test', count: 42 }
+    toon(data)
+
+    expect(mockLog).toHaveBeenCalledOnce()
+    const output = mockLog.mock.calls[0][0] as string
+    expect(typeof output).toBe('string')
+    expect(output).not.toBe(JSON.stringify(data, null, 2))
+  })
+
+  it('should handle arrays', () => {
+    const data = [{ name: 'a' }, { name: 'b' }]
+    toon(data)
+
+    expect(mockLog).toHaveBeenCalledOnce()
+    const output = mockLog.mock.calls[0][0] as string
+    expect(typeof output).toBe('string')
+  })
+})
+
+// -- isStructuredFormat --
+
+describe('isStructuredFormat', () => {
+  it('should return false for table format', () => {
+    expect(isStructuredFormat('table')).toBe(false)
+  })
+
+  it('should return true for json format', () => {
+    expect(isStructuredFormat('json')).toBe(true)
+  })
+
+  it('should return true for toon format', () => {
+    expect(isStructuredFormat('toon')).toBe(true)
+  })
+})
+
+// -- outputStructured --
+
+describe('outputStructured', () => {
+  let mockLog: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    mockLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('should output JSON for json format', () => {
+    const data = { key: 'value' }
+    outputStructured(data, 'json')
+
+    expect(mockLog).toHaveBeenCalledOnce()
+    expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2))
+  })
+
+  it('should output TOON for toon format', () => {
+    const data = { key: 'value' }
+    outputStructured(data, 'toon')
+
+    expect(mockLog).toHaveBeenCalledOnce()
+    const output = mockLog.mock.calls[0][0] as string
+    expect(typeof output).toBe('string')
+    expect(output).not.toBe(JSON.stringify(data, null, 2))
+  })
+
+  it('should fall back to JSON for table format', () => {
+    const data = { key: 'value' }
+    outputStructured(data, 'table')
+
+    expect(mockLog).toHaveBeenCalledOnce()
+    expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2))
   })
 })
 

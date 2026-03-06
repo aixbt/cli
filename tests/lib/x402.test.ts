@@ -195,10 +195,10 @@ describe('reconstructCommand', () => {
     expect(result).toBe('projects --limit 5')
   })
 
-  it('should preserve json flag as a bare flag', () => {
-    const result = reconstructCommand('projects', { json: true })
+  it('should include format option as a value flag', () => {
+    const result = reconstructCommand('projects', { format: 'json' })
 
-    expect(result).toBe('projects --json')
+    expect(result).toBe('projects --format json')
   })
 
   it('should skip undefined values', () => {
@@ -239,14 +239,14 @@ describe('reconstructCommand', () => {
 
   it('should handle multiple options together', () => {
     const result = reconstructCommand('projects', {
-      json: true,
+      format: 'json',
       limit: 10,
       sort: 'name',
       payPerUse: true,
       apiKey: 'secret',
     })
 
-    expect(result).toBe('projects --json --limit 10 --sort name')
+    expect(result).toBe('projects --format json --limit 10 --sort name')
   })
 })
 
@@ -275,7 +275,7 @@ describe('handlePaymentRequired', () => {
       const headers = new Headers({ 'PAYMENT-REQUIRED': encoded })
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects --json', true)).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects --format json', 'json')).toThrow(
         'process.exit called',
       )
 
@@ -305,7 +305,7 @@ describe('handlePaymentRequired', () => {
       expect(outputData.payment.payTo).toBe(
         '0x8e4b195c14f20e1ba4c40234f471e1781f293b45',
       )
-      expect(outputData.retryCommand).toContain('projects --json')
+      expect(outputData.retryCommand).toContain('projects --format json')
       expect(outputData.retryCommand).toContain('--payment-signature')
     })
   })
@@ -316,7 +316,7 @@ describe('handlePaymentRequired', () => {
       const headers = new Headers({ 'PAYMENT-REQUIRED': encoded })
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects', false)).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
         'process.exit called',
       )
 
@@ -331,11 +331,11 @@ describe('handlePaymentRequired', () => {
   })
 
   describe('missing PAYMENT-REQUIRED header', () => {
-    it('should exit with code 1 in JSON mode when header is missing', () => {
+    it('should exit with code 1 in json format when header is missing', () => {
       const headers = new Headers()
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects --json', true)).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects --format json', 'json')).toThrow(
         'process.exit called',
       )
 
@@ -355,11 +355,11 @@ describe('handlePaymentRequired', () => {
       expect(outputData.error).toContain('no PAYMENT-REQUIRED header')
     })
 
-    it('should exit with code 1 in human mode when header is missing', () => {
+    it('should exit with code 1 in table format when header is missing', () => {
       const headers = new Headers()
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects', false)).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
         'process.exit called',
       )
 
@@ -371,7 +371,7 @@ describe('handlePaymentRequired', () => {
     it('should exit with code 1 when err.headers is null', () => {
       const err = new PaymentRequiredError({ message: 'Payment required' }, null)
 
-      expect(() => handlePaymentRequired(err, 'projects', false)).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
         'process.exit called',
       )
 
@@ -389,7 +389,7 @@ describe('handlePaymentRequired', () => {
       const headers = new Headers({ 'PAYMENT-REQUIRED': encoded })
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects', false)).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
         'process.exit called',
       )
 
@@ -413,7 +413,7 @@ describe('handlePaymentRequired', () => {
       const headers = new Headers({ 'PAYMENT-REQUIRED': encoded })
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects --json', true)).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects --format json', 'json')).toThrow(
         'process.exit called',
       )
 
@@ -457,7 +457,7 @@ describe('withPayPerUse', () => {
       () => Promise.resolve({ data: 'hello' }),
       authMode,
       'projects',
-      false,
+      'table',
     )
 
     expect(result).toEqual({ data: 'hello' })
@@ -470,7 +470,7 @@ describe('withPayPerUse', () => {
     const payErr = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
     await expect(
-      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', false),
+      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', 'table'),
     ).rejects.toThrow('process.exit called')
 
     // handlePaymentRequired was called (it calls process.exit(0))
@@ -482,7 +482,7 @@ describe('withPayPerUse', () => {
     const payErr = new PaymentRequiredError({ message: 'Payment required' }, null)
 
     await expect(
-      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', false),
+      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', 'table'),
     ).rejects.toThrow('Payment required')
 
     // process.exit should NOT have been called (the error is rethrown directly)
@@ -494,7 +494,7 @@ describe('withPayPerUse', () => {
     const genericErr = new Error('Something else went wrong')
 
     await expect(
-      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', false),
+      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', 'table'),
     ).rejects.toThrow('Something else went wrong')
 
     expect(mockExit).not.toHaveBeenCalled()
@@ -505,7 +505,7 @@ describe('withPayPerUse', () => {
     const genericErr = new Error('Network failure')
 
     await expect(
-      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', false),
+      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', 'table'),
     ).rejects.toThrow('Network failure')
 
     expect(mockExit).not.toHaveBeenCalled()
@@ -556,7 +556,7 @@ describe('handlePurchasePass', () => {
       )
 
       await expect(
-        handlePurchasePass('1d', undefined, false),
+        handlePurchasePass('1d', undefined, 'table'),
       ).rejects.toThrow('process.exit called')
 
       // handlePaymentRequired exits with 0 (payment required is an expected flow step)
@@ -567,7 +567,7 @@ describe('handlePurchasePass', () => {
       expect(allLogOutput).toContain('--payment-signature')
     })
 
-    it('should output JSON payment details in step 1 with isJson=true', async () => {
+    it('should output JSON payment details in step 1 with outputFormat=json', async () => {
       const paymentRequired = {
         x402Version: 2,
         resource: { url: 'https://api.aixbt.tech/x402/v2/api-keys/1w', description: 'API key for 1 week', mimeType: 'application/json' },
@@ -586,7 +586,7 @@ describe('handlePurchasePass', () => {
       )
 
       await expect(
-        handlePurchasePass('1w', undefined, true),
+        handlePurchasePass('1w', undefined, 'json'),
       ).rejects.toThrow('process.exit called')
 
       expect(mockExit).toHaveBeenCalledWith(0)
@@ -618,7 +618,7 @@ describe('handlePurchasePass', () => {
         jsonResponse(200, { status: 201, data: passResponse }),
       )
 
-      await handlePurchasePass('1w', 'base64-payment-proof', false)
+      await handlePurchasePass('1w', 'base64-payment-proof', 'table')
 
       const config = readConfig()
       expect(config.apiKey).toBe('test-api-key-123')
@@ -641,7 +641,7 @@ describe('handlePurchasePass', () => {
         jsonResponse(200, { status: 201, data: passResponse }),
       )
 
-      await handlePurchasePass('1d', 'base64-payment-proof', true)
+      await handlePurchasePass('1d', 'base64-payment-proof', 'json')
 
       const jsonCalls = mockLog.mock.calls.filter(call => {
         try { JSON.parse(call[0] as string); return true } catch { return false }
@@ -673,7 +673,7 @@ describe('handlePurchasePass', () => {
         jsonResponse(200, { status: 201, data: passResponse }),
       )
 
-      await handlePurchasePass('1d', 'my-payment-sig', false)
+      await handlePurchasePass('1d', 'my-payment-sig', 'table')
 
       const [, init] = mockFetch.mock.calls[0]
       expect(init.headers['PAYMENT-SIGNATURE']).toBe('my-payment-sig')
@@ -683,7 +683,7 @@ describe('handlePurchasePass', () => {
   describe('validation', () => {
     it('should reject invalid duration', async () => {
       await expect(
-        handlePurchasePass('invalid', undefined, false),
+        handlePurchasePass('invalid', undefined, 'table'),
       ).rejects.toThrow('Invalid duration')
     })
 
@@ -692,7 +692,7 @@ describe('handlePurchasePass', () => {
       mockFetch.mockRejectedValueOnce(new Error('Network failure'))
 
       await expect(
-        handlePurchasePass('1d', undefined, false),
+        handlePurchasePass('1d', undefined, 'table'),
       ).rejects.toThrow('Network failure')
 
       // process.exit should NOT have been called with 0 (no payment flow)

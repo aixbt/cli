@@ -104,7 +104,7 @@ describe('login commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'login', '--api-key', 'test-key-123'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'login', '--api-key', 'test-key-123'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
@@ -189,7 +189,7 @@ describe('login commands', () => {
       const program = createProgram()
       program.exitOverride()
       try {
-        await program.parseAsync(['node', 'aixbt', '--json', 'login', '--purchase-pass', '1d'], { from: 'node' })
+        await program.parseAsync(['node', 'aixbt', '--format', 'json', 'login', '--purchase-pass', '1d'], { from: 'node' })
       } catch { /* process.exit throws */ }
 
       // Verify JSON output contains payment details
@@ -257,7 +257,7 @@ describe('login commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync([
-        'node', 'aixbt', '--json', 'login',
+        'node', 'aixbt', '--format', 'json', 'login',
         '--purchase-pass', '1d',
         '--payment-signature', 'base64-payment-proof',
       ], { from: 'node' })
@@ -371,7 +371,7 @@ describe('login commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'logout'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'logout'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"logged_out"'))
       expect(jsonOutput).toBeDefined()
@@ -413,7 +413,7 @@ describe('login commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'whoami'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'whoami'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"authenticated"'))
       expect(jsonOutput).toBeDefined()
@@ -427,7 +427,7 @@ describe('login commands', () => {
     it('should output JSON for unauthenticated state with --json', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'whoami'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'whoami'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"authenticated"'))
       expect(jsonOutput).toBeDefined()
@@ -441,7 +441,7 @@ describe('login commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'whoami'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'whoami'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"authenticated"'))
       expect(jsonOutput).toBeDefined()
@@ -488,7 +488,7 @@ describe('login commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'whoami'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'whoami'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"authenticated"'))
       expect(jsonOutput).toBeDefined()
@@ -505,7 +505,7 @@ describe('login commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--json', 'whoami'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'whoami'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"authenticated"'))
       const parsed = JSON.parse(jsonOutput!)
