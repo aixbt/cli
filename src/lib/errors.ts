@@ -1,4 +1,6 @@
 import type { RateLimitInfo } from '../types.js'
+import type { OutputFormat } from './output.js'
+import * as output from './output.js'
 
 // -- Error base class --
 
@@ -180,10 +182,10 @@ export class RecipeValidationError extends CliError {
 
 // -- Top-level error handler --
 
-export function handleTopLevelError(err: unknown, isJson: boolean): never {
+export function handleTopLevelError(err: unknown, outputFormat: OutputFormat): never {
   if (err instanceof NoApiKeyError) {
-    if (isJson) {
-      console.log(JSON.stringify(err.toJSON(), null, 2))
+    if (output.isStructuredFormat(outputFormat)) {
+      output.outputStructured(err.toJSON(), outputFormat)
     } else {
       console.error(err.toHumanReadable())
     }
@@ -191,8 +193,8 @@ export function handleTopLevelError(err: unknown, isJson: boolean): never {
   }
 
   if (err instanceof CliError) {
-    if (isJson) {
-      console.log(JSON.stringify(err.toJSON(), null, 2))
+    if (output.isStructuredFormat(outputFormat)) {
+      output.outputStructured(err.toJSON(), outputFormat)
     } else {
       console.error(`error: ${err.message}`)
 
@@ -225,11 +227,11 @@ export function handleTopLevelError(err: unknown, isJson: boolean): never {
   }
 
   // Unknown error
-  if (isJson) {
-    console.log(JSON.stringify({
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured({
       error: 'INTERNAL_ERROR',
       message: err instanceof Error ? err.message : 'An unexpected error occurred',
-    }, null, 2))
+    }, outputFormat)
   } else {
     console.error(`error: ${err instanceof Error ? err.message : 'An unexpected error occurred'}`)
   }

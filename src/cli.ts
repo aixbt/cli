@@ -3,7 +3,7 @@
 import { readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
 import { registerProjectsCommand } from './commands/projects.js'
 import { registerSignalsCommand } from './commands/signals.js'
 import { registerClustersCommand } from './commands/clusters.js'
@@ -12,6 +12,7 @@ import { registerLoginCommand } from './commands/login.js'
 import { registerConfigCommand } from './commands/config.js'
 import { registerCompletionCommand } from './commands/completion.js'
 import * as output from './lib/output.js'
+import type { OutputFormat } from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
@@ -19,12 +20,15 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 export function createProgram(): Command {
   const program = new Command()
 
+  const formatOption = new Option('-f, --format <mode>', 'Output format: table, json, toon')
+    .choices(['table', 'json', 'toon'])
+    .default('table')
+
   program
     .name('aixbt')
     .description('')
     .version(pkg.version, '-v, --version')
     .addHelpText('before', output.banner(pkg.version))
-    .option('--json', 'Output as JSON (machine-readable)')
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')
     .option('--payment-signature <base64>', 'Payment proof for x402 (base64-encoded)')
@@ -34,6 +38,8 @@ export function createProgram(): Command {
       writeOut: (str: string) => process.stdout.write(output.colorizeHelp(str)),
       writeErr: (str: string) => process.stderr.write(output.colorizeHelp(str)),
     })
+
+  program.addOption(formatOption)
 
   program.hook('preAction', (thisCommand) => {
     const opts = thisCommand.optsWithGlobals()
@@ -68,7 +74,8 @@ async function main(): Promise<void> {
       console.log()
       process.exit(0)
     }
-    handleTopLevelError(err, program.opts().json)
+    const outputFormat = (program.opts().format as OutputFormat) ?? 'table'
+    handleTopLevelError(err, outputFormat)
   }
 }
 
@@ -76,6 +83,6 @@ const isDirectRun = process.argv[1] && realpathSync(resolve(process.argv[1])) ==
 
 if (isDirectRun) {
   main().catch((err: unknown) => {
-    handleTopLevelError(err, false)
+    handleTopLevelError(err, 'table')
   })
 }

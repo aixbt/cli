@@ -1,6 +1,7 @@
 import type { AuthMode } from './auth.js'
 import { readConfig, writeConfig } from './config.js'
 import { CliError, PaymentRequiredError } from './errors.js'
+import type { OutputFormat } from './output.js'
 import * as output from './output.js'
 import { apiRequest, decodeBase64JsonHeader } from './api-client.js'
 
@@ -128,7 +129,7 @@ export function reconstructCommand(commandName: string, opts: Record<string, unk
 export async function handlePurchasePass(
   duration: string,
   paymentSignature: string | undefined,
-  isJson: boolean,
+  outputFormat: OutputFormat,
 ): Promise<void> {
   // Validate duration
   if (!VALID_DURATIONS.includes(duration)) {
@@ -142,7 +143,7 @@ export async function handlePurchasePass(
 
   if (!paymentSignature) {
     // Step 1: POST to trigger 402, get payment details
-    const spin = !isJson ? output.spinner(`Requesting pass pricing for ${duration}...`) : null
+    const spin = !output.isStructuredFormat(outputFormat) ? output.spinner(`Requesting pass pricing for ${duration}...`) : null
 
     try {
       await apiRequest('POST', endpoint, { noAuth: true })
@@ -154,7 +155,7 @@ export async function handlePurchasePass(
         handlePaymentRequired(
           err,
           `aixbt login --purchase-pass ${duration}`,
-          isJson,
+          outputFormat,
         )
       }
       throw err
@@ -163,7 +164,7 @@ export async function handlePurchasePass(
     // Step 2: POST with payment proof
     const result = await output.withSpinner(
       'Completing pass purchase...',
-      isJson,
+      outputFormat,
       () => apiRequest<PurchasePassResult>('POST', endpoint, {
         noAuth: true,
         paymentSignature,
@@ -183,8 +184,8 @@ export async function handlePurchasePass(
       scopes: passData.scopes,
     })
 
-    if (isJson) {
-      output.json({
+    if (output.isStructuredFormat(outputFormat)) {
+      output.outputStructured({
         status: 'authenticated',
         apiKey: passData.apiKey,
         type: passData.type,
@@ -193,7 +194,7 @@ export async function handlePurchasePass(
         period: passData.period,
         rateLimit: passData.rateLimit,
         warning: passData.warning,
-      })
+      }, outputFormat)
     } else {
       output.success('Pass purchased and key stored')
       output.warn(passData.warning)
@@ -217,17 +218,17 @@ export async function handlePurchasePass(
 export function handlePaymentRequired(
   err: PaymentRequiredError,
   commandStr: string,
-  isJson: boolean,
+  outputFormat: OutputFormat,
 ): never {
   const paymentInfo = err.headers ? decodePaymentRequiredHeader(err.headers) : null
 
   if (!paymentInfo) {
-    if (isJson) {
-      output.json({
+    if (output.isStructuredFormat(outputFormat)) {
+      output.outputStructured({
         status: 'payment_required',
         error: 'Payment required but no PAYMENT-REQUIRED header found',
         body: err.body,
-      })
+      }, outputFormat)
     } else {
       output.error('Payment required but could not extract payment details')
       output.dim('The server may be using an unsupported x402 protocol version')
@@ -238,11 +239,11 @@ export function handlePaymentRequired(
   const primaryAccept = paymentInfo.accepts[0]
 
   if (!primaryAccept) {
-    if (isJson) {
-      output.json({
+    if (output.isStructuredFormat(outputFormat)) {
+      output.outputStructured({
         status: 'payment_required',
         error: 'No payment options available from the server',
-      })
+      }, outputFormat)
     } else {
       output.error('Payment required but no payment options available')
     }
@@ -269,8 +270,8 @@ export function handlePaymentRequired(
     retryCommand,
   }
 
-  if (isJson) {
-    output.json(details)
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured(details, outputFormat)
   } else {
     console.log()
     output.info('Payment required')
@@ -300,13 +301,13 @@ export async function withPayPerUse<T>(
   fn: () => Promise<T>,
   authMode: AuthMode,
   commandStr: string,
-  isJson: boolean,
+  outputFormat: OutputFormat,
 ): Promise<T> {
   try {
     return await fn()
   } catch (err) {
     if (err instanceof PaymentRequiredError && authMode.mode === 'pay-per-use') {
-      handlePaymentRequired(err, commandStr, isJson)
+      handlePaymentRequired(err, commandStr, outputFormat)
     }
     throw err
   }

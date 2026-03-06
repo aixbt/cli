@@ -48,7 +48,7 @@ export function registerSignalsCommand(program: Command): void {
 // -- Handlers --
 
 async function handleSignalList(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, isJson } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
@@ -70,18 +70,18 @@ async function handleSignalList(cmd: Command): Promise<void> {
 
   const result = await output.withSpinner(
     'Fetching signals...',
-    isJson,
+    outputFormat,
     () => withPayPerUse(
       () => get<SignalData[]>('/v2/signals', params, clientOpts),
       authMode,
       reconstructCommand('aixbt signals', opts),
-      isJson,
+      outputFormat,
     ),
     'Failed to fetch signals',
   )
 
-  if (isJson) {
-    output.json(result.data)
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputStructured(result.data, outputFormat)
     return
   }
 

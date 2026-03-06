@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
 import { readConfig, writeConfig } from '../lib/config.js'
 import { CliError } from '../lib/errors.js'
+import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
 
 const ALLOWED_KEYS = ['apiKey', 'apiUrl', 'keyType', 'expiresAt', 'scopes'] as const
@@ -27,7 +28,7 @@ export function registerConfigCommand(program: Command): void {
     .description('Show config value(s)')
     .action((key: string | undefined, _opts: unknown, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const isJson = opts.json === true
+      const outputFormat = (opts.format as OutputFormat) ?? 'table'
       const cfg = readConfig()
 
       if (key !== undefined) {
@@ -37,8 +38,8 @@ export function registerConfigCommand(program: Command): void {
 
         const rawValue = cfg[key]
 
-        if (isJson) {
-          output.json({ [key]: rawValue ?? null })
+        if (output.isStructuredFormat(outputFormat)) {
+          output.outputStructured({ [key]: rawValue ?? null }, outputFormat)
         } else {
           const display = formatValue(key, rawValue)
           console.log(display)
@@ -47,8 +48,8 @@ export function registerConfigCommand(program: Command): void {
       }
 
       // Show all config values
-      if (isJson) {
-        output.json(cfg)
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured(cfg, outputFormat)
       } else {
         for (const k of ALLOWED_KEYS) {
           const val = cfg[k]
@@ -64,7 +65,7 @@ export function registerConfigCommand(program: Command): void {
     .description('Set a config value')
     .action((key: string, value: string, _opts: unknown, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const isJson = opts.json === true
+      const outputFormat = (opts.format as OutputFormat) ?? 'table'
 
       if (!isAllowedKey(key)) {
         throw new CliError(`Unknown config key: ${key}. Allowed keys: ${ALLOWED_KEYS.join(', ')}`, 'INVALID_CONFIG_KEY')
@@ -80,8 +81,8 @@ export function registerConfigCommand(program: Command): void {
 
       writeConfig(cfg)
 
-      if (isJson) {
-        output.json({ key, value: cfg[key] })
+      if (output.isStructuredFormat(outputFormat)) {
+        output.outputStructured({ key, value: cfg[key] }, outputFormat)
       } else {
         output.success(`Set ${key}`)
       }
