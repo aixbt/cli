@@ -238,7 +238,7 @@ describe('recipe commands', () => {
       expect(allErrors).toContain('File not found')
     })
 
-    it('should output JSON with status valid for a valid recipe when --json is used', async () => {
+    it('should output JSON with status valid for a valid recipe when --format json is used', async () => {
       const recipeFile = join(tempDir, 'valid.yaml')
       writeFileSync(recipeFile, VALID_RECIPE_YAML)
 
@@ -255,7 +255,7 @@ describe('recipe commands', () => {
       expect(parsed.stepCount).toBe(1)
     })
 
-    it('should output JSON with status invalid for an invalid recipe when --json is used', async () => {
+    it('should output JSON with status invalid for an invalid recipe when --format json is used', async () => {
       const recipeFile = join(tempDir, 'invalid.yaml')
       writeFileSync(recipeFile, INVALID_RECIPE_YAML_NO_NAME)
 
@@ -275,7 +275,7 @@ describe('recipe commands', () => {
       expect(parsed.issues).toBeInstanceOf(Array)
     })
 
-    it('should output JSON with file-not-found error when --json is used and file is missing', async () => {
+    it('should output JSON with file-not-found error when --format json is used and file is missing', async () => {
       const missingFile = join(tempDir, 'nonexistent.yaml')
 
       const program = createProgram()
