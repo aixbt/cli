@@ -4,8 +4,10 @@ import type {
   ExecutionContext, RecipeStep, StepResult,
   RecipeAwaitingAgent, RecipeComplete, AgentStep, Recipe,
   ForeachStep, ForeachResult, ForeachFailure, RateLimitInfo,
+  TransformBlock,
 } from '../types.js'
-import { isAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../types.js'
+import { isAgentStep, isApiStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../types.js'
+import { applySelect, applySample } from './transforms.js'
 import { parseRecipe } from './recipe-parser.js'
 import { validateRecipe, buildSegments } from './recipe-validator.js'
 import { get, sleep, type ApiClientOptions } from './api-client.js'
@@ -299,7 +301,20 @@ async function executeForeach(options: ForeachOptions): Promise<ForeachResult> {
 
     for (const result of batchResults) {
       if (result.success) {
-        successItems.push(result.data)
+        let data = result.data
+
+        if (step.transform) {
+          if (Array.isArray(data)) {
+            data = applyTransforms(data, step.transform)
+          } else {
+            const transformed = applyTransforms([data], step.transform)
+            data = Array.isArray(transformed) && transformed.length > 0
+              ? transformed[0]
+              : data
+          }
+        }
+
+        successItems.push(data)
         if (result.rateLimit) {
           latestRateLimit = result.rateLimit
         }
@@ -443,6 +458,22 @@ function findResumeSegment(
   )
 }
 
+function applyTransforms(data: unknown, transform: TransformBlock): unknown {
+  let result = data
+
+  // Sample runs first to preserve access to weight fields
+  if (transform.sample && Array.isArray(result)) {
+    result = applySample(result, transform.sample)
+  }
+
+  // Select runs second on potentially sampled data
+  if (transform.select && Array.isArray(result)) {
+    result = applySelect(result, transform.select)
+  }
+
+  return result
+}
+
 async function executeStep(
   step: RecipeStep,
   ctx: ExecutionContext,
@@ -474,13 +505,22 @@ async function executeStep(
     })
   }
 
-  // Transform steps are handled in a later phase
   if (isTransformStep(step)) {
+    const sourceResult = ctx.results.get(step.input)
+    if (!sourceResult) {
+      throw new CliError(
+        `Transform step "${step.id}": input step "${step.input}" has no result`,
+        'TRANSFORM_INPUT_MISSING',
+      )
+    }
+
+    const transformedData = applyTransforms(sourceResult.data, step.transform)
     const completedAt = new Date()
+
     return {
       stepId: step.id,
-      data: resolveValue(`{${step.input}}`, ctx),
-      rateLimit: ctx.currentRateLimit,
+      data: transformedData,
+      rateLimit: null,
       timing: {
         startedAt: startedAt.toISOString(),
         completedAt: completedAt.toISOString(),
@@ -512,9 +552,14 @@ async function executeStep(
 
   const completedAt = new Date()
 
+  let resultData = response.data
+  if (isApiStep(step) && step.transform) {
+    resultData = applyTransforms(response.data, step.transform)
+  }
+
   return {
     stepId: step.id,
-    data: response.data,
+    data: resultData,
     rateLimit: response.rateLimit,
     timing: {
       startedAt: startedAt.toISOString(),

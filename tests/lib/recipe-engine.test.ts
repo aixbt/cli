@@ -1765,4 +1765,293 @@ steps:
       expect(result.status).toBe('complete')
     })
   })
+
+  // -- Transform step execution --
+
+  describe('transform step execution', () => {
+    const TRANSFORM_SELECT_RECIPE = `
+name: transform-select
+version: "1.0"
+description: Transform step with select
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: projected
+    input: projects
+    transform:
+      select: [id, name]
+`
+
+    const TRANSFORM_SAMPLE_RECIPE = `
+name: transform-sample
+version: "1.0"
+description: Transform step with sample
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: sampled
+    input: projects
+    transform:
+      sample:
+        count: 2
+`
+
+    const TRANSFORM_CHAINED_RECIPE = `
+name: transform-chained
+version: "1.0"
+description: Chained transform steps
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: sampled
+    input: projects
+    transform:
+      sample:
+        count: 3
+  - id: projected
+    input: sampled
+    transform:
+      select: [id]
+`
+
+    const TRANSFORM_MISSING_INPUT_RECIPE = `
+name: transform-missing
+version: "1.0"
+description: Transform with missing input
+steps:
+  - id: projected
+    input: nonexistent
+    transform:
+      select: [id]
+`
+
+    it('should apply select transform to prior step data', async () => {
+      const projectsData = [
+        { id: 'p1', name: 'Alpha', extra: 'x', score: 100 },
+        { id: 'p2', name: 'Beta', extra: 'y', score: 200 },
+      ]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: TRANSFORM_SELECT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.projected).toEqual([
+        { id: 'p1', name: 'Alpha' },
+        { id: 'p2', name: 'Beta' },
+      ])
+    })
+
+    it('should apply sample transform to prior step data', async () => {
+      const projectsData = Array.from({ length: 10 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Project ${i}`,
+      }))
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: TRANSFORM_SAMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const sampled = data.sampled as unknown[]
+      expect(sampled).toHaveLength(2)
+    })
+
+    it('should throw validation error when transform input references unknown step', async () => {
+      try {
+        await executeRecipe({
+          yaml: TRANSFORM_MISSING_INPUT_RECIPE,
+          params: {},
+          clientOptions: {},
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('RECIPE_VALIDATION_ERROR')
+      }
+    })
+
+    it('should chain transform steps: sample then select on sampled output', async () => {
+      const projectsData = Array.from({ length: 10 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Project ${i}`,
+        extra: `data-${i}`,
+      }))
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: TRANSFORM_CHAINED_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const projected = data.projected as Record<string, unknown>[]
+      expect(projected).toHaveLength(3)
+      // Each item should only have id (select stripped name and extra)
+      for (const item of projected) {
+        expect(Object.keys(item)).toEqual(['id'])
+      }
+    })
+  })
+
+  // -- Per-iteration transforms on foreach --
+
+  describe('foreach with transforms', () => {
+    const FOREACH_WITH_SELECT_RECIPE = `
+name: foreach-select
+version: "1.0"
+description: Foreach with per-iteration select
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: details
+    foreach: projects.data
+    endpoint: "GET /v2/projects/{item.id}"
+    transform:
+      select: [id, status]
+`
+
+    const FOREACH_WITH_SAMPLE_RECIPE = `
+name: foreach-sample
+version: "1.0"
+description: Foreach with per-iteration sample
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: signals
+    foreach: projects.data
+    endpoint: "GET /v2/projects/{item.id}/signals"
+    transform:
+      sample:
+        count: 2
+`
+
+    it('should apply select transform to each foreach iteration response', async () => {
+      const projectsData = [{ id: 'p1' }, { id: 'p2' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      // Each foreach iteration returns an object with extra fields
+      mockGet.mockResolvedValueOnce(mockApiResponse({ id: 'p1', status: 'active', secret: 'x' }))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ id: 'p2', status: 'inactive', secret: 'y' }))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_WITH_SELECT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const details = data.details as Record<string, unknown>[]
+      expect(details).toHaveLength(2)
+      // Each iteration result should be projected to only id and status
+      expect(details[0]).toEqual({ id: 'p1', status: 'active' })
+      expect(details[1]).toEqual({ id: 'p2', status: 'inactive' })
+    })
+
+    it('should apply sample transform to array responses in foreach iterations', async () => {
+      const projectsData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      // The foreach iteration returns an array of signals
+      const signalsResponse = [
+        { id: 's1', score: 10 },
+        { id: 's2', score: 20 },
+        { id: 's3', score: 30 },
+        { id: 's4', score: 40 },
+        { id: 's5', score: 50 },
+      ]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsResponse))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_WITH_SAMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[][]
+      // The single iteration should have its array sampled to 2 items
+      expect(signals).toHaveLength(1)
+      expect(signals[0]).toHaveLength(2)
+    })
+  })
+
+  // -- API step with transforms --
+
+  describe('API step with transforms', () => {
+    const API_WITH_SELECT_RECIPE = `
+name: api-select
+version: "1.0"
+description: API step with select transform
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+    transform:
+      select: [id, name]
+`
+
+    const API_WITH_SAMPLE_RECIPE = `
+name: api-sample
+version: "1.0"
+description: API step with sample transform
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+    transform:
+      sample:
+        count: 2
+`
+
+    it('should apply select transform on API step response data', async () => {
+      const projectsData = [
+        { id: 'p1', name: 'Alpha', extra: 'x' },
+        { id: 'p2', name: 'Beta', extra: 'y' },
+      ]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: API_WITH_SELECT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.projects).toEqual([
+        { id: 'p1', name: 'Alpha' },
+        { id: 'p2', name: 'Beta' },
+      ])
+    })
+
+    it('should apply sample transform on API step response data', async () => {
+      const projectsData = Array.from({ length: 5 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Project ${i}`,
+      }))
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: API_WITH_SAMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const projects = data.projects as unknown[]
+      expect(projects).toHaveLength(2)
+    })
+  })
 })
