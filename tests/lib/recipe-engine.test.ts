@@ -2374,4 +2374,109 @@ steps:
       expect(projects).toHaveLength(2)
     })
   })
+
+  // -- End-to-end: pagination + transforms --
+
+  describe('end-to-end: pagination + transforms', () => {
+    function mockPaginatedResponse(
+      data: unknown[],
+      page: number,
+      totalCount: number,
+      limit: number = 50,
+    ) {
+      return {
+        status: 200,
+        data,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          hasMore: page * limit < totalCount,
+        },
+        rateLimit: {
+          limitPerMinute: 30,
+          remainingPerMinute: Math.max(30 - page, 1),
+          resetMinute: new Date(Date.now() + 60000).toISOString(),
+          limitPerDay: 1000,
+          remainingPerDay: 990,
+          resetDay: new Date(Date.now() + 86400000).toISOString(),
+        },
+      }
+    }
+
+    const makeSignal = (i: number) => ({
+      id: `sig-${i}`,
+      name: `Signal ${i}`,
+      category: i % 2 === 0 ? 'social' : 'technical',
+      description: `Long description for signal ${i}`,
+      activity: [{ date: new Date().toISOString(), source: 'twitter' }],
+      metrics: { usd: Math.random() * 100, volume: Math.random() * 1000 },
+    })
+
+    it('should paginate API call then apply sample + select via transform step', async () => {
+      const PIPELINE_RECIPE = `
+name: signal-analysis
+version: "1.0"
+description: Paginate, sample, and project signals
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+      since: -24h
+  - id: filtered
+    input: signals
+    transform:
+      sample:
+        count: 20
+      select: [id, name, category]
+`
+
+      const page1Data = Array.from({ length: 50 }, (_, i) => makeSignal(i + 1))
+      const page2Data = Array.from({ length: 50 }, (_, i) => makeSignal(i + 51))
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1Data, 1, 100))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2Data, 2, 100))
+
+      const result = await executeRecipe({
+        yaml: PIPELINE_RECIPE,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      // Pagination: exactly 2 API calls
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      // First call: page 1 with limit 50
+      expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
+
+      // Second call: page 2 with limit 50
+      expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 50 })
+
+      // Recipe completed successfully
+      expect(result.status).toBe('complete')
+
+      const data = (result as { data: Record<string, unknown> }).data
+
+      // Original signals step has all 100 items from both pages
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(100)
+
+      // Transform step sampled down to exactly 20 items
+      const filtered = data.filtered as Record<string, unknown>[]
+      expect(filtered).toHaveLength(20)
+
+      // Select projection: each item has ONLY id, name, category
+      for (const item of filtered) {
+        const keys = Object.keys(item).sort()
+        expect(keys).toEqual(['category', 'id', 'name'])
+
+        // Verify stripped fields are absent
+        expect(item).not.toHaveProperty('description')
+        expect(item).not.toHaveProperty('activity')
+        expect(item).not.toHaveProperty('metrics')
+      }
+    })
+  })
 })

@@ -104,7 +104,7 @@ function computeWeights(items: unknown[], weightBy?: string): number[] {
     const obj = item as Record<string, unknown>
 
     // Recency weight from date fields
-    let dateValue: unknown = obj.detectedAt ?? obj.date ?? obj.createdAt
+    const dateValue: unknown = obj.detectedAt ?? obj.date ?? obj.createdAt
     let recencyWeight = 1
     if (dateValue !== undefined) {
       const age = now - new Date(dateValue as string).getTime()

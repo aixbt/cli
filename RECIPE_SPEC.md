@@ -1,7 +1,7 @@
 # AIXBT CLI Recipe Specification
 
 > Formal specification for recipe YAML files in `@aixbt/cli`.
-> Version: 1.0 | Last updated: 2026-03-03
+> Version: 1.1 | Last updated: 2026-03-09
 
 ## Table of Contents
 
@@ -12,6 +12,14 @@
   - [API Steps](#api-steps)
   - [Foreach Steps](#foreach-steps)
   - [Agent Steps](#agent-steps)
+  - [Transform Steps](#transform-steps)
+- [Auto-Pagination](#auto-pagination)
+- [Transforms](#transforms)
+  - [Transform Block](#transform-block)
+  - [Select](#select)
+  - [Sample](#sample)
+  - [Execution Order](#execution-order)
+  - [Transforms on Foreach Steps](#transforms-on-foreach-steps)
 - [Variable Templating](#variable-templating)
 - [Segment Boundary Rule](#segment-boundary-rule)
 - [Agent Step Contract](#agent-step-contract)
@@ -115,17 +123,23 @@ steps:
 
 ## Step Types
 
-Every step must have a unique `id` (string). The step type is determined by which fields are present.
+Every step must have a unique `id` (string). The step type is determined by which fields are present:
+
+- `type: "agent"` -- agent step
+- `foreach` field -- foreach step
+- `input` field (no `endpoint`) -- transform step
+- Otherwise -- API step (must have `endpoint`)
 
 ### API Steps
 
 Standard HTTP API calls against the AIXBT API.
 
-| Field      | Type   | Required | Description                                    |
-|------------|--------|----------|------------------------------------------------|
-| `id`       | string | yes      | Unique step identifier                         |
-| `endpoint` | string | yes      | Format: `"METHOD /path"` or `"/path"` (defaults to GET) |
-| `params`   | object | no       | Query parameters with template support         |
+| Field       | Type           | Required | Description                                    |
+|-------------|----------------|----------|------------------------------------------------|
+| `id`        | string         | yes      | Unique step identifier                         |
+| `endpoint`  | string         | yes      | Format: `"METHOD /path"` or `"/path"` (defaults to GET) |
+| `params`    | object         | no       | Query parameters with template support         |
+| `transform` | TransformBlock | no       | Transform block applied to the response data   |
 
 The `endpoint` string is parsed into an HTTP method and path. If no method prefix is given, GET is assumed.
 
@@ -150,12 +164,13 @@ Query parameter values support template expressions (`{params.chain}`) and relat
 
 Iterate over array data from a previous step, making one API call per item.
 
-| Field      | Type   | Required | Description                                              |
-|------------|--------|----------|----------------------------------------------------------|
-| `id`       | string | yes      | Unique step identifier                                   |
-| `foreach`  | string | yes      | Bare reference to array data (no braces)                 |
-| `endpoint` | string | yes      | Endpoint with `{item}` or `{item.field}` references      |
-| `params`   | object | no       | Query parameters with template and `{item}` support      |
+| Field       | Type           | Required | Description                                              |
+|-------------|----------------|----------|----------------------------------------------------------|
+| `id`        | string         | yes      | Unique step identifier                                   |
+| `foreach`   | string         | yes      | Bare reference to array data (no braces)                 |
+| `endpoint`  | string         | yes      | Endpoint with `{item}` or `{item.field}` references      |
+| `params`    | object         | no       | Query parameters with template and `{item}` support      |
+| `transform` | TransformBlock | no       | Transform block applied per iteration (see [Transforms on Foreach Steps](#transforms-on-foreach-steps)) |
 
 **Important: the `foreach` field uses a bare reference (no curly braces), while `endpoint` and `params` values use braces for template expressions.**
 
@@ -226,6 +241,188 @@ The `returns` object defines the schema the agent must satisfy. Keys are field n
     summary: string
     insights: "string[]"
     confidence: number
+```
+
+### Transform Steps
+
+Reshape data from a previous step without making an API call.
+
+| Field       | Type           | Required | Description                                         |
+|-------------|----------------|----------|-----------------------------------------------------|
+| `id`        | string         | yes      | Unique step identifier                              |
+| `input`     | string         | yes      | Reference to a prior step ID                        |
+| `transform` | TransformBlock | yes      | Transform block (at least `select` or `sample`)     |
+
+A transform step reads data from the step referenced by `input` and applies transforms to produce a new result. It cannot have `endpoint` or `foreach`.
+
+```yaml
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 150
+
+  - id: filtered
+    input: signals
+    transform:
+      sample:
+        count: 80
+      select: [id, name, category]
+```
+
+Transform steps are accessible by subsequent steps via standard step references, just like API or foreach steps. They participate in the same segment boundary rules -- the `input` reference must point to an accessible step within the current segment.
+
+---
+
+## Auto-Pagination
+
+When an API step specifies a `limit` greater than 50, the engine automatically paginates by making multiple API calls and concatenating the results. This is transparent to the recipe author.
+
+```yaml
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 150
+      since: "-24h"
+```
+
+In this example, the engine makes 3 internal API calls (each requesting 50 items) and concatenates the `data[]` arrays into a single result of up to 150 items.
+
+**Behavior details:**
+
+- The API's maximum per-page limit is 50. When `limit` exceeds 50, the engine splits the request into pages of 50.
+- Results from each page are concatenated into a single `data[]` array.
+- Pagination stops when the API reports no more data (`hasMore: false`) or the target limit is reached.
+- Rate limits are respected between page requests.
+- If a `transform` block is present on the step, transforms apply after pagination completes -- they operate on the full concatenated result, not individual pages.
+
+**No pagination (single call):**
+
+When `limit` is 50 or less (or not specified), the engine makes a single API call as usual. No pagination logic is triggered.
+
+---
+
+## Transforms
+
+Transforms reduce and reshape step result data. A `transform` block can appear on API steps, foreach steps, and standalone transform steps.
+
+### Transform Block
+
+The `transform` block contains one or both of `select` and `sample`:
+
+```yaml
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 50
+    transform:
+      select: [id, name, category, metrics.usd]
+      sample:
+        count: 30
+        guarantee: 0.3
+```
+
+| Field    | Type           | Required | Description                                    |
+|----------|----------------|----------|------------------------------------------------|
+| `select` | string[]       | no       | Field paths for projection                     |
+| `sample` | SampleTransform | no      | Weighted random sampling configuration         |
+
+At least one of `select` or `sample` must be present in a transform block.
+
+### Select
+
+The `select` field specifies which fields to keep from each item in the result data. It acts as a projection, stripping all fields not listed.
+
+```yaml
+transform:
+  select: [id, name, category, metrics.usd, metrics.volume]
+```
+
+**Supported patterns:**
+
+- **Top-level fields**: `[id, name]` keeps only those top-level properties.
+- **Dot notation for nested fields**: `[metrics.usd]` keeps the nested path `{ metrics: { usd: ... } }`.
+- **Multiple nested fields from the same parent**: `[metrics.usd, metrics.volume]` merges into `{ metrics: { usd: ..., volume: ... } }`.
+- **Arrays**: Arrays are preserved as-is when their parent field is selected.
+- **Missing fields**: If a listed field does not exist on an item, it is silently omitted from the output.
+
+### Sample
+
+The `sample` field configures weighted random sampling to reduce the result set size while preserving the most relevant items.
+
+```yaml
+transform:
+  sample:
+    count: 30
+    guarantee: 0.3
+    weight_by: metrics.score
+```
+
+| Field       | Type   | Required | Description                                                 |
+|-------------|--------|----------|-------------------------------------------------------------|
+| `count`     | number | no*      | Fixed number of items to sample                             |
+| `maxTokens` | number | no*      | Token budget (estimated as `JSON.stringify(item).length / 4`) |
+| `guarantee` | number | no       | Fraction (0-1) of top items always included (default: 0.3)  |
+| `weight_by` | string | no       | Field path for custom weights (dot notation supported)      |
+
+*At least one of `count` or `maxTokens` is required. If both are specified, `count` takes precedence.
+
+**How sampling works:**
+
+1. If the total item count is less than or equal to the target count, all items are returned unchanged (passthrough).
+2. The top `guarantee` fraction of items (by weight) are always included in the result.
+3. The remaining slots are filled by weighted random sampling without replacement.
+4. When `weight_by` is not set, default weights are calculated as `recencyWeight * strengthWeight`, where recency is based on item age and strength is based on activity count.
+5. The original array order is preserved after sampling -- items appear in the same relative order as the input.
+
+### Execution Order
+
+Within a single transform block, `sample` always runs before `select`. This ordering is required because sampling may need access to fields that `select` would strip:
+
+- Default weight calculation uses `activity.length` for strength weights
+- Custom `weight_by` references a field path that might not be in the `select` list
+
+```yaml
+# sample runs first (needs metrics.score for weighting),
+# then select strips down to the final fields
+transform:
+  sample:
+    count: 30
+    weight_by: metrics.score
+  select: [id, name, category]
+```
+
+### Transforms on Foreach Steps
+
+When a `transform` block appears on a foreach step, it runs **per iteration** -- each individual API response is transformed before results are aggregated.
+
+```yaml
+steps:
+  - id: details
+    foreach: "projects.data"
+    endpoint: "GET /v2/projects/{item.id}"
+    transform:
+      select: [id, name, metrics.usd]
+```
+
+In this example, each project detail response is projected down to `[id, name, metrics.usd]` before being collected into the aggregated result.
+
+For **post-aggregation transforms** (transforming the combined result of all iterations), use a separate transform step with `input`:
+
+```yaml
+steps:
+  - id: details
+    foreach: "projects.data"
+    endpoint: "GET /v2/projects/{item.id}"
+
+  - id: sampled_details
+    input: details
+    transform:
+      sample:
+        count: 20
+      select: [id, name]
 ```
 
 ---
@@ -544,11 +741,11 @@ This is useful for large datasets where inlining everything in a single JSON pay
 
 ## Full Example
 
-A complete working recipe demonstrating parameters, API steps, foreach iteration, an agent step, a post-resume segment, output configuration, and analysis instructions.
+A complete working recipe demonstrating parameters, API steps with auto-pagination and transforms, foreach iteration, an agent step, a post-resume segment with a transform step, output configuration, and analysis instructions.
 
 ```yaml
 name: chain-analysis
-version: "1.0"
+version: "1.1"
 description: >
   Collect project data for a blockchain, enrich with details,
   have an agent select top projects, then fetch signals for those.
@@ -579,6 +776,8 @@ steps:
   - id: details
     foreach: "projects.data"
     endpoint: "GET /v2/projects/{item.id}"
+    transform:
+      select: [id, name, category, metrics.usd, metrics.volume]
 
   - id: select
     type: agent
@@ -599,17 +798,28 @@ steps:
 
   # --- Segment 1: Post-Agent Deep Dive ---
 
+  # Auto-pagination: limit 150 triggers 3 pages of 50
   - id: signals
     foreach: "select.data.selected_ids"
     endpoint: "GET /v2/signals"
     params:
       projectId: "{item}"
       since: "{params.since}"
+      limit: 150
+
+  # Post-aggregation transform: sample down and project fields
+  - id: top_signals
+    input: signals
+    transform:
+      sample:
+        count: 50
+        guarantee: 0.3
+      select: [id, name, category, metrics.usd]
 
 output:
   include:
     - select
-    - signals
+    - top_signals
 
 analysis:
   instructions: |
