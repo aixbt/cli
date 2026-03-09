@@ -1,6 +1,6 @@
 import { RecipeValidationError } from './errors.js'
 import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../types.js'
-import { isAgentStep, isForeachStep, TEMPLATE_REGEX } from '../types.js'
+import { isAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../types.js'
 
 export function extractTemplateRefs(str: string): string[] {
   const refs: string[] = []
@@ -38,6 +38,12 @@ export function extractAllTemplateRefs(obj: unknown): string[] {
 
 export function extractStepReferences(step: RecipeStep): Set<string> {
   const refs = new Set<string>()
+
+  // Transform step: only reference is the input step
+  if (isTransformStep(step)) {
+    refs.add(step.input)
+    return refs
+  }
 
   if (isForeachStep(step)) {
     const foreachRef = step.foreach
@@ -206,8 +212,33 @@ function validateVariableReferences(
     recipe.params ? Object.keys(recipe.params) : [],
   )
 
+  const stepIdOrder = new Map<string, number>()
+  for (let i = 0; i < recipe.steps.length; i++) {
+    stepIdOrder.set(recipe.steps[i].id, i)
+  }
+
   for (const step of recipe.steps) {
     if (isAgentStep(step)) continue
+
+    // Transform step: validate input reference
+    if (isTransformStep(step)) {
+      if (!allStepIds.has(step.input)) {
+        issues.push({
+          path: `steps.${step.id}.input`,
+          message: `References unknown step "${step.input}"`,
+        })
+      } else {
+        const inputIndex = stepIdOrder.get(step.input)!
+        const currentIndex = stepIdOrder.get(step.id)!
+        if (inputIndex >= currentIndex) {
+          issues.push({
+            path: `steps.${step.id}.input`,
+            message: `input must reference a step that appears earlier in the recipe (referenced "${step.input}")`,
+          })
+        }
+      }
+      continue
+    }
 
     // Check foreach references
     if (isForeachStep(step)) {

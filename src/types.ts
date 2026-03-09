@@ -73,14 +73,16 @@ export interface RecipeParam {
   default?: string | number | boolean
 }
 
-export type RecipeStep = ApiStep | ForeachStep | AgentStep
+export type RecipeStep = ApiStep | ForeachStep | AgentStep | TransformStep
 
 export interface ApiStep {
   id: string
   endpoint: string
   params?: Record<string, unknown>
+  transform?: TransformBlock
   type?: never
   foreach?: never
+  input?: never
 }
 
 export interface ForeachStep {
@@ -88,7 +90,9 @@ export interface ForeachStep {
   foreach: string
   endpoint: string
   params?: Record<string, unknown>
+  transform?: TransformBlock
   type?: never
+  input?: never
 }
 
 export interface AgentStep {
@@ -98,6 +102,15 @@ export interface AgentStep {
   task: string
   description: string
   returns: Record<string, string>
+}
+
+export interface TransformStep {
+  id: string
+  input: string
+  transform: TransformBlock
+  endpoint?: never
+  foreach?: never
+  type?: never
 }
 
 export interface RecipeOutput {
@@ -113,6 +126,20 @@ export interface RecipeAnalysis {
   output_format?: string
 }
 
+// -- Transform block types --
+
+export interface SampleTransform {
+  count?: number
+  maxTokens?: number
+  guarantee?: number
+  weight_by?: string
+}
+
+export interface TransformBlock {
+  select?: string[]
+  sample?: SampleTransform
+}
+
 // -- Step type guards --
 
 export function isAgentStep(step: RecipeStep): step is AgentStep {
@@ -123,8 +150,12 @@ export function isForeachStep(step: RecipeStep): step is ForeachStep {
   return 'foreach' in step && (step as ForeachStep).foreach !== undefined
 }
 
+export function isTransformStep(step: RecipeStep): step is TransformStep {
+  return 'input' in step && (step as TransformStep).input !== undefined
+}
+
 export function isApiStep(step: RecipeStep): step is ApiStep {
-  return !isAgentStep(step) && !isForeachStep(step)
+  return !isAgentStep(step) && !isForeachStep(step) && !isTransformStep(step)
 }
 
 // -- Execution types --

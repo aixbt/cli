@@ -5,7 +5,7 @@ import type {
   RecipeAwaitingAgent, RecipeComplete, AgentStep, Recipe,
   ForeachStep, ForeachResult, ForeachFailure, RateLimitInfo,
 } from '../types.js'
-import { isAgentStep, isForeachStep, TEMPLATE_REGEX } from '../types.js'
+import { isAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../types.js'
 import { parseRecipe } from './recipe-parser.js'
 import { validateRecipe, buildSegments } from './recipe-validator.js'
 import { get, sleep, type ApiClientOptions } from './api-client.js'
@@ -472,6 +472,21 @@ async function executeStep(
       clientOptions,
       currentRateLimit: ctx.currentRateLimit,
     })
+  }
+
+  // Transform steps are handled in a later phase
+  if (isTransformStep(step)) {
+    const completedAt = new Date()
+    return {
+      stepId: step.id,
+      data: resolveValue(`{${step.input}}`, ctx),
+      rateLimit: ctx.currentRateLimit,
+      timing: {
+        startedAt: startedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+        durationMs: completedAt.getTime() - startedAt.getTime(),
+      },
+    }
   }
 
   const { path } = resolveEndpoint(
