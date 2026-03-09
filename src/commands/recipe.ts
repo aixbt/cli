@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 import { readFileSync, existsSync, writeFileSync } from 'node:fs'
 import type { Recipe } from '../types.js'
-import { isAgentStep, isForeachStep } from '../types.js'
+import { isAgentStep, isForeachStep, isTransformStep } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { executeRecipe } from '../lib/recipe-engine.js'
 import { parseRecipe } from '../lib/recipe-parser.js'
@@ -160,6 +160,9 @@ export function registerRecipeCommand(program: Command): void {
         if (isForeachStep(step)) {
           return { id: step.id, type: 'foreach' as const, endpoint: step.endpoint }
         }
+        if (isTransformStep(step)) {
+          return { id: step.id, type: 'transform' as const, input: step.input }
+        }
         return { id: step.id, type: 'api' as const, endpoint: step.endpoint }
       })
 
@@ -207,6 +210,8 @@ export function registerRecipeCommand(program: Command): void {
           output.keyValue(step.id, `agent (${step.task})`, 20)
         } else if (isForeachStep(step)) {
           output.keyValue(step.id, `foreach ${step.foreach} -> ${step.endpoint}`, 20)
+        } else if (isTransformStep(step)) {
+          output.keyValue(step.id, `transform ${step.input}`, 20)
         } else {
           output.keyValue(step.id, step.endpoint, 20)
         }

@@ -7,16 +7,18 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'no
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-// Mock the api-client get function to avoid real HTTP calls
+// Mock the api-client get and sleep functions to avoid real HTTP calls and delays
 vi.mock('../../src/lib/api-client.js', async () => {
   const actual = await vi.importActual('../../src/lib/api-client.js')
   return {
     ...actual,
     get: vi.fn(),
+    sleep: vi.fn().mockResolvedValue(undefined),
   }
 })
 
 const mockGet = vi.mocked(apiClient.get)
+const mockSleep = vi.mocked(apiClient.sleep)
 
 // -- Test helpers --
 
@@ -572,7 +574,34 @@ function mockApiResponse(data: unknown) {
 describe('executeRecipe', () => {
   beforeEach(() => {
     mockGet.mockReset()
+    mockSleep.mockClear()
   })
+
+  function mockPaginatedResponse(
+    data: unknown[],
+    page: number,
+    totalCount: number,
+    limit: number = 50,
+  ) {
+    return {
+      status: 200,
+      data,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        hasMore: page * limit < totalCount,
+      },
+      rateLimit: {
+        limitPerMinute: 30,
+        remainingPerMinute: Math.max(30 - page, 1),
+        resetMinute: new Date(Date.now() + 60000).toISOString(),
+        limitPerDay: 1000,
+        remainingPerDay: 990,
+        resetDay: new Date(Date.now() + 86400000).toISOString(),
+      },
+    }
+  }
 
   // -- Core execution flow --
 
@@ -1763,6 +1792,665 @@ steps:
       })
 
       expect(result.status).toBe('complete')
+    })
+  })
+
+  // -- Transform step execution --
+
+  describe('transform step execution', () => {
+    const TRANSFORM_SELECT_RECIPE = `
+name: transform-select
+version: "1.0"
+description: Transform step with select
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: projected
+    input: projects
+    transform:
+      select: [id, name]
+`
+
+    const TRANSFORM_SAMPLE_RECIPE = `
+name: transform-sample
+version: "1.0"
+description: Transform step with sample
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: sampled
+    input: projects
+    transform:
+      sample:
+        count: 2
+`
+
+    const TRANSFORM_CHAINED_RECIPE = `
+name: transform-chained
+version: "1.0"
+description: Chained transform steps
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: sampled
+    input: projects
+    transform:
+      sample:
+        count: 3
+  - id: projected
+    input: sampled
+    transform:
+      select: [id]
+`
+
+    const TRANSFORM_MISSING_INPUT_RECIPE = `
+name: transform-missing
+version: "1.0"
+description: Transform with missing input
+steps:
+  - id: projected
+    input: nonexistent
+    transform:
+      select: [id]
+`
+
+    it('should apply select transform to prior step data', async () => {
+      const projectsData = [
+        { id: 'p1', name: 'Alpha', extra: 'x', score: 100 },
+        { id: 'p2', name: 'Beta', extra: 'y', score: 200 },
+      ]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: TRANSFORM_SELECT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.projected).toEqual([
+        { id: 'p1', name: 'Alpha' },
+        { id: 'p2', name: 'Beta' },
+      ])
+    })
+
+    it('should apply sample transform to prior step data', async () => {
+      const projectsData = Array.from({ length: 10 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Project ${i}`,
+      }))
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: TRANSFORM_SAMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const sampled = data.sampled as unknown[]
+      expect(sampled).toHaveLength(2)
+    })
+
+    it('should throw validation error when transform input references unknown step', async () => {
+      try {
+        await executeRecipe({
+          yaml: TRANSFORM_MISSING_INPUT_RECIPE,
+          params: {},
+          clientOptions: {},
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('RECIPE_VALIDATION_ERROR')
+      }
+    })
+
+    it('should chain transform steps: sample then select on sampled output', async () => {
+      const projectsData = Array.from({ length: 10 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Project ${i}`,
+        extra: `data-${i}`,
+      }))
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: TRANSFORM_CHAINED_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const projected = data.projected as Record<string, unknown>[]
+      expect(projected).toHaveLength(3)
+      // Each item should only have id (select stripped name and extra)
+      for (const item of projected) {
+        expect(Object.keys(item)).toEqual(['id'])
+      }
+    })
+  })
+
+  // -- Per-iteration transforms on foreach --
+
+  describe('foreach with transforms', () => {
+    const FOREACH_WITH_SELECT_RECIPE = `
+name: foreach-select
+version: "1.0"
+description: Foreach with per-iteration select
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: details
+    foreach: projects.data
+    endpoint: "GET /v2/projects/{item.id}"
+    transform:
+      select: [id, status]
+`
+
+    const FOREACH_WITH_SAMPLE_RECIPE = `
+name: foreach-sample
+version: "1.0"
+description: Foreach with per-iteration sample
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: signals
+    foreach: projects.data
+    endpoint: "GET /v2/projects/{item.id}/signals"
+    transform:
+      sample:
+        count: 2
+`
+
+    it('should apply select transform to each foreach iteration response', async () => {
+      const projectsData = [{ id: 'p1' }, { id: 'p2' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      // Each foreach iteration returns an object with extra fields
+      mockGet.mockResolvedValueOnce(mockApiResponse({ id: 'p1', status: 'active', secret: 'x' }))
+      mockGet.mockResolvedValueOnce(mockApiResponse({ id: 'p2', status: 'inactive', secret: 'y' }))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_WITH_SELECT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const details = data.details as Record<string, unknown>[]
+      expect(details).toHaveLength(2)
+      // Each iteration result should be projected to only id and status
+      expect(details[0]).toEqual({ id: 'p1', status: 'active' })
+      expect(details[1]).toEqual({ id: 'p2', status: 'inactive' })
+    })
+
+    it('should apply sample transform to array responses in foreach iterations', async () => {
+      const projectsData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      // The foreach iteration returns an array of signals
+      const signalsResponse = [
+        { id: 's1', score: 10 },
+        { id: 's2', score: 20 },
+        { id: 's3', score: 30 },
+        { id: 's4', score: 40 },
+        { id: 's5', score: 50 },
+      ]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsResponse))
+
+      const result = await executeRecipe({
+        yaml: FOREACH_WITH_SAMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[][]
+      // The single iteration should have its array sampled to 2 items
+      expect(signals).toHaveLength(1)
+      expect(signals[0]).toHaveLength(2)
+    })
+  })
+
+  // -- Auto-pagination --
+
+  describe('auto-pagination', () => {
+    function makeItems(count: number, prefix = 'item') {
+      return Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i + 1}`, name: `${prefix} ${i + 1}` }))
+    }
+
+    it('should trigger multi-page fetch when limit exceeds 50', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 150
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(50, 'sig2')
+      const page3 = makeItems(50, 'sig3')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 150))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 150))
+        .mockResolvedValueOnce(mockPaginatedResponse(page3, 3, 150))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(3)
+
+      // Verify page params for each call
+      expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
+      expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 50 })
+      expect(mockGet.mock.calls[2][1]).toMatchObject({ page: 3, limit: 50 })
+
+      // Verify concatenated result
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(150)
+    })
+
+    it('should not paginate when limit is 50 or below', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 50
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse(makeItems(50)))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(1)
+
+      // Should not have page param injected (YAML parses limit: 50 as number)
+      const callParams = mockGet.mock.calls[0][1]
+      expect(callParams).toEqual({ limit: 50 })
+    })
+
+    it('should not paginate when limit is absent', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse(makeItems(10)))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(1)
+    })
+
+    it('should stop early when hasMore is false', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 150
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(30, 'sig2')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 80))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 80))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(80)
+    })
+
+    it('should apply transforms after pagination combines all pages', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+    transform:
+      select: [id, name]
+`
+      const page1 = Array.from({ length: 50 }, (_, i) => ({ id: `s${i}`, name: `Signal ${i}`, extra: 'drop-me' }))
+      const page2 = Array.from({ length: 50 }, (_, i) => ({ id: `s${50 + i}`, name: `Signal ${50 + i}`, extra: 'drop-me' }))
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 100))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 100))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as Record<string, unknown>[]
+      expect(signals).toHaveLength(100)
+
+      // Verify transform was applied -- each item should only have id and name
+      for (const signal of signals) {
+        expect(Object.keys(signal).sort()).toEqual(['id', 'name'])
+        expect(signal.extra).toBeUndefined()
+      }
+    })
+
+    it('should include step ID and page number in pagination error', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+`
+      const page1 = makeItems(50, 'sig')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 100))
+        .mockRejectedValueOnce(new Error('Server error'))
+
+      try {
+        await executeRecipe({
+          yaml,
+          params: {},
+          clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('PAGINATION_FAILED')
+        expect((err as CliError).message).toContain('signals')
+        expect((err as CliError).message).toContain('page 2')
+      }
+    })
+
+    it('should pause for rate limit when remainingPerMinute is low between pages', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(50, 'sig2')
+
+      // Page 1 returns with very low remaining rate limit
+      const page1Response = {
+        status: 200,
+        data: page1,
+        pagination: {
+          page: 1,
+          limit: 50,
+          totalCount: 100,
+          hasMore: true,
+        },
+        rateLimit: {
+          limitPerMinute: 30,
+          remainingPerMinute: 1,
+          resetMinute: new Date(Date.now() + 60000).toISOString(),
+          limitPerDay: 1000,
+          remainingPerDay: 990,
+          resetDay: new Date(Date.now() + 86400000).toISOString(),
+        },
+      }
+
+      mockGet
+        .mockResolvedValueOnce(page1Response)
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 100))
+
+      mockSleep.mockClear()
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockSleep).toHaveBeenCalled()
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(100)
+    })
+
+    it('should request only remaining items on the last page', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 80
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(30, 'sig2')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 80))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 80))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      // Page 1 should request 50 (full page)
+      expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
+      // Page 2 should request only 30 (remaining = 80 - 50)
+      expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 30 })
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(80)
+    })
+  })
+
+  // -- API step with transforms --
+
+  describe('API step with transforms', () => {
+    const API_WITH_SELECT_RECIPE = `
+name: api-select
+version: "1.0"
+description: API step with select transform
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+    transform:
+      select: [id, name]
+`
+
+    const API_WITH_SAMPLE_RECIPE = `
+name: api-sample
+version: "1.0"
+description: API step with sample transform
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+    transform:
+      sample:
+        count: 2
+`
+
+    it('should apply select transform on API step response data', async () => {
+      const projectsData = [
+        { id: 'p1', name: 'Alpha', extra: 'x' },
+        { id: 'p2', name: 'Beta', extra: 'y' },
+      ]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: API_WITH_SELECT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      expect(data.projects).toEqual([
+        { id: 'p1', name: 'Alpha' },
+        { id: 'p2', name: 'Beta' },
+      ])
+    })
+
+    it('should apply sample transform on API step response data', async () => {
+      const projectsData = Array.from({ length: 5 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Project ${i}`,
+      }))
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: API_WITH_SAMPLE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      const projects = data.projects as unknown[]
+      expect(projects).toHaveLength(2)
+    })
+  })
+
+  // -- End-to-end: pagination + transforms --
+
+  describe('end-to-end: pagination + transforms', () => {
+    const makeSignal = (i: number) => ({
+      id: `sig-${i}`,
+      name: `Signal ${i}`,
+      category: i % 2 === 0 ? 'social' : 'technical',
+      description: `Long description for signal ${i}`,
+      activity: [{ date: new Date().toISOString(), source: 'twitter' }],
+      metrics: { usd: Math.random() * 100, volume: Math.random() * 1000 },
+    })
+
+    it('should paginate API call then apply sample + select via transform step', async () => {
+      const PIPELINE_RECIPE = `
+name: signal-analysis
+version: "1.0"
+description: Paginate, sample, and project signals
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+      since: -24h
+  - id: filtered
+    input: signals
+    transform:
+      sample:
+        count: 20
+      select: [id, name, category]
+`
+
+      const page1Data = Array.from({ length: 50 }, (_, i) => makeSignal(i + 1))
+      const page2Data = Array.from({ length: 50 }, (_, i) => makeSignal(i + 51))
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1Data, 1, 100))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2Data, 2, 100))
+
+      const result = await executeRecipe({
+        yaml: PIPELINE_RECIPE,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      // Pagination: exactly 2 API calls
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      // First call: page 1 with limit 50
+      expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
+
+      // Second call: page 2 with limit 50
+      expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 50 })
+
+      // Recipe completed successfully
+      expect(result.status).toBe('complete')
+
+      const data = (result as { data: Record<string, unknown> }).data
+
+      // Original signals step has all 100 items from both pages
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(100)
+
+      // Transform step sampled down to exactly 20 items
+      const filtered = data.filtered as Record<string, unknown>[]
+      expect(filtered).toHaveLength(20)
+
+      // Select projection: each item has ONLY id, name, category
+      for (const item of filtered) {
+        const keys = Object.keys(item).sort()
+        expect(keys).toEqual(['category', 'id', 'name'])
+
+        // Verify stripped fields are absent
+        expect(item).not.toHaveProperty('description')
+        expect(item).not.toHaveProperty('activity')
+        expect(item).not.toHaveProperty('metrics')
+      }
     })
   })
 })

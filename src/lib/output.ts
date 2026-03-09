@@ -31,7 +31,7 @@ const P = chalk.rgb(148, 104, 196) // purple-300
 const C = chalk.rgb(70, 173, 195)  // cyan-500
 const G = chalk.rgb(50, 50, 61)    // gray-400
 
-export function banner(version: string): string {
+export function banner(): string {
   const d = chalk.dim
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
   return [

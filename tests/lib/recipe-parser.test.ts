@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 
 import { parseRecipe } from '../../src/lib/recipe-parser.js'
 import { RecipeValidationError } from '../../src/lib/errors.js'
-import { isAgentStep, isForeachStep, isApiStep } from '../../src/types.js'
-import type { AgentStep, ForeachStep, ApiStep } from '../../src/types.js'
+import { isAgentStep, isForeachStep, isApiStep, isTransformStep } from '../../src/types.js'
+import type { AgentStep, ForeachStep, ApiStep, TransformStep } from '../../src/types.js'
 
 // -- Helpers --
 
@@ -853,6 +853,273 @@ steps:
     })
   })
 
+  // -- Transform blocks --
+
+  describe('transform blocks', () => {
+    it('should parse transform block with select on API step', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    params:
+      limit: 50
+    transform:
+      select: [id, name]
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.transform).toBeDefined()
+      expect(step.transform!.select).toEqual(['id', 'name'])
+    })
+
+    it('should parse transform block with sample on API step', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample:
+        count: 80
+        guarantee: 0.3
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.transform).toBeDefined()
+      expect(step.transform!.sample).toBeDefined()
+      expect(step.transform!.sample!.count).toBe(80)
+      expect(step.transform!.sample!.guarantee).toBe(0.3)
+    })
+
+    it('should parse transform block with sample using maxTokens', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample:
+        maxTokens: 2000
+        weight_by: "metrics.score"
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.transform).toBeDefined()
+      expect(step.transform!.sample).toBeDefined()
+      expect(step.transform!.sample!.maxTokens).toBe(2000)
+      expect(step.transform!.sample!.weight_by).toBe('metrics.score')
+      expect(step.transform!.sample!.count).toBeUndefined()
+    })
+
+    it('should parse transform block with both select and sample', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      select: [id, name, score]
+      sample:
+        count: 50
+        guarantee: 0.5
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.transform).toBeDefined()
+      expect(step.transform!.select).toEqual(['id', 'name', 'score'])
+      expect(step.transform!.sample!.count).toBe(50)
+      expect(step.transform!.sample!.guarantee).toBe(0.5)
+    })
+
+    it('should parse transform block on foreach step', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: details
+    foreach: "projects.data"
+    endpoint: "GET /v2/projects/{{item.id}}"
+    transform:
+      select: [id, name]
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[1] as ForeachStep
+      expect(step.transform).toBeDefined()
+      expect(step.transform!.select).toEqual(['id', 'name'])
+    })
+
+    it('should parse standalone transform step with input and transform', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    params:
+      limit: 50
+  - id: filtered
+    input: signals
+    transform:
+      select: [id, name]
+`
+      const recipe = parseRecipe(yaml)
+      expect(recipe.steps).toHaveLength(2)
+      const step = recipe.steps[1] as TransformStep
+      expect(step.id).toBe('filtered')
+      expect(step.input).toBe('signals')
+      expect(step.transform).toBeDefined()
+      expect(step.transform.select).toEqual(['id', 'name'])
+    })
+
+    it('should throw when transform step is missing transform block', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+  - id: filtered
+    input: signals
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('Transform step must have a transform block'),
+      )
+    })
+
+    it('should throw when transform step has an endpoint', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+  - id: filtered
+    input: signals
+    endpoint: "GET /v2/other"
+    transform:
+      select: [id]
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('Transform step (with input) cannot have an endpoint'),
+      )
+    })
+
+    it('should throw when transform step has foreach', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+  - id: filtered
+    input: signals
+    foreach: "signals.data"
+    transform:
+      select: [id]
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('Transform step (with input) cannot have foreach'),
+      )
+    })
+
+    it('should throw when select is not an array', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      select: "not-an-array"
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('select must be an array of strings'),
+      )
+    })
+
+    it('should throw when sample is missing count and maxTokens', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample: {}
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('sample must have either count or maxTokens'),
+      )
+    })
+
+    it('should throw when sample count is negative', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample:
+        count: -1
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('count must be a positive integer'),
+      )
+    })
+
+    it('should throw when sample guarantee is out of range', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample:
+        count: 10
+        guarantee: 1.5
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('guarantee must be a number between 0 and 1'),
+      )
+    })
+
+    it('should still parse standard API step without transform', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    endpoint: "GET /v2/projects"
+    params:
+      limit: 10
+`
+      const recipe = parseRecipe(yaml)
+      expect(recipe.steps).toHaveLength(1)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.endpoint).toBe('GET /v2/projects')
+      expect(step.transform).toBeUndefined()
+    })
+
+    it('should still parse foreach step without transform', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: projects
+    endpoint: "GET /v2/projects"
+  - id: details
+    foreach: "projects.data"
+    endpoint: "GET /v2/projects/{{item.id}}"
+`
+      const recipe = parseRecipe(yaml)
+      expect(recipe.steps).toHaveLength(2)
+      const step = recipe.steps[1] as ForeachStep
+      expect(step.foreach).toBe('projects.data')
+      expect(step.transform).toBeUndefined()
+    })
+  })
+
   // -- YAML syntax and structural errors --
 
   describe('YAML syntax errors', () => {
@@ -1007,6 +1274,12 @@ describe('step type guards', () => {
     returns: { summary: 'string' },
   }
 
+  const transformStep: TransformStep = {
+    id: 'transform1',
+    input: 'api1',
+    transform: { select: ['id', 'name'] },
+  }
+
   describe('isAgentStep', () => {
     it('should return true for an agent step', () => {
       expect(isAgentStep(agentStep)).toBe(true)
@@ -1018,6 +1291,10 @@ describe('step type guards', () => {
 
     it('should return false for a foreach step', () => {
       expect(isAgentStep(foreachStep)).toBe(false)
+    })
+
+    it('should return false for a transform step', () => {
+      expect(isAgentStep(transformStep)).toBe(false)
     })
   })
 
@@ -1033,6 +1310,10 @@ describe('step type guards', () => {
     it('should return false for an agent step', () => {
       expect(isForeachStep(agentStep)).toBe(false)
     })
+
+    it('should return false for a transform step', () => {
+      expect(isForeachStep(transformStep)).toBe(false)
+    })
   })
 
   describe('isApiStep', () => {
@@ -1046,6 +1327,28 @@ describe('step type guards', () => {
 
     it('should return false for an agent step', () => {
       expect(isApiStep(agentStep)).toBe(false)
+    })
+
+    it('should return false for a transform step', () => {
+      expect(isApiStep(transformStep)).toBe(false)
+    })
+  })
+
+  describe('isTransformStep', () => {
+    it('should return true for a transform step', () => {
+      expect(isTransformStep(transformStep)).toBe(true)
+    })
+
+    it('should return false for an API step', () => {
+      expect(isTransformStep(apiStep)).toBe(false)
+    })
+
+    it('should return false for a foreach step', () => {
+      expect(isTransformStep(foreachStep)).toBe(false)
+    })
+
+    it('should return false for an agent step', () => {
+      expect(isTransformStep(agentStep)).toBe(false)
     })
   })
 })

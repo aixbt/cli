@@ -1,6 +1,110 @@
 import { parse as parseYaml } from 'yaml'
 import { RecipeValidationError } from './errors.js'
-import type { Recipe, RecipeStep, RecipeParam, ValidationIssue } from '../types.js'
+import type { Recipe, RecipeStep, RecipeParam, ValidationIssue, TransformBlock, SampleTransform } from '../types.js'
+
+function validateTransformBlock(
+  raw: unknown,
+  path: string,
+  issues: ValidationIssue[],
+): TransformBlock | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined
+  }
+
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    issues.push({ path, message: 'transform must be an object' })
+    return undefined
+  }
+
+  const block = raw as Record<string, unknown>
+  const result: TransformBlock = {}
+
+  // Validate select
+  if ('select' in block) {
+    if (
+      !Array.isArray(block.select) ||
+      !block.select.every((v: unknown) => typeof v === 'string')
+    ) {
+      issues.push({
+        path: `${path}.select`,
+        message: 'select must be an array of strings',
+      })
+    } else {
+      result.select = block.select as string[]
+    }
+  }
+
+  // Validate sample
+  if ('sample' in block) {
+    if (typeof block.sample !== 'object' || block.sample === null || Array.isArray(block.sample)) {
+      issues.push({
+        path: `${path}.sample`,
+        message: 'sample must be an object',
+      })
+    } else {
+      const sample = block.sample as Record<string, unknown>
+      const sampleResult: SampleTransform = {}
+
+      const hasCount = 'count' in sample && sample.count !== undefined
+      const hasMaxTokens = 'maxTokens' in sample && sample.maxTokens !== undefined
+
+      if (!hasCount && !hasMaxTokens) {
+        issues.push({
+          path: `${path}.sample`,
+          message: 'sample must have either count or maxTokens',
+        })
+      }
+
+      if (hasCount) {
+        if (typeof sample.count !== 'number' || !Number.isFinite(sample.count) || sample.count < 1 || !Number.isInteger(sample.count)) {
+          issues.push({
+            path: `${path}.sample.count`,
+            message: 'count must be a positive integer',
+          })
+        } else {
+          sampleResult.count = sample.count
+        }
+      }
+
+      if (hasMaxTokens) {
+        if (typeof sample.maxTokens !== 'number' || !Number.isFinite(sample.maxTokens) || sample.maxTokens < 1) {
+          issues.push({
+            path: `${path}.sample.maxTokens`,
+            message: 'maxTokens must be a positive number',
+          })
+        } else {
+          sampleResult.maxTokens = sample.maxTokens
+        }
+      }
+
+      if ('guarantee' in sample && sample.guarantee !== undefined) {
+        if (typeof sample.guarantee !== 'number' || sample.guarantee < 0 || sample.guarantee > 1) {
+          issues.push({
+            path: `${path}.sample.guarantee`,
+            message: 'guarantee must be a number between 0 and 1',
+          })
+        } else {
+          sampleResult.guarantee = sample.guarantee
+        }
+      }
+
+      if ('weight_by' in sample && sample.weight_by !== undefined) {
+        if (typeof sample.weight_by !== 'string') {
+          issues.push({
+            path: `${path}.sample.weight_by`,
+            message: 'weight_by must be a string',
+          })
+        } else {
+          sampleResult.weight_by = sample.weight_by
+        }
+      }
+
+      result.sample = sampleResult
+    }
+  }
+
+  return result
+}
 
 function validateStep(
   raw: unknown,
@@ -65,6 +169,44 @@ function validateStep(
     }
   }
 
+  // Transform step (has input, no endpoint)
+  if ('input' in step && step.input !== undefined) {
+    if (typeof step.input !== 'string' || (step.input as string).trim() === '') {
+      issues.push({
+        path: `${stepPath}.input`,
+        message: 'input must be a non-empty string referencing a step id',
+      })
+    }
+
+    if ('endpoint' in step && step.endpoint !== undefined) {
+      issues.push({
+        path: stepPath,
+        message: 'Transform step (with input) cannot have an endpoint',
+      })
+    }
+
+    if ('foreach' in step && step.foreach !== undefined) {
+      issues.push({
+        path: stepPath,
+        message: 'Transform step (with input) cannot have foreach',
+      })
+    }
+
+    const transform = validateTransformBlock(step.transform, `${stepPath}.transform`, issues)
+    if (step.transform === undefined || step.transform === null) {
+      issues.push({
+        path: `${stepPath}.transform`,
+        message: 'Transform step must have a transform block',
+      })
+    }
+
+    return {
+      id: step.id,
+      input: typeof step.input === 'string' ? step.input : '',
+      transform: transform ?? {},
+    }
+  }
+
   // API or foreach step — must have endpoint
   if (typeof step.endpoint !== 'string' || step.endpoint.trim() === '') {
     issues.push({
@@ -72,6 +214,8 @@ function validateStep(
       message: 'Step must have a non-empty endpoint string',
     })
   }
+
+  const transform = validateTransformBlock(step.transform, `${stepPath}.transform`, issues)
 
   if ('foreach' in step && step.foreach !== undefined) {
     // Foreach step
@@ -88,6 +232,7 @@ function validateStep(
       params: typeof step.params === 'object' && step.params !== null
         ? (step.params as Record<string, unknown>)
         : undefined,
+      ...(transform ? { transform } : {}),
     }
   }
 
@@ -98,6 +243,7 @@ function validateStep(
     params: typeof step.params === 'object' && step.params !== null
       ? (step.params as Record<string, unknown>)
       : undefined,
+    ...(transform ? { transform } : {}),
   }
 }
 
