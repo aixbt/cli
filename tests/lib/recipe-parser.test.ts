@@ -1065,7 +1065,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('count must be a positive number'),
+        expect.stringContaining('count must be a positive integer'),
       )
     })
 

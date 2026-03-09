@@ -208,6 +208,84 @@ describe('applySample', () => {
     expect(result).toEqual([])
   })
 
+  it('should use default recency weighting when weight_by is not specified', () => {
+    const now = new Date()
+    const recentDate = new Date(now.getTime() - 1000).toISOString()       // 1s ago
+    const oldDate = new Date(now.getTime() - 86400000 * 30).toISOString() // 30 days ago
+
+    const items = [
+      { id: 'old1', detectedAt: oldDate, activity: [{ a: 1 }] },
+      { id: 'old2', detectedAt: oldDate, activity: [{ a: 1 }] },
+      { id: 'old3', detectedAt: oldDate, activity: [{ a: 1 }] },
+      { id: 'old4', detectedAt: oldDate, activity: [{ a: 1 }] },
+      { id: 'old5', detectedAt: oldDate, activity: [{ a: 1 }] },
+      { id: 'recent1', detectedAt: recentDate, activity: [{ a: 1 }, { a: 2 }, { a: 3 }] },
+      { id: 'recent2', detectedAt: recentDate, activity: [{ a: 1 }, { a: 2 }, { a: 3 }] },
+      { id: 'recent3', detectedAt: recentDate, activity: [{ a: 1 }, { a: 2 }, { a: 3 }] },
+      { id: 'recent4', detectedAt: recentDate, activity: [{ a: 1 }, { a: 2 }, { a: 3 }] },
+      { id: 'recent5', detectedAt: recentDate, activity: [{ a: 1 }, { a: 2 }, { a: 3 }] },
+    ]
+
+    // Sample 5 items with default weighting (recency * strength), guarantee 0
+    // Recent items with more activity should appear more often
+    let recentCount = 0
+    const trials = 50
+    for (let t = 0; t < trials; t++) {
+      const result = applySample(items, { count: 5, guarantee: 0 })
+      for (const r of result) {
+        if (((r as { id: string }).id).startsWith('recent')) recentCount++
+      }
+    }
+    // Recent items (higher recency * more activity) should dominate
+    const recentFraction = recentCount / (trials * 5)
+    expect(recentFraction).toBeGreaterThan(0.5)
+  })
+
+  it('should use date field for recency when detectedAt is absent', () => {
+    const now = new Date()
+    const recentDate = new Date(now.getTime() - 1000).toISOString()
+    const oldDate = new Date(now.getTime() - 86400000 * 30).toISOString()
+
+    const items = [
+      { id: 'old', date: oldDate },
+      { id: 'old2', date: oldDate },
+      { id: 'old3', date: oldDate },
+      { id: 'recent', date: recentDate },
+      { id: 'recent2', date: recentDate },
+    ]
+
+    let recentCount = 0
+    const trials = 50
+    for (let t = 0; t < trials; t++) {
+      const result = applySample(items, { count: 2, guarantee: 0 })
+      for (const r of result) {
+        if (((r as { id: string }).id).startsWith('recent')) recentCount++
+      }
+    }
+    expect(recentCount / (trials * 2)).toBeGreaterThan(0.4)
+  })
+
+  it('should use activity length for strength weight', () => {
+    const items = [
+      { id: 'weak', activity: [{ a: 1 }] },
+      { id: 'weak2', activity: [{ a: 1 }] },
+      { id: 'weak3', activity: [{ a: 1 }] },
+      { id: 'strong', activity: Array.from({ length: 20 }, (_, i) => ({ a: i })) },
+      { id: 'strong2', activity: Array.from({ length: 20 }, (_, i) => ({ a: i })) },
+    ]
+
+    let strongCount = 0
+    const trials = 50
+    for (let t = 0; t < trials; t++) {
+      const result = applySample(items, { count: 2, guarantee: 0 })
+      for (const r of result) {
+        if (((r as { id: string }).id).startsWith('strong')) strongCount++
+      }
+    }
+    // Strong items (activity.length=20 vs 1) should appear more often
+    expect(strongCount / (trials * 2)).toBeGreaterThan(0.5)
+  })
+
   it('should run sample before select so weight fields are available', () => {
     // This tests the applyTransforms orchestration order indirectly:
     // If select ran first, it would strip the score field and sampling by score would fail

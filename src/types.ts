@@ -102,6 +102,10 @@ export interface AgentStep {
   task: string
   description: string
   returns: Record<string, string>
+  endpoint?: never
+  foreach?: never
+  input?: never
+  transform?: never
 }
 
 export interface TransformStep {

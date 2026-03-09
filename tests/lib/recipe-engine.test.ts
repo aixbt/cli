@@ -577,6 +577,32 @@ describe('executeRecipe', () => {
     mockSleep.mockClear()
   })
 
+  function mockPaginatedResponse(
+    data: unknown[],
+    page: number,
+    totalCount: number,
+    limit: number = 50,
+  ) {
+    return {
+      status: 200,
+      data,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        hasMore: page * limit < totalCount,
+      },
+      rateLimit: {
+        limitPerMinute: 30,
+        remainingPerMinute: Math.max(30 - page, 1),
+        resetMinute: new Date(Date.now() + 60000).toISOString(),
+        limitPerDay: 1000,
+        remainingPerDay: 990,
+        resetDay: new Date(Date.now() + 86400000).toISOString(),
+      },
+    }
+  }
+
   // -- Core execution flow --
 
   describe('core execution flow', () => {
@@ -1994,32 +2020,6 @@ steps:
   // -- Auto-pagination --
 
   describe('auto-pagination', () => {
-    function mockPaginatedResponse(
-      data: unknown[],
-      page: number,
-      totalCount: number,
-      limit: number = 50,
-    ) {
-      return {
-        status: 200,
-        data,
-        pagination: {
-          page,
-          limit,
-          totalCount,
-          hasMore: page * limit < totalCount,
-        },
-        rateLimit: {
-          limitPerMinute: 30,
-          remainingPerMinute: Math.max(30 - page, 1),
-          resetMinute: new Date(Date.now() + 60000).toISOString(),
-          limitPerDay: 1000,
-          remainingPerDay: 990,
-          resetDay: new Date(Date.now() + 86400000).toISOString(),
-        },
-      }
-    }
-
     function makeItems(count: number, prefix = 'item') {
       return Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i + 1}`, name: `${prefix} ${i + 1}` }))
     }
@@ -2378,32 +2378,6 @@ steps:
   // -- End-to-end: pagination + transforms --
 
   describe('end-to-end: pagination + transforms', () => {
-    function mockPaginatedResponse(
-      data: unknown[],
-      page: number,
-      totalCount: number,
-      limit: number = 50,
-    ) {
-      return {
-        status: 200,
-        data,
-        pagination: {
-          page,
-          limit,
-          totalCount,
-          hasMore: page * limit < totalCount,
-        },
-        rateLimit: {
-          limitPerMinute: 30,
-          remainingPerMinute: Math.max(30 - page, 1),
-          resetMinute: new Date(Date.now() + 60000).toISOString(),
-          limitPerDay: 1000,
-          remainingPerDay: 990,
-          resetDay: new Date(Date.now() + 86400000).toISOString(),
-        },
-      }
-    }
-
     const makeSignal = (i: number) => ({
       id: `sig-${i}`,
       name: `Signal ${i}`,

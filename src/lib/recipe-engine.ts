@@ -224,6 +224,23 @@ function computeWaitTime(rateLimit: RateLimitInfo): number {
   return 5000
 }
 
+interface RateLimitTracker {
+  paused: boolean
+  waitedMs: number
+}
+
+async function waitIfRateLimited(
+  rateLimit: RateLimitInfo | null,
+  tracker: RateLimitTracker,
+): Promise<void> {
+  if (rateLimit && rateLimit.remainingPerMinute <= 2) {
+    tracker.paused = true
+    const waitMs = computeWaitTime(rateLimit)
+    tracker.waitedMs += waitMs
+    await sleep(waitMs)
+  }
+}
+
 interface ForeachOptions {
   step: ForeachStep
   items: unknown[]
@@ -256,18 +273,11 @@ async function executeForeach(options: ForeachOptions): Promise<ForeachResult> {
   let latestRateLimit = currentRateLimit
   const successItems: unknown[] = []
   const failures: ForeachFailure[] = []
-  let rateLimitPaused = false
-  let totalWaitedMs = 0
+  const rateLimitTracker: RateLimitTracker = { paused: false, waitedMs: 0 }
 
   let offset = 0
   while (offset < items.length) {
-    // Check if we need to wait for rate limit reset
-    if (latestRateLimit && latestRateLimit.remainingPerMinute <= 2) {
-      rateLimitPaused = true
-      const waitMs = computeWaitTime(latestRateLimit)
-      totalWaitedMs += waitMs
-      await sleep(waitMs)
-    }
+    await waitIfRateLimited(latestRateLimit, rateLimitTracker)
 
     const batch = items.slice(offset, offset + concurrency)
     offset += batch.length
@@ -293,14 +303,7 @@ async function executeForeach(options: ForeachOptions): Promise<ForeachResult> {
         let data = result.data
 
         if (step.transform) {
-          if (Array.isArray(data)) {
-            data = applyTransforms(data, step.transform)
-          } else {
-            const transformed = applyTransforms([data], step.transform)
-            data = Array.isArray(transformed) && transformed.length > 0
-              ? transformed[0]
-              : data
-          }
+          data = applyTransforms(data, step.transform)
         }
 
         successItems.push(data)
@@ -330,7 +333,7 @@ async function executeForeach(options: ForeachOptions): Promise<ForeachResult> {
       startedAt: startedAt.toISOString(),
       completedAt: completedAt.toISOString(),
       durationMs: completedAt.getTime() - startedAt.getTime(),
-      ...(rateLimitPaused ? { rateLimitPaused: true, waitedMs: totalWaitedMs } : {}),
+      ...(rateLimitTracker.paused ? { rateLimitPaused: true, waitedMs: rateLimitTracker.waitedMs } : {}),
     },
     items: successItems,
     failures,
@@ -448,23 +451,20 @@ function findResumeSegment(
 }
 
 function applyTransforms(data: unknown, transform: TransformBlock): unknown {
-  if (!Array.isArray(data)) {
-    return data
-  }
-
-  let result: unknown[] = data
+  const isArray = Array.isArray(data)
+  let items: unknown[] = isArray ? data : [data]
 
   // Sample runs first to preserve access to weight fields
   if (transform.sample) {
-    result = applySample(result, transform.sample)
+    items = applySample(items, transform.sample)
   }
 
   // Select runs second on potentially sampled data
   if (transform.select) {
-    result = applySelect(result, transform.select)
+    items = applySelect(items, transform.select)
   }
 
-  return result
+  return isArray ? items : items[0]
 }
 
 interface PaginationOptions {
@@ -490,18 +490,14 @@ async function paginateApiStep(options: PaginationOptions): Promise<PaginationRe
 
   const allData: unknown[] = []
   let page = 1
-  let rateLimitPaused = false
-  let totalWaitedMs = 0
+  const rateLimitTracker: RateLimitTracker = { paused: false, waitedMs: 0 }
 
   const pageSize = MAX_PAGE_LIMIT
   const maxPages = Math.ceil(targetLimit / pageSize)
 
   while (page <= maxPages) {
-    if (page > 1 && currentRateLimit && currentRateLimit.remainingPerMinute <= 2) {
-      rateLimitPaused = true
-      const waitMs = computeWaitTime(currentRateLimit)
-      totalWaitedMs += waitMs
-      await sleep(waitMs)
+    if (page > 1) {
+      await waitIfRateLimited(currentRateLimit, rateLimitTracker)
     }
 
     const remaining = targetLimit - allData.length
@@ -517,6 +513,10 @@ async function paginateApiStep(options: PaginationOptions): Promise<PaginationRe
     try {
       response = await get(path, pageParams, clientOptions)
     } catch (err) {
+      if (err instanceof CliError) {
+        err.message = `Step "${stepId}" failed on page ${page}: ${err.message}`
+        throw err
+      }
       throw new CliError(
         `Step "${stepId}" failed on page ${page}: ${err instanceof Error ? err.message : String(err)}`,
         'PAGINATION_FAILED',
@@ -540,8 +540,8 @@ async function paginateApiStep(options: PaginationOptions): Promise<PaginationRe
     data: allData,
     rateLimit: currentRateLimit,
     pageCount: page,
-    rateLimitPaused,
-    waitedMs: totalWaitedMs,
+    rateLimitPaused: rateLimitTracker.paused,
+    waitedMs: rateLimitTracker.waitedMs,
   }
 }
 
@@ -641,6 +641,7 @@ async function executeStep(
       resultRateLimit = response.rateLimit
     } catch (err) {
       if (err instanceof CliError) {
+        // Re-throw to preserve subclass types (PaymentRequiredError, RateLimitError)
         err.message = `Step "${step.id}" failed: ${err.message}`
         throw err
       }

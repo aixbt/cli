@@ -56,10 +56,10 @@ function validateTransformBlock(
       }
 
       if (hasCount) {
-        if (typeof sample.count !== 'number' || !Number.isFinite(sample.count) || sample.count < 1) {
+        if (typeof sample.count !== 'number' || !Number.isFinite(sample.count) || sample.count < 1 || !Number.isInteger(sample.count)) {
           issues.push({
             path: `${path}.sample.count`,
-            message: 'count must be a positive number',
+            message: 'count must be a positive integer',
           })
         } else {
           sampleResult.count = sample.count
