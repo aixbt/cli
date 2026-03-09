@@ -460,15 +460,19 @@ function findResumeSegment(
 }
 
 function applyTransforms(data: unknown, transform: TransformBlock): unknown {
-  let result = data
+  if (!Array.isArray(data)) {
+    return data
+  }
+
+  let result: unknown[] = data
 
   // Sample runs first to preserve access to weight fields
-  if (transform.sample && Array.isArray(result)) {
+  if (transform.sample) {
     result = applySample(result, transform.sample)
   }
 
   // Select runs second on potentially sampled data
-  if (transform.select && Array.isArray(result)) {
+  if (transform.select) {
     result = applySelect(result, transform.select)
   }
 

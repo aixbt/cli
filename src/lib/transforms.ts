@@ -73,7 +73,12 @@ function resolveTargetCount(items: unknown[], config: SampleTransform): number {
     let totalTokens = 0
     let count = 0
     for (const item of items) {
-      const itemTokens = JSON.stringify(item).length / 4
+      let itemTokens: number
+      try {
+        itemTokens = JSON.stringify(item).length / 4
+      } catch {
+        itemTokens = 100
+      }
       if (totalTokens + itemTokens > config.maxTokens && count > 0) break
       totalTokens += itemTokens
       count++
@@ -107,8 +112,11 @@ function computeWeights(items: unknown[], weightBy?: string): number[] {
     const dateValue: unknown = obj.detectedAt ?? obj.date ?? obj.createdAt
     let recencyWeight = 1
     if (dateValue !== undefined) {
-      const age = now - new Date(dateValue as string).getTime()
-      recencyWeight = 1 / (age + 1)
+      const timestamp = new Date(dateValue as string).getTime()
+      if (!isNaN(timestamp)) {
+        const age = now - timestamp
+        recencyWeight = 1 / (age + 1)
+      }
     }
 
     // Strength weight from activity array
