@@ -160,6 +160,9 @@ export function registerRecipeCommand(program: Command): void {
         if (isForeachStep(step)) {
           return { id: step.id, type: 'foreach' as const, endpoint: step.endpoint }
         }
+        if (isTransformStep(step)) {
+          return { id: step.id, type: 'transform' as const, input: step.input }
+        }
         return { id: step.id, type: 'api' as const, endpoint: step.endpoint }
       })
 
