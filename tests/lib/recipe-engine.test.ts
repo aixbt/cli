@@ -7,16 +7,18 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'no
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-// Mock the api-client get function to avoid real HTTP calls
+// Mock the api-client get and sleep functions to avoid real HTTP calls and delays
 vi.mock('../../src/lib/api-client.js', async () => {
   const actual = await vi.importActual('../../src/lib/api-client.js')
   return {
     ...actual,
     get: vi.fn(),
+    sleep: vi.fn().mockResolvedValue(undefined),
   }
 })
 
 const mockGet = vi.mocked(apiClient.get)
+const mockSleep = vi.mocked(apiClient.sleep)
 
 // -- Test helpers --
 
@@ -572,6 +574,7 @@ function mockApiResponse(data: unknown) {
 describe('executeRecipe', () => {
   beforeEach(() => {
     mockGet.mockReset()
+    mockSleep.mockClear()
   })
 
   // -- Core execution flow --
@@ -1985,6 +1988,323 @@ steps:
       // The single iteration should have its array sampled to 2 items
       expect(signals).toHaveLength(1)
       expect(signals[0]).toHaveLength(2)
+    })
+  })
+
+  // -- Auto-pagination --
+
+  describe('auto-pagination', () => {
+    function mockPaginatedResponse(
+      data: unknown[],
+      page: number,
+      totalCount: number,
+      limit: number = 50,
+    ) {
+      return {
+        status: 200,
+        data,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          hasMore: page * limit < totalCount,
+        },
+        rateLimit: {
+          limitPerMinute: 30,
+          remainingPerMinute: Math.max(30 - page, 1),
+          resetMinute: new Date(Date.now() + 60000).toISOString(),
+          limitPerDay: 1000,
+          remainingPerDay: 990,
+          resetDay: new Date(Date.now() + 86400000).toISOString(),
+        },
+      }
+    }
+
+    function makeItems(count: number, prefix = 'item') {
+      return Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i + 1}`, name: `${prefix} ${i + 1}` }))
+    }
+
+    it('should trigger multi-page fetch when limit exceeds 50', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 150
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(50, 'sig2')
+      const page3 = makeItems(50, 'sig3')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 150))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 150))
+        .mockResolvedValueOnce(mockPaginatedResponse(page3, 3, 150))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(3)
+
+      // Verify page params for each call
+      expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
+      expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 50 })
+      expect(mockGet.mock.calls[2][1]).toMatchObject({ page: 3, limit: 50 })
+
+      // Verify concatenated result
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(150)
+    })
+
+    it('should not paginate when limit is 50 or below', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 50
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse(makeItems(50)))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(1)
+
+      // Should not have page param injected (YAML parses limit: 50 as number)
+      const callParams = mockGet.mock.calls[0][1]
+      expect(callParams).toEqual({ limit: 50 })
+    })
+
+    it('should not paginate when limit is absent', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+`
+      mockGet.mockResolvedValueOnce(mockApiResponse(makeItems(10)))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(1)
+    })
+
+    it('should stop early when hasMore is false', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 150
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(30, 'sig2')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 80))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 80))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(80)
+    })
+
+    it('should apply transforms after pagination combines all pages', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+    transform:
+      select: [id, name]
+`
+      const page1 = Array.from({ length: 50 }, (_, i) => ({ id: `s${i}`, name: `Signal ${i}`, extra: 'drop-me' }))
+      const page2 = Array.from({ length: 50 }, (_, i) => ({ id: `s${50 + i}`, name: `Signal ${50 + i}`, extra: 'drop-me' }))
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 100))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 100))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as Record<string, unknown>[]
+      expect(signals).toHaveLength(100)
+
+      // Verify transform was applied -- each item should only have id and name
+      for (const signal of signals) {
+        expect(Object.keys(signal).sort()).toEqual(['id', 'name'])
+        expect(signal.extra).toBeUndefined()
+      }
+    })
+
+    it('should include step ID and page number in pagination error', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+`
+      const page1 = makeItems(50, 'sig')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 100))
+        .mockRejectedValueOnce(new Error('Server error'))
+
+      try {
+        await executeRecipe({
+          yaml,
+          params: {},
+          clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+        })
+        expect.fail('Expected CliError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(CliError)
+        expect((err as CliError).code).toBe('PAGINATION_FAILED')
+        expect((err as CliError).message).toContain('signals')
+        expect((err as CliError).message).toContain('page 2')
+      }
+    })
+
+    it('should pause for rate limit when remainingPerMinute is low between pages', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 100
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(50, 'sig2')
+
+      // Page 1 returns with very low remaining rate limit
+      const page1Response = {
+        status: 200,
+        data: page1,
+        pagination: {
+          page: 1,
+          limit: 50,
+          totalCount: 100,
+          hasMore: true,
+        },
+        rateLimit: {
+          limitPerMinute: 30,
+          remainingPerMinute: 1,
+          resetMinute: new Date(Date.now() + 60000).toISOString(),
+          limitPerDay: 1000,
+          remainingPerDay: 990,
+          resetDay: new Date(Date.now() + 86400000).toISOString(),
+        },
+      }
+
+      mockGet
+        .mockResolvedValueOnce(page1Response)
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 100))
+
+      mockSleep.mockClear()
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockSleep).toHaveBeenCalled()
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(100)
+    })
+
+    it('should request only remaining items on the last page', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+    params:
+      limit: 80
+`
+      const page1 = makeItems(50, 'sig')
+      const page2 = makeItems(30, 'sig2')
+
+      mockGet
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 80))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 80))
+
+      const result = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: { apiKey: 'test', apiUrl: 'http://test' },
+      })
+
+      expect(result.status).toBe('complete')
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      // Page 1 should request 50 (full page)
+      expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
+      // Page 2 should request only 30 (remaining = 80 - 50)
+      expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 30 })
+
+      const data = (result as { data: Record<string, unknown> }).data
+      const signals = data.signals as unknown[]
+      expect(signals).toHaveLength(80)
     })
   })
 

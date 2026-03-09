@@ -12,6 +12,7 @@ import { parseRecipe } from './recipe-parser.js'
 import { validateRecipe, buildSegments } from './recipe-validator.js'
 import { get, sleep, type ApiClientOptions } from './api-client.js'
 import { CliError } from './errors.js'
+const MAX_PAGE_LIMIT = 50
 const RELATIVE_TIME_REGEX = /^-(\d+)(h|d|m)$/
 
 function getNestedValue(obj: unknown, path: string): unknown {
@@ -474,6 +475,84 @@ function applyTransforms(data: unknown, transform: TransformBlock): unknown {
   return result
 }
 
+interface PaginationOptions {
+  path: string
+  baseParams: Record<string, string | number | boolean | undefined>
+  targetLimit: number
+  stepId: string
+  clientOptions: ApiClientOptions
+  currentRateLimit: RateLimitInfo | null
+}
+
+interface PaginationResult {
+  data: unknown[]
+  rateLimit: RateLimitInfo | null
+  pageCount: number
+  rateLimitPaused: boolean
+  waitedMs: number
+}
+
+async function paginateApiStep(options: PaginationOptions): Promise<PaginationResult> {
+  const { path, baseParams, targetLimit, stepId, clientOptions } = options
+  let currentRateLimit = options.currentRateLimit
+
+  const allData: unknown[] = []
+  let page = 1
+  let rateLimitPaused = false
+  let totalWaitedMs = 0
+
+  const pageSize = MAX_PAGE_LIMIT
+  const maxPages = Math.ceil(targetLimit / pageSize)
+
+  while (page <= maxPages) {
+    if (page > 1 && currentRateLimit && currentRateLimit.remainingPerMinute <= 2) {
+      rateLimitPaused = true
+      const waitMs = computeWaitTime(currentRateLimit)
+      totalWaitedMs += waitMs
+      await sleep(waitMs)
+    }
+
+    const remaining = targetLimit - allData.length
+    const perPageLimit = Math.min(pageSize, remaining)
+
+    const pageParams = {
+      ...baseParams,
+      page,
+      limit: perPageLimit,
+    }
+
+    let response
+    try {
+      response = await get(path, pageParams, clientOptions)
+    } catch (err) {
+      throw new CliError(
+        `Step "${stepId}" failed on page ${page}: ${err instanceof Error ? err.message : String(err)}`,
+        'PAGINATION_FAILED',
+      )
+    }
+
+    if (response.rateLimit) {
+      currentRateLimit = response.rateLimit
+    }
+
+    const pageData = Array.isArray(response.data) ? response.data : [response.data]
+    allData.push(...pageData)
+
+    if (!response.pagination?.hasMore) break
+    if (allData.length >= targetLimit) break
+
+    page++
+  }
+
+  return {
+    data: allData,
+    rateLimit: currentRateLimit,
+    pageCount: page,
+    rateLimitPaused,
+    waitedMs: totalWaitedMs,
+  }
+}
+
 async function executeStep(
   step: RecipeStep,
   ctx: ExecutionContext,
@@ -536,35 +615,65 @@ async function executeStep(
 
   const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
 
-  let response
-  try {
-    response = await get(path, resolvedParams, clientOptions)
-  } catch (err) {
-    if (err instanceof CliError) {
-      err.message = `Step "${step.id}" failed: ${err.message}`
-      throw err
+  // Determine if pagination is needed
+  const resolvedLimit = resolvedParams.limit !== undefined
+    ? Number(resolvedParams.limit)
+    : undefined
+  const shouldPaginate = resolvedLimit !== undefined
+    && Number.isFinite(resolvedLimit)
+    && resolvedLimit > MAX_PAGE_LIMIT
+
+  let resultData: unknown
+  let resultRateLimit: RateLimitInfo | null = null
+  let rateLimitPaused = false
+  let waitedMs = 0
+
+  if (shouldPaginate) {
+    const paginationResult = await paginateApiStep({
+      path,
+      baseParams: resolvedParams,
+      targetLimit: resolvedLimit,
+      stepId: step.id,
+      clientOptions,
+      currentRateLimit: ctx.currentRateLimit,
+    })
+
+    resultData = paginationResult.data
+    resultRateLimit = paginationResult.rateLimit
+    rateLimitPaused = paginationResult.rateLimitPaused
+    waitedMs = paginationResult.waitedMs
+  } else {
+    try {
+      const response = await get(path, resolvedParams, clientOptions)
+      resultData = response.data
+      resultRateLimit = response.rateLimit
+    } catch (err) {
+      if (err instanceof CliError) {
+        err.message = `Step "${step.id}" failed: ${err.message}`
+        throw err
+      }
+      throw new CliError(
+        `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
+        'STEP_EXECUTION_FAILED',
+      )
     }
-    throw new CliError(
-      `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
-      'STEP_EXECUTION_FAILED',
-    )
+  }
+
+  if (isApiStep(step) && step.transform) {
+    resultData = applyTransforms(resultData, step.transform)
   }
 
   const completedAt = new Date()
 
-  let resultData = response.data
-  if (isApiStep(step) && step.transform) {
-    resultData = applyTransforms(response.data, step.transform)
-  }
-
   return {
     stepId: step.id,
     data: resultData,
-    rateLimit: response.rateLimit,
+    rateLimit: resultRateLimit,
     timing: {
       startedAt: startedAt.toISOString(),
       completedAt: completedAt.toISOString(),
       durationMs: completedAt.getTime() - startedAt.getTime(),
+      ...(rateLimitPaused ? { rateLimitPaused: true, waitedMs } : {}),
     },
   }
 }
