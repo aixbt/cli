@@ -74,7 +74,7 @@ function resolveTargetCount(items: unknown[], config: SampleTransform): number {
     let count = 0
     for (const item of items) {
       const itemTokens = JSON.stringify(item).length / 4
-      if (totalTokens + itemTokens > config.maxTokens) break
+      if (totalTokens + itemTokens > config.maxTokens && count > 0) break
       totalTokens += itemTokens
       count++
     }
