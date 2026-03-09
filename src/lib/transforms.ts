@@ -2,7 +2,7 @@ import type { SampleTransform } from '../types.js'
 
 // -- Helpers --
 
-function getNestedValue(obj: unknown, path: string): unknown {
+export function getNestedValue(obj: unknown, path: string): unknown {
   const parts = path.split('.')
   let current: unknown = obj
   for (const part of parts) {

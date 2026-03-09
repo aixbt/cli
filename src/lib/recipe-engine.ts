@@ -7,25 +7,13 @@ import type {
   TransformBlock,
 } from '../types.js'
 import { isAgentStep, isApiStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../types.js'
-import { applySelect, applySample } from './transforms.js'
+import { applySelect, applySample, getNestedValue } from './transforms.js'
 import { parseRecipe } from './recipe-parser.js'
 import { validateRecipe, buildSegments } from './recipe-validator.js'
 import { get, sleep, type ApiClientOptions } from './api-client.js'
 import { CliError } from './errors.js'
 const MAX_PAGE_LIMIT = 50
 const RELATIVE_TIME_REGEX = /^-(\d+)(h|d|m)$/
-
-function getNestedValue(obj: unknown, path: string): unknown {
-  const parts = path.split('.')
-  let current: unknown = obj
-  for (const part of parts) {
-    if (current === null || current === undefined || typeof current !== 'object') {
-      return undefined
-    }
-    current = (current as Record<string, unknown>)[part]
-  }
-  return current
-}
 
 function resolveExpression(
   expr: string,
