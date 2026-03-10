@@ -19,7 +19,7 @@ const brandBold = brandColor.bold
 
 // -- Banner --
 
-const GREETINGS = [
+const BYLINES = [
   'Sidelined?',
   'Trenches never sleep',
   'Buy high sell higher',
@@ -27,21 +27,29 @@ const GREETINGS = [
   'Still early',
 ]
 
-const P = chalk.rgb(148, 104, 196) // purple-300
-const C = chalk.rgb(70, 173, 195)  // cyan-500
-const G = chalk.rgb(50, 50, 61)    // gray-400
+const ASCII_ART = [
+  '    █████████   █████ █████ █████ ███████████  ███████████',
+  '   ███░░░░░███ ░░███ ░░███ ░░███ ░░███░░░░░███░█░░░███░░░█',
+  '  ░███    ░███  ░███  ░░███ ███   ░███    ░███░   ░███  ░ ',
+  '  ░███████████  ░███   ░░█████    ░██████████     ░███    ',
+  '  ░███░░░░░███  ░███    ███░███   ░███░░░░░███    ░███    ',
+  '  ░███    ░███  ░███   ███ ░░███  ░███    ░███    ░███    ',
+  '  █████   █████ █████ █████ █████ ███████████     █████   ',
+  ' ░░░░░   ░░░░░ ░░░░░ ░░░░░ ░░░░░ ░░░░░░░░░░░     ░░░░░    ',
+]
 
-export function banner(): string {
-  const d = chalk.dim
-  const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
+export function banner(version: string): string {
+  const byline = BYLINES[Math.floor(Math.random() * BYLINES.length)]
+  const artWidth = 58 // visual width of the widest art line
+  const pad = Math.max(0, Math.floor((artWidth - byline.length) / 2))
+  const lastSolid = ASCII_ART.length - 2
   return [
     '',
-    `    ${P('▄██▄██▄')}   ${chalk.bold.white('aixbt')}`,
-    `   ${P('██')}${chalk.black.bgRgb(148, 104, 196)('▀')}${chalk.white.bgRgb(148, 104, 196)('▀')}${chalk.black.bgRgb(148, 104, 196)('▀▀')}${chalk.white.bgRgb(148, 104, 196)('▀')}${P('▀')}`,
-    `  ${P('████')}${C.bgRgb(148, 104, 196)('▀▀▀')}${C('▀')}    ${chalk.cyan(greeting)}`,
-    `  ${G('▀▀▀▀▀▀▀')}`,
+    ...ASCII_ART.map((line, i) => i === lastSolid
+      ? chalk.white(line.trimEnd()) + `  ${chalk.dim(`v${version}`)}`
+      : chalk.white(line)),
     '',
-    `${chalk.bold.white('Guide:')} ${d('https://docs.aixbt.tech/builders/cli')}`,
+    ' '.repeat(pad) + chalk.cyan(byline),
     '',
   ].join('\n')
 }

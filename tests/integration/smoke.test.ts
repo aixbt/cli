@@ -137,8 +137,8 @@ describe('E2E smoke tests', () => {
         // eslint-disable-next-line no-control-regex
         const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
 
-        expect(stripped).toContain('aixbt')
-        expect(stripped).toContain('Guide:')
+        expect(stripped).toContain('AIXBT')
+        expect(stripped).toContain('v0.1.0')
         expect(stripped).toContain('login')
         expect(stripped).toContain('projects')
         expect(stripped).toContain('signals')

@@ -28,7 +28,7 @@ export function createProgram(): Command {
     .name('aixbt')
     .description('')
     .version(pkg.version, '-v, --version')
-    .addHelpText('before', output.banner())
+    .addHelpText('before', output.banner(pkg.version))
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')
     .option('--payment-signature <base64>', 'Payment proof for x402 (base64-encoded)')

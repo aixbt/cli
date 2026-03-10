@@ -24,16 +24,14 @@ describe('CLI', () => {
   describe('banner', () => {
     it('should register a before-help banner', () => {
       const program = createProgram()
-      // Banner is added via addHelpText('before', ...) which attaches to the help event.
-      // Verify the program has help text configured by checking the full output.
       const mockWrite = vi.fn()
       program.configureOutput({ writeOut: mockWrite })
       program.outputHelp()
       const output = mockWrite.mock.calls.map(c => String(c[0])).join('')
       // eslint-disable-next-line no-control-regex
       const stripped = output.replace(/\x1b\[[0-9;]*m/g, '')
-      expect(stripped).toContain('aixbt')
-      expect(stripped).toContain('Guide:')
+      expect(stripped).toContain('AIXBT')
+      expect(stripped).toContain('v0.1.0')
     })
   })
 
@@ -234,8 +232,8 @@ describe('CLI', () => {
         .join('')
       // eslint-disable-next-line no-control-regex
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
-      expect(stripped).toContain('aixbt')
-      expect(stripped).toContain('Guide:')
+      expect(stripped).toContain('AIXBT')
+      expect(stripped).toContain('v0.1.0')
     })
 
     it('should have writeOut configured to use process.stdout.write', () => {
