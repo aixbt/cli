@@ -626,7 +626,7 @@ steps:
     context:
       - fetch_projects
     task: Analyze the project data
-    description: Use AI to analyze
+    instructions: Use AI to analyze
     returns:
       summary: string
   - id: details

@@ -717,7 +717,7 @@ function buildAwaitingAgentOutput(
     version: ctx.recipe.version,
     step: agentStep.id,
     task: agentStep.task,
-    description: agentStep.description,
+    instructions: agentStep.instructions,
     returns: agentStep.returns,
     data,
     tokenCount: estimateTokenCount(data),
@@ -762,8 +762,10 @@ function buildCompleteOutput(
     timestamp: new Date().toISOString(),
     data,
     tokenCount: estimateTokenCount(data),
-    output: ctx.recipe.output,
-    analysis: ctx.recipe.analysis,
+    hints: ctx.recipe.hints,
+    analysis: ctx.recipe.analysis
+      ? resolveValue(ctx.recipe.analysis, ctx) as RecipeComplete['analysis']
+      : undefined,
   }
 }
 

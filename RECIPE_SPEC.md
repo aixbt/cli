@@ -23,7 +23,7 @@
 - [Variable Templating](#variable-templating)
 - [Segment Boundary Rule](#segment-boundary-rule)
 - [Agent Step Contract](#agent-step-contract)
-- [Output Block](#output-block)
+- [Hints Block](#hints-block)
 - [Analysis Block](#analysis-block)
 - [Completion Output](#completion-output)
 - [Full Example](#full-example)
@@ -40,7 +40,7 @@ Key design principles:
 
 - **Stateless execution** -- the CLI re-parses the entire YAML on every invocation, including resume. No server-side session state.
 - **The CLI never calls an LLM** -- it provides data and framing; the agent brings inference.
-- **Structured I/O** -- all CLI output is machine-readable JSON, designed for agent consumption.
+- **Structured I/O** -- all CLI output is machine-readable (JSON or TOON), designed for agent consumption.
 
 ---
 
@@ -48,16 +48,17 @@ Key design principles:
 
 A recipe is a YAML document with the following top-level fields:
 
-| Field         | Type     | Required | Description                              |
-|---------------|----------|----------|------------------------------------------|
-| `name`        | string   | yes      | Recipe identifier                        |
-| `version`     | string   | yes      | Recipe version (also accepts a number, coerced to string) |
-| `description` | string   | yes      | Human-readable description               |
-| `tier`        | string   | no       | Access tier (e.g., `"pro"`, `"free"`)    |
-| `params`      | object   | no       | Parameter definitions                    |
-| `steps`       | array    | yes      | Step definitions (must be non-empty)     |
-| `output`      | object   | no       | Output configuration                     |
-| `analysis`    | object   | no       | Analysis instructions for the agent      |
+| Field              | Type     | Required | Description                              |
+|--------------------|----------|----------|------------------------------------------|
+| `name`             | string   | yes      | Recipe identifier                        |
+| `version`          | string   | yes      | Recipe version (also accepts a number, coerced to string) |
+| `description`      | string   | yes      | Human-readable description               |
+| `tier`             | string   | no       | Access tier (e.g., `"pro"`, `"free"`)    |
+| `estimatedTokens`  | number   | no       | Author-set estimate of the recipe's output token count. Informational only — not enforced by the CLI. Set to `null` to explicitly mark as unknown. |
+| `params`           | object   | no       | Parameter definitions                    |
+| `steps`            | array    | yes      | Step definitions (must be non-empty)     |
+| `hints`            | object   | no       | Structural hints for data consumers      |
+| `analysis`         | object   | no       | Analysis instructions for the consuming agent |
 
 Minimal valid recipe:
 
@@ -213,10 +214,10 @@ Yield execution to an external agent for inference, analysis, or decision-making
 | `type`        | `"agent"`| yes      | Literal string identifying this as an agent step |
 | `context`     | string[] | yes      | List of step IDs whose data to include         |
 | `task`        | string   | yes      | Short description of what the agent should do  |
-| `description` | string   | yes      | Detailed instructions for the agent            |
+| `instructions`| string   | yes      | Detailed instructions for the agent            |
 | `returns`     | object   | yes      | Map of field names to type strings             |
 
-Agent steps do not make API calls. When the CLI reaches an agent step, it halts execution and emits a `RecipeAwaitingAgent` JSON payload containing the collected data from the referenced context steps. The agent processes the data externally and resumes execution by providing the expected return values.
+Agent steps do not make API calls. When the CLI reaches an agent step, it halts execution and emits a `RecipeAwaitingAgent` payload (JSON or TOON, depending on `--format`) containing the collected data from the referenced context steps. The agent processes the data externally and resumes execution by providing the expected return values.
 
 The `returns` object defines the schema the agent must satisfy. Keys are field names, values are type strings:
 
@@ -233,7 +234,7 @@ The `returns` object defines the schema the agent must satisfy. Keys are field n
     - projects
     - details
   task: "Analyze project data for trends"
-  description: |
+  instructions: |
     Review the project data and detail enrichments.
     Identify emerging trends, notable outliers, and
     any projects showing unusual activity patterns.
@@ -242,6 +243,16 @@ The `returns` object defines the schema the agent must satisfy. Keys are field n
     insights: "string[]"
     confidence: number
 ```
+
+The `instructions` field typically contains multi-line instructions. Use YAML's literal block scalar (`|`) to preserve line breaks and avoid escaping issues:
+
+```yaml
+instructions: |
+  Line breaks are preserved exactly as written.
+  Indentation relative to the first line is kept.
+```
+
+Without `|`, YAML folds the text into a single line, which makes long instructions harder to read and maintain in the recipe file.
 
 ### Transform Steps
 
@@ -483,6 +494,10 @@ params:
 
 Relative time expressions are resolved before template interpolation. They only apply to standalone string values, not to expressions embedded in templates.
 
+### Where Templates Are Resolved
+
+Template expressions are resolved in step `endpoint`, `params`, and `foreach` fields during execution. They are also resolved in `analysis` block fields at completion time, which allows recipe params to override analysis behavior (e.g. `output: "{params.output_style}"`). Templates are **not** resolved in the `hints` block, which is passed through verbatim.
+
 ---
 
 ## Segment Boundary Rule
@@ -528,7 +543,7 @@ steps:
       - projects
       - details
     task: "Pick top projects"
-    description: "Select the most promising projects"
+    instructions: "Select the most promising projects"
     returns:
       selected_ids: "string[]"
 
@@ -553,7 +568,7 @@ The yield/resume protocol defines how the CLI hands off to an agent and how the 
 
 ### Yield: `RecipeAwaitingAgent`
 
-When execution reaches an agent step, the CLI outputs a JSON object to stdout:
+When execution reaches an agent step, the CLI outputs a structured object to stdout (format depends on `--format` flag; shown here as JSON):
 
 ```json
 {
@@ -562,7 +577,7 @@ When execution reaches an agent step, the CLI outputs a JSON object to stdout:
   "version": "1.0",
   "step": "analyze",
   "task": "Analyze project data for trends",
-  "description": "Review the project data and identify emerging trends...",
+  "instructions": "Review the project data and identify emerging trends...",
   "returns": {
     "summary": "string",
     "insights": "string[]"
@@ -571,6 +586,7 @@ When execution reaches an agent step, the CLI outputs a JSON object to stdout:
     "projects": [ ... ],
     "details": [ ... ]
   },
+  "tokenCount": 12450,
   "resumeCommand": "aixbt recipe run my-recipe.yaml --resume-from step:analyze --input '<agent_output_json>' --chain solana"
 }
 ```
@@ -584,9 +600,10 @@ Field descriptions:
 | `version`       | Recipe version from the YAML                                   |
 | `step`          | The agent step's `id`                                          |
 | `task`          | The agent step's `task` string                                 |
-| `description`   | The agent step's `description` string                          |
+| `instructions`  | The agent step's `instructions` string                         |
 | `returns`       | The expected return schema (field names to type strings)        |
 | `data`          | Object mapping context step IDs to their collected data        |
+| `tokenCount`    | Heuristic token estimate of the `data` payload (`JSON.stringify(data).length / 4`) |
 | `resumeCommand` | Pre-built CLI command to resume execution with agent output    |
 
 The `data` object contains only the steps listed in the agent step's `context` array. Each key is a step ID, each value is that step's result data.
@@ -630,9 +647,9 @@ cat recipe.yaml | aixbt recipe run --stdin \
 
 ---
 
-## Output Block
+## Hints Block
 
-The optional `output` block describes how step results relate to each other. It is passed through verbatim in the `RecipeComplete` payload for consumers to interpret.
+The optional `hints` block provides structural hints describing how step results relate to each other. It is passed through verbatim in the `RecipeComplete` payload for consumers to interpret.
 
 | Field      | Type     | Description                                              |
 |------------|----------|----------------------------------------------------------|
@@ -640,10 +657,10 @@ The optional `output` block describes how step results relate to each other. It 
 | `key`      | string   | Shared field that relates the combined datasets           |
 | `include`  | string[] | Step IDs to include as reference data alongside combined  |
 
-The CLI does not combine or transform the data itself -- it passes these directives through so consumers can assemble the data as needed.
+The CLI does not combine or transform the data itself -- it passes these hints through so consumers can assemble the data as needed.
 
 ```yaml
-output:
+hints:
   combine:
     - projects
     - details
@@ -658,32 +675,41 @@ output:
 
 ## Analysis Block
 
-The optional `analysis` block provides instructions for the agent that will consume the recipe's output. Like the output block, it is passed through verbatim.
+The optional `analysis` block provides instructions for the agent that will consume the recipe's output. It uses `instructions` for the main guidance, `task` for the objective, and `output` for how results should be delivered.
 
-| Field           | Type   | Description                              |
-|-----------------|--------|------------------------------------------|
-| `instructions`  | string | High-level analysis instructions         |
-| `context`       | string | Additional context for the agent         |
-| `task`          | string | Specific task to perform                 |
-| `output_format` | string | Desired output format                    |
+| Field          | Type   | Description                                                      |
+|----------------|--------|------------------------------------------------------------------|
+| `instructions` | string | Main analysis instructions for the consuming agent               |
+| `task`         | string | Specific task to perform                                         |
+| `output`       | string | Freeform output directive (e.g. "markdown", "post to twitter")   |
+
+Template expressions (`{params.*}`) are resolved at execution time, allowing callers to override analysis behavior via recipe params.
 
 ```yaml
 analysis:
   instructions: |
     Analyze the collected project data to identify emerging trends
     in the DeFi sector. Focus on TVL changes and new protocol launches.
-  context: "Q1 2026 market conditions have been volatile"
   task: "Generate a trend report with actionable insights"
-  output_format: "markdown"
+  output: "{params.output_style}"
 ```
 
-The CLI does not interpret these fields. They appear in the `RecipeComplete` output for the agent to read and act on.
+With a param default:
+
+```yaml
+params:
+  output_style:
+    type: string
+    default: "markdown"
+```
+
+These fields appear in the `RecipeComplete` output for the consuming agent to read and act on.
 
 ---
 
 ## Completion Output
 
-When all steps finish (or all steps in the final segment after the last agent resume), the CLI outputs a `RecipeComplete` JSON object:
+When all steps finish (or all steps in the final segment after the last agent resume), the CLI outputs a `RecipeComplete` object (format depends on `--format` flag; shown here as JSON):
 
 ```json
 {
@@ -696,27 +722,30 @@ When all steps finish (or all steps in the final segment after the last agent re
     "details": [ ... ],
     "signals": [ ... ]
   },
-  "output": {
+  "tokenCount": 28300,
+  "hints": {
     "combine": ["projects", "details"],
     "key": "id",
     "include": ["projects", "details", "signals"]
   },
   "analysis": {
     "instructions": "Analyze the collected project data...",
-    "task": "Generate a trend report"
+    "task": "Generate a trend report",
+    "output": "markdown"
   }
 }
 ```
 
-| Field       | Description                                                       |
-|-------------|-------------------------------------------------------------------|
-| `status`    | Always `"complete"`                                               |
-| `recipe`    | Recipe name                                                       |
-| `version`   | Recipe version                                                    |
-| `timestamp` | ISO 8601 timestamp of completion                                  |
-| `data`      | Object mapping step IDs to their result data                      |
-| `output`    | The recipe's `output` block (if defined), passed through verbatim |
-| `analysis`  | The recipe's `analysis` block (if defined), passed through verbatim |
+| Field        | Description                                                       |
+|--------------|-------------------------------------------------------------------|
+| `status`     | Always `"complete"`                                               |
+| `recipe`     | Recipe name                                                       |
+| `version`    | Recipe version                                                    |
+| `timestamp`  | ISO 8601 timestamp of completion                                  |
+| `data`       | Object mapping step IDs to their result data                      |
+| `tokenCount` | Estimated token count of the `data` payload                       |
+| `hints`      | The recipe's `hints` block (if defined), passed through verbatim  |
+| `analysis`   | The recipe's `analysis` block (if defined), with templates resolved |
 
 ### Output Directory Mode
 
@@ -737,11 +766,27 @@ When `--output-dir <path>` is provided, step data is written to individual JSON 
 
 This is useful for large datasets where inlining everything in a single JSON payload is impractical.
 
+### Output Formats
+
+The CLI supports three output formats, controlled by the global `-f, --format <mode>` flag:
+
+| Format  | Flag            | Description                                              |
+|---------|-----------------|----------------------------------------------------------|
+| `table` | `-f table`      | Human-readable tables (default). Recipe results fall back to JSON since they are always structured payloads. |
+| `json`  | `-f json`       | Standard JSON with 2-space indentation.                  |
+| `toon`  | `-f toon`       | TOON (Token-Oriented Object Notation) -- a compact serialization designed for LLM consumption. Falls back to JSON if encoding fails. |
+
+For recipe execution (`recipe run`), the format applies to both `RecipeAwaitingAgent` and `RecipeComplete` payloads. Agents consuming recipe output programmatically should use `--format json` or `--format toon`.
+
+TOON is a lossless encoding of the JSON data model that uses indentation-based nesting and CSV-style tabular layouts for uniform arrays. It typically reduces token count by 30-60% compared to JSON, which directly lowers cost and frees context window space when passing recipe data to an LLM. Use `--format toon` when the consumer is an agent; use `--format json` when the consumer is a script or human.
+
+The examples throughout this spec use JSON for readability, but the same structure is emitted in all formats.
+
 ---
 
 ## Full Example
 
-A complete working recipe demonstrating parameters, API steps with auto-pagination and transforms, foreach iteration, an agent step, a post-resume segment with a transform step, output configuration, and analysis instructions.
+A complete working recipe demonstrating parameters, API steps with auto-pagination and transforms, foreach iteration, an agent step, a post-resume segment with a transform step, output configuration, and an analysis block.
 
 ```yaml
 name: chain-analysis
@@ -785,7 +830,7 @@ steps:
       - projects
       - details
     task: "Select top projects for deep analysis"
-    description: |
+    instructions: |
       Review the project list and their enriched details.
       Select the top 5 most noteworthy projects based on:
       - Recent activity and momentum
@@ -816,7 +861,7 @@ steps:
         guarantee: 0.3
       select: [id, name, category, metrics.usd]
 
-output:
+hints:
   include:
     - select
     - top_signals
@@ -828,9 +873,8 @@ analysis:
     1. Key themes across selected projects
     2. Notable signals and what they indicate
     3. Risk factors and opportunities
-  context: "Focus on actionable insights for crypto researchers"
   task: "Generate a chain analysis report"
-  output_format: "markdown"
+  output: "markdown"
 ```
 
 ### Running This Recipe
@@ -841,7 +885,7 @@ analysis:
 aixbt recipe run chain-analysis.yaml --chain solana --limit 25
 ```
 
-Output: a `RecipeAwaitingAgent` JSON with project and detail data.
+Output: a `RecipeAwaitingAgent` payload with project and detail data.
 
 **Resume** (after agent processes and selects projects):
 
@@ -852,7 +896,7 @@ aixbt recipe run chain-analysis.yaml \
   --chain solana --limit 25
 ```
 
-Output: a `RecipeComplete` JSON with signal data for the selected projects, plus the output and analysis blocks.
+Output: a `RecipeComplete` payload with signal data for the selected projects, plus the hints and analysis blocks.
 
 ### Validation
 

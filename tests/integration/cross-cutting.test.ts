@@ -33,7 +33,7 @@ steps:
       - projects
       - details
     task: "Analyze project data"
-    description: "AI analysis of projects"
+    instructions: "AI analysis of projects"
     returns:
       summary: string
       insights: "string[]"
@@ -41,7 +41,7 @@ steps:
     endpoint: "GET /v2/signals"
     params:
       projectId: "{analyze.data.projectId}"
-output:
+hints:
   include:
     - projects
     - details
@@ -78,7 +78,7 @@ steps:
     context:
       - scan
     task: "Evaluate projects"
-    description: "AI evaluation of scanned projects"
+    instructions: "AI evaluation of scanned projects"
     returns:
       picks: "string[]"
       rationale: string
@@ -166,7 +166,7 @@ describe('cross-cutting integration tests', () => {
       expect(awaiting.version).toBe('1.0')
       expect(awaiting.step).toBe('analyze')
       expect(awaiting.task).toBe('Analyze project data')
-      expect(awaiting.description).toBe('AI analysis of projects')
+      expect(awaiting.instructions).toBe('AI analysis of projects')
       expect(awaiting.returns).toEqual({ summary: 'string', insights: 'string[]' })
 
       // Verify context data was gathered from both preceding steps
@@ -210,7 +210,7 @@ describe('cross-cutting integration tests', () => {
       expect(complete.data.follow_up).toEqual(FOLLOW_UP_SIGNALS)
 
       // Verify output and analysis fields from recipe YAML are passed through
-      expect(complete.output).toEqual({ include: ['projects', 'details', 'follow_up'] })
+      expect(complete.hints).toEqual({ include: ['projects', 'details', 'follow_up'] })
       expect(complete.analysis).toEqual({
         instructions: 'Summarize the findings',
         task: 'Generate report',

@@ -49,7 +49,7 @@ function agentStep(id: string, context: string[]): AgentStep {
     type: 'agent',
     context,
     task: 'inference',
-    description: 'test',
+    instructions: 'test',
     returns: { result: 'string' },
   }
 }

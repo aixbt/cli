@@ -62,7 +62,7 @@ export interface Recipe {
   estimatedTokens?: number | null
   params?: Record<string, RecipeParam>
   steps: RecipeStep[]
-  output?: RecipeOutput
+  hints?: RecipeHints
   analysis?: RecipeAnalysis
 }
 
@@ -100,7 +100,7 @@ export interface AgentStep {
   type: 'agent'
   context: string[]
   task: string
-  description: string
+  instructions: string
   returns: Record<string, string>
   endpoint?: never
   foreach?: never
@@ -117,7 +117,7 @@ export interface TransformStep {
   type?: never
 }
 
-export interface RecipeOutput {
+export interface RecipeHints {
   combine?: string[]
   key?: string
   include?: string[]
@@ -125,9 +125,8 @@ export interface RecipeOutput {
 
 export interface RecipeAnalysis {
   instructions?: string
-  context?: string
   task?: string
-  output_format?: string
+  output?: string
 }
 
 // -- Transform block types --
@@ -215,7 +214,7 @@ export interface RecipeAwaitingAgent {
   version: string
   step: string
   task: string
-  description: string
+  instructions: string
   returns: Record<string, string>
   data: Record<string, unknown>
   tokenCount: number
@@ -229,6 +228,6 @@ export interface RecipeComplete {
   timestamp: string
   data: Record<string, unknown>
   tokenCount: number
-  output?: RecipeOutput
+  hints?: RecipeHints
   analysis?: RecipeAnalysis
 }

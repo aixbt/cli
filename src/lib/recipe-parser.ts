@@ -143,10 +143,10 @@ function validateStep(
     if (typeof step.task !== 'string') {
       issues.push({ path: `${stepPath}.task`, message: 'Agent step must have a task string' })
     }
-    if (typeof step.description !== 'string') {
+    if (typeof step.instructions !== 'string') {
       issues.push({
-        path: `${stepPath}.description`,
-        message: 'Agent step must have a description string',
+        path: `${stepPath}.instructions`,
+        message: 'Agent step must have an instructions string',
       })
     }
     if (typeof step.returns !== 'object' || step.returns === null || Array.isArray(step.returns)) {
@@ -161,7 +161,7 @@ function validateStep(
       type: 'agent' as const,
       context: Array.isArray(step.context) ? (step.context as string[]) : [],
       task: typeof step.task === 'string' ? step.task : '',
-      description: typeof step.description === 'string' ? step.description : '',
+      instructions: typeof step.instructions === 'string' ? step.instructions : '',
       returns:
         typeof step.returns === 'object' && step.returns !== null && !Array.isArray(step.returns)
           ? (step.returns as Record<string, string>)
@@ -292,43 +292,43 @@ function validateParams(
   return Object.keys(result).length > 0 ? result : undefined
 }
 
-function validateOutputBlock(
+function validateHintsBlock(
   raw: unknown,
   issues: ValidationIssue[],
-): Recipe['output'] | undefined {
+): Recipe['hints'] | undefined {
   if (raw === undefined || raw === null) {
     return undefined
   }
 
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    issues.push({ path: 'output', message: 'output must be an object' })
+    issues.push({ path: 'hints', message: 'hints must be an object' })
     return undefined
   }
 
-  const output = raw as Record<string, unknown>
-  const result: Recipe['output'] = {}
+  const hints = raw as Record<string, unknown>
+  const result: Recipe['hints'] = {}
 
-  if ('combine' in output) {
-    if (!Array.isArray(output.combine) || !output.combine.every((v) => typeof v === 'string')) {
-      issues.push({ path: 'output.combine', message: 'combine must be an array of strings' })
+  if ('combine' in hints) {
+    if (!Array.isArray(hints.combine) || !hints.combine.every((v) => typeof v === 'string')) {
+      issues.push({ path: 'hints.combine', message: 'combine must be an array of strings' })
     } else {
-      result.combine = output.combine as string[]
+      result.combine = hints.combine as string[]
     }
   }
 
-  if ('key' in output) {
-    if (typeof output.key !== 'string') {
-      issues.push({ path: 'output.key', message: 'key must be a string' })
+  if ('key' in hints) {
+    if (typeof hints.key !== 'string') {
+      issues.push({ path: 'hints.key', message: 'key must be a string' })
     } else {
-      result.key = output.key
+      result.key = hints.key
     }
   }
 
-  if ('include' in output) {
-    if (!Array.isArray(output.include) || !output.include.every((v) => typeof v === 'string')) {
-      issues.push({ path: 'output.include', message: 'include must be an array of strings' })
+  if ('include' in hints) {
+    if (!Array.isArray(hints.include) || !hints.include.every((v) => typeof v === 'string')) {
+      issues.push({ path: 'hints.include', message: 'include must be an array of strings' })
     } else {
-      result.include = output.include as string[]
+      result.include = hints.include as string[]
     }
   }
 
@@ -350,7 +350,7 @@ function validateAnalysisBlock(
 
   const analysis = raw as Record<string, unknown>
   const result: Recipe['analysis'] = {}
-  const stringFields = ['instructions', 'context', 'task', 'output_format'] as const
+  const stringFields = ['instructions', 'task', 'output'] as const
 
   for (const field of stringFields) {
     if (field in analysis) {
@@ -457,8 +457,8 @@ export function parseRecipe(yamlString: string): Recipe {
   // Validate params
   const params = validateParams(doc.params, issues)
 
-  // Validate output
-  const output = validateOutputBlock(doc.output, issues)
+  // Validate hints
+  const hints = validateHintsBlock(doc.hints, issues)
 
   // Validate analysis
   const analysis = validateAnalysisBlock(doc.analysis, issues)
@@ -478,7 +478,7 @@ export function parseRecipe(yamlString: string): Recipe {
     ...(estimatedTokens !== undefined ? { estimatedTokens } : {}),
     params,
     steps,
-    output,
+    hints,
     analysis,
   }
 }

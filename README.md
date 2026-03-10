@@ -299,12 +299,12 @@ steps:
     type: agent
     context: [get_projects, get_details]
     task: Identify the most promising projects
-    description: Review project data and momentum scores
+    instructions: Review project data and momentum scores
     returns:
       summary: string
       insights: "object[]"
 
-output:
+hints:
   merge: [get_projects, get_details]
   include: [analyze]
 ```
@@ -313,7 +313,7 @@ output:
 
 - **API steps**: Call a single API endpoint with parameters
 - **foreach steps**: Iterate over results from a previous step, calling an endpoint per item
-- **agent steps**: Yield to an external agent (LLM) with collected data and a task description
+- **agent steps**: Yield to an external agent (LLM) with collected data and instructions
 
 ### Variable Templating
 
@@ -338,9 +338,8 @@ Recipes can include an `analysis` block with instructions for post-processing:
 ```yaml
 analysis:
   instructions: "Summarize key findings and rank by opportunity"
-  context: "Crypto market analysis"
   task: "Identify actionable insights"
-  output_format: "Markdown report with sections"
+  output: "Markdown report with sections"
 ```
 
 For the complete recipe specification, see [RECIPE_SPEC.md](RECIPE_SPEC.md).
@@ -367,7 +366,7 @@ If the recipe hits an agent step, you get a `status: "awaiting_agent"` response:
   "version": "1.0",
   "step": "analyze",
   "task": "Identify the most promising projects based on momentum and signals",
-  "description": "Review the collected project data...",
+  "instructions": "Review the collected project data...",
   "returns": {
     "summary": "string",
     "insights": "object[]"
@@ -382,7 +381,7 @@ If the recipe hits an agent step, you get a `status: "awaiting_agent"` response:
 
 ### Step 2: Agent Processes Data
 
-The agent reads the `data`, `task`, and `description` fields, processes them with its LLM, and produces output matching the `returns` schema.
+The agent reads the `data`, `task`, and `instructions` fields, processes them with its LLM, and produces output matching the `returns` schema.
 
 ### Step 3: Resume the Recipe
 

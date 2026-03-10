@@ -162,11 +162,11 @@ steps:
       - fetch-projects
       - fetch-details
     task: "Analyze the project data"
-    description: "Provides analysis of fetched projects"
+    instructions: "Provides analysis of fetched projects"
     returns:
       summary: string
       score: number
-output:
+hints:
   combine:
     - fetch-projects
     - fetch-details
@@ -176,9 +176,8 @@ output:
     - score
 analysis:
   instructions: "Summarize the data"
-  context: "Project analysis context"
   task: "Generate summary"
-  output_format: "markdown"
+  output: "markdown"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.name).toBe('full-recipe')
@@ -191,13 +190,13 @@ analysis:
       expect(recipe.params!.limit.type).toBe('number')
       expect(recipe.params!.limit.default).toBe(10)
       expect(recipe.steps).toHaveLength(3)
-      expect(recipe.output).toBeDefined()
-      expect(recipe.output!.combine).toEqual(['fetch-projects', 'fetch-details'])
-      expect(recipe.output!.key).toBe('id')
-      expect(recipe.output!.include).toEqual(['name', 'score'])
+      expect(recipe.hints).toBeDefined()
+      expect(recipe.hints!.combine).toEqual(['fetch-projects', 'fetch-details'])
+      expect(recipe.hints!.key).toBe('id')
+      expect(recipe.hints!.include).toEqual(['name', 'score'])
       expect(recipe.analysis).toBeDefined()
       expect(recipe.analysis!.instructions).toBe('Summarize the data')
-      expect(recipe.analysis!.output_format).toBe('markdown')
+      expect(recipe.analysis!.output).toBe('markdown')
     })
 
     it('should parse an API step with params', () => {
@@ -241,7 +240,7 @@ steps:
     context:
       - step1
     task: "Analyze"
-    description: "Analysis step"
+    instructions: "Analysis step"
     returns:
       summary: string
 `
@@ -250,7 +249,7 @@ steps:
       expect(agentStep.type).toBe('agent')
       expect(agentStep.context).toEqual(['step1'])
       expect(agentStep.task).toBe('Analyze')
-      expect(agentStep.description).toBe('Analysis step')
+      expect(agentStep.instructions).toBe('Analysis step')
       expect(agentStep.returns).toEqual({ summary: 'string' })
     })
   })
@@ -403,7 +402,7 @@ steps:
   - id: step1
     type: agent
     task: "Analyze"
-    description: "Analysis"
+    instructions: "Analysis"
     returns:
       summary: string
 `
@@ -421,7 +420,7 @@ steps:
     type: agent
     context:
       - prev
-    description: "Analysis"
+    instructions: "Analysis"
     returns:
       summary: string
 `
@@ -431,7 +430,7 @@ steps:
       )
     })
 
-    it('should throw when agent step is missing description', () => {
+    it('should throw when agent step is missing instructions', () => {
       const yaml = `
 name: test-recipe
 steps:
@@ -445,7 +444,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Agent step must have a description string'),
+        expect.stringContaining('Agent step must have an instructions string'),
       )
     })
 
@@ -458,7 +457,7 @@ steps:
     context:
       - prev
     task: "Analyze"
-    description: "Analysis"
+    instructions: "Analysis"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -475,7 +474,7 @@ steps:
     context:
       - prev
     task: "Analyze"
-    description: "Analysis"
+    instructions: "Analysis"
     returns:
       - summary
 `
@@ -493,7 +492,7 @@ steps:
     type: agent
 `
       const err = expectValidationError(yaml)
-      // Should report context, task, description, and returns issues
+      // Should report context, task, instructions, and returns issues
       expect(err.issues.length).toBeGreaterThanOrEqual(4)
     })
 
@@ -663,14 +662,14 @@ steps:
 
   // -- Output block validation --
 
-  describe('output block validation', () => {
+  describe('hints block validation', () => {
     it('should parse valid output with combine, key, and include', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
-output:
+hints:
   combine:
     - step1
   key: "id"
@@ -679,10 +678,10 @@ output:
     - score
 `
       const recipe = parseRecipe(yaml)
-      expect(recipe.output).toBeDefined()
-      expect(recipe.output!.combine).toEqual(['step1'])
-      expect(recipe.output!.key).toBe('id')
-      expect(recipe.output!.include).toEqual(['name', 'score'])
+      expect(recipe.hints).toBeDefined()
+      expect(recipe.hints!.combine).toEqual(['step1'])
+      expect(recipe.hints!.key).toBe('id')
+      expect(recipe.hints!.include).toEqual(['name', 'score'])
     })
 
     it('should throw when combine is not an array', () => {
@@ -691,7 +690,7 @@ name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
-output:
+hints:
   combine: "step1"
 `
       const err = expectValidationError(yaml)
@@ -706,7 +705,7 @@ name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
-output:
+hints:
   combine:
     - 123
 `
@@ -722,7 +721,7 @@ name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
-output:
+hints:
   key: 123
 `
       const err = expectValidationError(yaml)
@@ -737,7 +736,7 @@ name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
-output:
+hints:
   include: "name"
 `
       const err = expectValidationError(yaml)
@@ -752,11 +751,11 @@ name: test-recipe
 steps:
   - id: step1
     endpoint: "GET /v2/projects"
-output: "not an object"
+hints: "not an object"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('output must be an object'),
+        expect.stringContaining('hints must be an object'),
       )
     })
 
@@ -768,7 +767,7 @@ steps:
     endpoint: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
-      expect(recipe.output).toBeUndefined()
+      expect(recipe.hints).toBeUndefined()
     })
   })
 
@@ -783,16 +782,14 @@ steps:
     endpoint: "GET /v2/projects"
 analysis:
   instructions: "Summarize the data"
-  context: "Project context"
   task: "Generate summary"
-  output_format: "markdown"
+  output: "markdown"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.analysis).toBeDefined()
       expect(recipe.analysis!.instructions).toBe('Summarize the data')
-      expect(recipe.analysis!.context).toBe('Project context')
       expect(recipe.analysis!.task).toBe('Generate summary')
-      expect(recipe.analysis!.output_format).toBe('markdown')
+      expect(recipe.analysis!.output).toBe('markdown')
     })
 
     it('should parse analysis block with partial fields', () => {
@@ -807,9 +804,8 @@ analysis:
       const recipe = parseRecipe(yaml)
       expect(recipe.analysis).toBeDefined()
       expect(recipe.analysis!.instructions).toBe('Summarize')
-      expect(recipe.analysis!.context).toBeUndefined()
       expect(recipe.analysis!.task).toBeUndefined()
-      expect(recipe.analysis!.output_format).toBeUndefined()
+      expect(recipe.analysis!.output).toBeUndefined()
     })
 
     it('should throw when analysis field is not a string', () => {
@@ -1270,7 +1266,7 @@ describe('step type guards', () => {
     type: 'agent',
     context: ['api1'],
     task: 'Analyze',
-    description: 'Analysis step',
+    prompt: 'Analysis step',
     returns: { summary: 'string' },
   }
 

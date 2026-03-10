@@ -472,7 +472,7 @@ steps:
     type: agent
     context: [surging]
     task: inference
-    description: "Analyze surging projects"
+    instructions: "Analyze surging projects"
     returns:
       projectIds: "string[]"
   - id: deep
@@ -511,7 +511,7 @@ steps:
     type: agent
     context: [projects, signals]
     task: inference
-    description: "Analyze data"
+    instructions: "Analyze data"
     returns:
       summary: "string"
 `
@@ -527,7 +527,7 @@ steps:
     type: agent
     context: [surging]
     task: inference
-    description: "Filter projects"
+    instructions: "Filter projects"
     returns:
       projectIds: "string[]"
   - id: signals
@@ -538,18 +538,18 @@ steps:
     type: agent
     context: [signals]
     task: synthesis
-    description: "Analyze signals"
+    instructions: "Analyze signals"
     returns:
       summary: "string"
   - id: enrichment
     endpoint: "GET /v2/projects"
 `
 
-const RECIPE_WITH_OUTPUT_AND_ANALYSIS = `
+const RECIPE_WITH_HINTS_AND_ANALYSIS = `
 name: test-recipe
 version: "1.0"
-description: Recipe with output and analysis
-output:
+description: Recipe with hints and analysis
+hints:
   combine: [projects, signals]
   key: projectId
 analysis:
@@ -681,14 +681,14 @@ describe('executeRecipe', () => {
         status: string
         step: string
         task: string
-        description: string
+        instructions: string
         returns: Record<string, string>
         data: Record<string, unknown>
         resumeCommand: string
       }
       expect(awaiting.step).toBe('analyze')
       expect(awaiting.task).toBe('inference')
-      expect(awaiting.description).toBe('Analyze surging projects')
+      expect(awaiting.instructions).toBe('Analyze surging projects')
       expect(awaiting.returns).toEqual({ projectIds: 'string[]' })
     })
 
@@ -816,17 +816,17 @@ describe('executeRecipe', () => {
         .mockResolvedValueOnce(mockApiResponse([{ id: 's1' }]))
 
       const result = await executeRecipe({
-        yaml: RECIPE_WITH_OUTPUT_AND_ANALYSIS,
+        yaml: RECIPE_WITH_HINTS_AND_ANALYSIS,
         params: {},
         clientOptions: {},
       })
 
       expect(result.status).toBe('complete')
       const complete = result as {
-        output?: { combine?: string[]; key?: string }
+        hints?: { combine?: string[]; key?: string }
         analysis?: { task?: string; instructions?: string }
       }
-      expect(complete.output).toEqual({
+      expect(complete.hints).toEqual({
         combine: ['projects', 'signals'],
         key: 'projectId',
       })
@@ -1005,13 +1005,13 @@ describe('executeRecipe', () => {
         status: string
         step: string
         task: string
-        description: string
+        instructions: string
         returns: Record<string, string>
         data: Record<string, unknown>
       }
       expect(awaiting.step).toBe('analyze')
       expect(awaiting.task).toBe('inference')
-      expect(awaiting.description).toBe('Analyze data')
+      expect(awaiting.instructions).toBe('Analyze data')
       expect(awaiting.returns).toEqual({ summary: 'string' })
     })
 
