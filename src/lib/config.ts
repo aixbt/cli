@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { NoApiKeyError } from './errors.js'
+import type { OutputFormat } from './output.js'
 
 // -- Types --
 
@@ -12,6 +13,8 @@ export interface AixbtConfig {
   keyType?: string      // 'full' | 'x402' | 'demo'
   expiresAt?: string    // ISO 8601 or null
   scopes?: string[]
+  format?: string
+  limit?: number
 }
 
 // -- Config path management --
@@ -87,13 +90,25 @@ export interface ResolvedConfig {
   keyType: string | undefined
   expiresAt: string | undefined
   scopes: string[]
+  format: OutputFormat
+  limit: number | undefined
 }
 
 export function resolveConfig(flags?: {
   apiKey?: string
   apiUrl?: string
+  format?: string
+  limit?: string
 }): ResolvedConfig {
   const config = readConfig()
+
+  const resolvedFormat = flags?.format
+    || config.format
+    || 'table'
+
+  const resolvedLimit = flags?.limit
+    ? parseInt(flags.limit, 10)
+    : config.limit
 
   return {
     apiKey: flags?.apiKey || process.env.AIXBT_API_KEY || config.apiKey,
@@ -101,7 +116,17 @@ export function resolveConfig(flags?: {
     keyType: config.keyType,
     expiresAt: config.expiresAt,
     scopes: config.scopes ?? [],
+    format: resolvedFormat as OutputFormat,
+    limit: resolvedLimit,
   }
+}
+
+export function resolveFormat(flagValue?: string): OutputFormat {
+  const config = readConfig()
+  const resolved = flagValue
+    || config.format
+    || 'table'
+  return resolved as OutputFormat
 }
 
 // -- Require API key --

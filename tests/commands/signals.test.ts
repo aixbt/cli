@@ -40,7 +40,7 @@ const MOCK_SIGNALS = [
     projectName: 'Ethereum',
     projectId: 'proj-eth',
     category: 'DeFi',
-    officialSources: ['https://defillama.com'],
+    hasOfficialSource: true,
     clusters: [
       { id: 'c1', name: 'DeFi Trends' },
       { id: 'c2', name: 'L2 Growth' },
@@ -57,7 +57,7 @@ const MOCK_SIGNALS = [
     projectName: 'Bitcoin',
     projectId: 'proj-btc',
     category: 'Adoption',
-    officialSources: [],
+    hasOfficialSource: false,
     clusters: [
       { id: 'c3', name: 'Institutional' },
     ],
@@ -112,7 +112,7 @@ describe('signals commands', () => {
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
       expect(callUrl.pathname).toBe('/v2/signals')
       expect(callUrl.searchParams.get('page')).toBe('1')
-      expect(callUrl.searchParams.get('limit')).toBe('20')
+      expect(callUrl.searchParams.get('limit')).toBeNull()
       expect(callUrl.searchParams.get('sortBy')).toBe('reinforcedAt')
 
       // Verify JSON output
@@ -199,7 +199,7 @@ describe('signals commands', () => {
       expect(callUrl.searchParams.get('address')).toBe('0xabc123')
     })
 
-    it('should display table output with enriched cluster names', async () => {
+    it('should display card layout with project name, category, and description', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_SIGNALS }),
       )
@@ -209,18 +209,95 @@ describe('signals commands', () => {
       await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      // Table headers
-      expect(allOutput).toContain('Project')
-      expect(allOutput).toContain('Category')
-      expect(allOutput).toContain('Description')
-      expect(allOutput).toContain('Clusters')
-      // Data
+      // Card titles (project names)
       expect(allOutput).toContain('Ethereum')
-      expect(allOutput).toContain('DeFi')
       expect(allOutput).toContain('Bitcoin')
+      // Card subtitles (categories)
+      expect(allOutput).toContain('DeFi')
       expect(allOutput).toContain('Adoption')
-      // Cluster names should be joined
+      // Card fields
+      expect(allOutput).toContain('Description')
+      expect(allOutput).toContain('Significant increase in DeFi TVL across Ethereum L2s')
+      expect(allOutput).toContain('New institutional custody solution launched')
+      expect(allOutput).toContain('Detected')
+      expect(allOutput).toContain('Reinforced')
+      // Cluster count shown in default mode
+      expect(allOutput).toContain('2 clusters')
+      expect(allOutput).toContain('1 cluster')
+      // Full hint shown
+      expect(allOutput).toContain('--full')
+    })
+
+    it('should display OFFICIAL badge when hasOfficialSource is true', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [MOCK_SIGNALS[0]] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      expect(allOutput).toContain('OFFICIAL')
+    })
+
+    it('should display HOT badge when signal has 3 or more clusters', async () => {
+      const hotSignal = {
+        ...MOCK_SIGNALS[0],
+        clusters: [
+          { id: 'c1', name: 'DeFi Trends' },
+          { id: 'c2', name: 'L2 Growth' },
+          { id: 'c3', name: 'Market Sentiment' },
+        ],
+      }
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [hotSignal] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      expect(allOutput).toContain('HOT')
+    })
+
+    it('should not display HOT badge when signal has fewer than 3 clusters', async () => {
+      // sig-2 has only 1 cluster and hasOfficialSource: false
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [MOCK_SIGNALS[1]] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      expect(allOutput).not.toContain('HOT')
+      expect(allOutput).not.toContain('OFFICIAL')
+    })
+
+    it('should display full card layout with --full flag', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_SIGNALS }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--full', 'signals'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      // Full mode shows additional fields
+      expect(allOutput).toContain('ID')
+      expect(allOutput).toContain('sig-1')
+      expect(allOutput).toContain('Project ID')
+      expect(allOutput).toContain('proj-eth')
+      expect(allOutput).toContain('Official')
+      // Cluster names shown in full mode (not just count)
       expect(allOutput).toContain('DeFi Trends')
+      expect(allOutput).toContain('L2 Growth')
+      // Activity field
+      expect(allOutput).toContain('Activity')
     })
 
     it('should show pagination hint when hasMore is true', async () => {

@@ -10,6 +10,7 @@ import {
   writeConfig,
   clearConfig,
   resolveConfig,
+  resolveFormat,
   DEFAULT_API_URL,
 } from '../../src/lib/config.js'
 
@@ -208,6 +209,89 @@ describe('config', () => {
 
       const resolved = resolveConfig()
       expect(resolved.scopes).toEqual(['admin', 'read', 'write'])
+    })
+
+    it('should default format to table when not configured or flagged', () => {
+      const resolved = resolveConfig()
+      expect(resolved.format).toBe('table')
+    })
+
+    it('should use config format when no flag provided', () => {
+      writeConfig({ format: 'json' })
+
+      const resolved = resolveConfig()
+      expect(resolved.format).toBe('json')
+    })
+
+    it('should use flag format over config format', () => {
+      writeConfig({ format: 'json' })
+
+      const resolved = resolveConfig({ format: 'toon' })
+      expect(resolved.format).toBe('toon')
+    })
+
+    it('should default limit to undefined when not configured or flagged', () => {
+      const resolved = resolveConfig()
+      expect(resolved.limit).toBeUndefined()
+    })
+
+    it('should use config limit when no flag provided', () => {
+      writeConfig({ limit: 50 })
+
+      const resolved = resolveConfig()
+      expect(resolved.limit).toBe(50)
+    })
+
+    it('should parse flag limit from string and prefer over config', () => {
+      writeConfig({ limit: 50 })
+
+      const resolved = resolveConfig({ limit: '10' })
+      expect(resolved.limit).toBe(10)
+    })
+
+    it('should include format and limit in resolved config', () => {
+      writeConfig({ format: 'toon', limit: 100 })
+
+      const resolved = resolveConfig()
+      expect(resolved).toHaveProperty('format')
+      expect(resolved).toHaveProperty('limit')
+      expect(resolved.format).toBe('toon')
+      expect(resolved.limit).toBe(100)
+    })
+  })
+
+  // -- resolveFormat --
+
+  describe('resolveFormat', () => {
+    it('should return flag value when provided', () => {
+      const result = resolveFormat('json')
+      expect(result).toBe('json')
+    })
+
+    it('should return config value when no flag provided', () => {
+      writeConfig({ format: 'toon' })
+
+      const result = resolveFormat()
+      expect(result).toBe('toon')
+    })
+
+    it('should return config value when flag is undefined', () => {
+      writeConfig({ format: 'json' })
+
+      const result = resolveFormat(undefined)
+      expect(result).toBe('json')
+    })
+
+    it('should return table as default when neither flag nor config set', () => {
+      const result = resolveFormat()
+      expect(result).toBe('table')
+    })
+
+    it('should prefer flag over config value', () => {
+      writeConfig({ format: 'json' })
+
+      const result = resolveFormat('toon')
+      expect(result).toBe('toon')
     })
   })
 

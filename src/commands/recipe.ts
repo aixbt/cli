@@ -10,6 +10,7 @@ import { CliError, RecipeValidationError } from '../lib/errors.js'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../lib/registry.js'
 import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
+import { resolveConfig } from '../lib/config.js'
 
 // -- Helpers --
 
@@ -103,13 +104,14 @@ export function registerRecipeCommand(program: Command): void {
     .description('List available recipes from the AIXBT registry')
     .action(async (_opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
 
       const recipes = await output.withSpinner(
         'Fetching recipes...',
         outputFormat,
         () => fetchRecipeList({ apiUrl: globalOpts.apiUrl as string | undefined }),
         'Failed to fetch recipes',
+        { silent: true },
       )
 
       if (output.isStructuredFormat(outputFormat)) {
@@ -124,17 +126,23 @@ export function registerRecipeCommand(program: Command): void {
 
       for (const r of recipes) {
         console.log()
-        const tokenLabel = r.estimatedTokens
-          ? output.fmt.dim(`~${Math.round(r.estimatedTokens / 1000)}k tokens`)
-          : ''
-        console.log(`  ${output.fmt.brandBold(r.name)}  ${output.fmt.dim(`v${r.version}`)}${tokenLabel ? `  ${tokenLabel}` : ''}`)
+        console.log(`  ${output.fmt.brandBold(r.name)}  ${output.fmt.dim(`v${r.version}`)}`)
         console.log(`  ${r.description}`)
+
+        const meta: string[] = []
+        if (r.estimatedTokens) {
+          meta.push(`~${Math.round(r.estimatedTokens / 1000)}k tokens`)
+        }
         if (r.paramCount > 0) {
-          console.log(`  ${output.fmt.dim(`${r.paramCount} param${r.paramCount !== 1 ? 's' : ''} — run`)} aixbt recipe info ${r.name} ${output.fmt.dim('for details')}`)
+          meta.push(`${r.paramCount} param${r.paramCount !== 1 ? 's' : ''}`)
+        }
+        if (meta.length > 0) {
+          console.log(`  ${output.fmt.dim(meta.join(' \u00b7 '))}`)
         }
       }
       console.log()
       output.dim(`${recipes.length} recipes`)
+      output.hint('Run aixbt recipe info <name> for details')
     })
 
   recipe
@@ -142,13 +150,14 @@ export function registerRecipeCommand(program: Command): void {
     .description('Show details of a recipe from the AIXBT registry')
     .action(async (name: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
 
       const detail = await output.withSpinner(
         'Fetching recipe...',
         outputFormat,
         () => fetchRecipeDetail(name, { apiUrl: globalOpts.apiUrl as string | undefined }),
         'Failed to fetch recipe',
+        { silent: true },
       )
 
       const parsed = parseRecipe(detail.yaml)
@@ -229,7 +238,7 @@ export function registerRecipeCommand(program: Command): void {
     .option('--out <path>', 'Output file path (default: ./<name>.yaml)')
     .action(async (name: string, opts: Record<string, unknown>, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
       const outPath = (opts.out as string) ?? `./${name}.yaml`
 
       if (existsSync(outPath)) {
@@ -269,7 +278,7 @@ export function registerRecipeCommand(program: Command): void {
     .description('Validate a recipe YAML file without executing')
     .action(async (file: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = (globalOpts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
 
       if (!existsSync(file)) {
         if (output.isStructuredFormat(outputFormat)) {

@@ -71,11 +71,11 @@ describe('config commands', () => {
       expect(output).toContain('https://custom.api.com')
     })
 
-    it('should show all config when no key specified', async () => {
+    it('should show all preference keys when no key specified', async () => {
       writeConfig({
-        apiKey: 'secret-key-1234567890',
         apiUrl: 'https://custom.api.com',
-        keyType: 'full',
+        format: 'json',
+        limit: 50,
       })
 
       const program = createProgram()
@@ -85,22 +85,36 @@ describe('config commands', () => {
       const output = logs.join('\n')
       expect(output).toContain('apiUrl')
       expect(output).toContain('https://custom.api.com')
-      expect(output).toContain('keyType')
-      expect(output).toContain('full')
+      expect(output).toContain('format')
+      expect(output).toContain('json')
+      expect(output).toContain('limit')
+      expect(output).toContain('50')
     })
 
-    it('should mask API key in output', async () => {
-      writeConfig({ apiKey: 'abcdef-long-key-suffix' })
+    it('should not show auth keys like apiKey in config get output', async () => {
+      // Even if apiKey is stored in config, config get should only iterate ALLOWED_KEYS
+      writeConfig({
+        apiKey: 'secret-key',
+        apiUrl: 'https://custom.api.com',
+        format: 'table',
+      })
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'config', 'get', 'apiKey'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'config', 'get'], { from: 'node' })
 
       const output = logs.join('\n')
-      // Should not contain the raw key
-      expect(output).not.toContain('abcdef-long-key-suffix')
-      // Should contain the masked form (first 6 + ... + last 4)
-      expect(output).toContain('...')
+      expect(output).not.toContain('apiKey')
+      expect(output).not.toContain('secret-key')
+    })
+
+    it('should error when getting a key not in allowed list', async () => {
+      const program = createProgram()
+      program.exitOverride()
+
+      await expect(
+        program.parseAsync(['node', 'aixbt', 'config', 'get', 'apiKey'], { from: 'node' }),
+      ).rejects.toThrow('Unknown config key')
     })
 
     it('should error on invalid key name', async () => {
@@ -112,7 +126,29 @@ describe('config commands', () => {
       ).rejects.toThrow('Unknown config key')
     })
 
-    it('should output JSON for a single key with --json', async () => {
+    it('should show format value when stored', async () => {
+      writeConfig({ format: 'toon' })
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'config', 'get', 'format'], { from: 'node' })
+
+      const output = logs.join('\n')
+      expect(output).toContain('toon')
+    })
+
+    it('should show limit value when stored', async () => {
+      writeConfig({ limit: 25 })
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'config', 'get', 'limit'], { from: 'node' })
+
+      const output = logs.join('\n')
+      expect(output).toContain('25')
+    })
+
+    it('should output JSON for a single key with --format json', async () => {
       writeConfig({ apiUrl: 'https://custom.api.com' })
 
       const program = createProgram()
@@ -125,24 +161,23 @@ describe('config commands', () => {
       expect(parsed.apiUrl).toBe('https://custom.api.com')
     })
 
-    it('should output JSON for all config with --json', async () => {
+    it('should output JSON for all config with --format json', async () => {
       writeConfig({
-        apiKey: 'secret-key',
         apiUrl: 'https://custom.api.com',
-        keyType: 'full',
+        format: 'json',
+        limit: 10,
       })
 
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'get'], { from: 'node' })
 
-      const jsonOutput = logs.find(l => l.includes('"apiKey"'))
+      const jsonOutput = logs.find(l => l.includes('"apiUrl"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      // JSON mode shows raw values (no masking)
-      expect(parsed.apiKey).toBe('secret-key')
       expect(parsed.apiUrl).toBe('https://custom.api.com')
-      expect(parsed.keyType).toBe('full')
+      expect(parsed.format).toBe('json')
+      expect(parsed.limit).toBe(10)
     })
 
     it('should return null for unset single key in JSON mode', async () => {
@@ -150,19 +185,19 @@ describe('config commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'get', 'apiKey'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'get', 'format'], { from: 'node' })
 
-      const jsonOutput = logs.find(l => l.includes('"apiKey"'))
+      const jsonOutput = logs.find(l => l.includes('"format"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.apiKey).toBeNull()
+      expect(parsed.format).toBeNull()
     })
   })
 
   // -- config set --
 
   describe('config set', () => {
-    it('should set a single config value', async () => {
+    it('should set apiUrl value', async () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'aixbt', 'config', 'set', 'apiUrl', 'https://new.api.com'], { from: 'node' })
@@ -171,22 +206,89 @@ describe('config commands', () => {
       expect(config.apiUrl).toBe('https://new.api.com')
     })
 
-    it('should handle scopes as comma-separated list', async () => {
+    it('should set format to table', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'scopes', 'read,write,admin'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'table'], { from: 'node' })
 
       const config = readConfig()
-      expect(config.scopes).toEqual(['read', 'write', 'admin'])
+      expect(config.format).toBe('table')
     })
 
-    it('should trim whitespace from comma-separated scopes', async () => {
+    it('should set format to json', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'scopes', 'read , write , admin'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'json'], { from: 'node' })
 
       const config = readConfig()
-      expect(config.scopes).toEqual(['read', 'write', 'admin'])
+      expect(config.format).toBe('json')
+    })
+
+    it('should set format to toon', async () => {
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'toon'], { from: 'node' })
+
+      const config = readConfig()
+      expect(config.format).toBe('toon')
+    })
+
+    it('should reject invalid format value', async () => {
+      const program = createProgram()
+      program.exitOverride()
+
+      await expect(
+        program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'yaml'], { from: 'node' }),
+      ).rejects.toThrow('Invalid format')
+    })
+
+    it('should store limit as a number', async () => {
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'limit', '50'], { from: 'node' })
+
+      const config = readConfig()
+      expect(config.limit).toBe(50)
+      expect(typeof config.limit).toBe('number')
+    })
+
+    it('should reject limit of zero', async () => {
+      const program = createProgram()
+      program.exitOverride()
+
+      await expect(
+        program.parseAsync(['node', 'aixbt', 'config', 'set', 'limit', '0'], { from: 'node' }),
+      ).rejects.toThrow('Invalid limit')
+    })
+
+    it('should reject negative limit', async () => {
+      // Commander interprets negative numbers as option flags, so -5 is caught
+      // as "unknown option" before reaching our validation. Either way the
+      // command rejects the input.
+      const program = createProgram()
+      program.exitOverride()
+
+      await expect(
+        program.parseAsync(['node', 'aixbt', 'config', 'set', 'limit', '-5'], { from: 'node' }),
+      ).rejects.toThrow()
+    })
+
+    it('should reject non-integer limit', async () => {
+      const program = createProgram()
+      program.exitOverride()
+
+      await expect(
+        program.parseAsync(['node', 'aixbt', 'config', 'set', 'limit', 'abc'], { from: 'node' }),
+      ).rejects.toThrow('Invalid limit')
+    })
+
+    it('should error on key not in allowed list', async () => {
+      const program = createProgram()
+      program.exitOverride()
+
+      await expect(
+        program.parseAsync(['node', 'aixbt', 'config', 'set', 'apiKey', 'xxx'], { from: 'node' }),
+      ).rejects.toThrow('Unknown config key')
     })
 
     it('should error on invalid key name', async () => {
@@ -198,7 +300,7 @@ describe('config commands', () => {
       ).rejects.toThrow('Unknown config key')
     })
 
-    it('should output JSON confirmation with --json', async () => {
+    it('should output JSON confirmation with --format json', async () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'set', 'apiUrl', 'https://new.api.com'], { from: 'node' })
@@ -210,29 +312,38 @@ describe('config commands', () => {
       expect(parsed.value).toBe('https://new.api.com')
     })
 
-    it('should output JSON with array value for scopes with --json', async () => {
+    it('should output JSON with number value for limit with --format json', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'set', 'scopes', 'read,write'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'config', 'set', 'limit', '25'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"key"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.key).toBe('scopes')
-      expect(parsed.value).toEqual(['read', 'write'])
+      expect(parsed.key).toBe('limit')
+      expect(parsed.value).toBe(25)
     })
 
     it('should preserve existing config values when setting a new one', async () => {
-      writeConfig({ apiKey: 'existing-key', keyType: 'full' })
+      writeConfig({ apiUrl: 'https://existing.api.com', format: 'json' })
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'apiUrl', 'https://new.api.com'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'limit', '30'], { from: 'node' })
 
       const config = readConfig()
-      expect(config.apiKey).toBe('existing-key')
-      expect(config.keyType).toBe('full')
-      expect(config.apiUrl).toBe('https://new.api.com')
+      expect(config.apiUrl).toBe('https://existing.api.com')
+      expect(config.format).toBe('json')
+      expect(config.limit).toBe(30)
+    })
+
+    it('should show success message in table format', async () => {
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'table'], { from: 'node' })
+
+      const output = logs.join('\n')
+      expect(output).toContain('Set format')
     })
   })
 })

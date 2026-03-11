@@ -52,26 +52,22 @@ interface MomentumData {
 // -- Table column definitions --
 
 const PROJECT_LIST_COLUMNS: output.TableColumn[] = [
-  { key: 'name', header: 'Name', width: 22 },
   {
-    key: 'momentumScore',
-    header: 'Momentum',
-    width: 10,
+    key: 'score',
+    header: 'Score',
+    width: 7,
     align: 'right' as const,
-    format: (v: unknown) => (typeof v === 'number' ? v.toFixed(2) : '-'),
+    format: (v: unknown) => (typeof v === 'number' ? String(Math.round(v)) : '-'),
   },
   {
-    key: 'popularityScore',
-    header: 'Pop',
-    width: 5,
-    align: 'right' as const,
-    format: (v: unknown) => (typeof v === 'number' ? String(v) : '-'),
+    key: 'name',
+    header: 'Name',
+    width: 26,
   },
   {
-    key: 'xHandle',
-    header: 'X Handle',
-    width: 18,
-    format: (v: unknown) => (v ? `@${v}` : '-'),
+    key: 'rationale',
+    header: 'Rationale',
+    width: 36,
   },
   {
     key: 'signalCount',
@@ -103,7 +99,7 @@ export function registerProjectsCommand(program: Command): void {
     .description('List and search AIXBT projects')
     .argument('[id]', 'Project ID to get details for')
     .option('--page <n>', 'Page number', '1')
-    .option('--limit <n>', 'Results per page', '20')
+    .option('--limit <n>', 'Results per page')
     .option('--project-ids <ids>', 'Filter by project IDs (comma-separated)')
     .option('--names <names>', 'Filter by project names (comma-separated)')
     .option('--x-handles <handles>', 'Filter by X handles (comma-separated)')
@@ -144,12 +140,12 @@ export function registerProjectsCommand(program: Command): void {
 // -- Handlers --
 
 async function handleProjectList(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat, full, limit } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
     page: opts.page as string,
-    limit: opts.limit as string,
+    limit,
     projectIds: opts.projectIds as string | undefined,
     names: opts.names as string | undefined,
     xHandles: opts.xHandles as string | undefined,
@@ -172,6 +168,7 @@ async function handleProjectList(cmd: Command): Promise<void> {
       outputFormat,
     ),
     'Failed to fetch projects',
+    { silent: true },
   )
 
   if (output.isStructuredFormat(outputFormat)) {
@@ -179,16 +176,44 @@ async function handleProjectList(cmd: Command): Promise<void> {
     return
   }
 
-  const rows = result.data.map((p) => ({
-    name: p.name,
-    momentumScore: p.momentumScore,
-    popularityScore: p.popularityScore,
-    xHandle: p.xHandle,
-    signalCount: p.signals?.length ?? 0,
-  }))
+  if (full) {
+    output.cards(result.data.map((p) => ({
+      title: p.name,
+      subtitle: p.coingeckoData?.symbol
+        ? `$${p.coingeckoData.symbol.toUpperCase()}`
+        : undefined,
+      fields: [
+        { label: 'ID', value: p.id },
+        { label: 'Score', value: typeof p.momentumScore === 'number' ? p.momentumScore.toFixed(2) : undefined },
+        { label: 'Popularity', value: typeof p.popularityScore === 'number' ? String(p.popularityScore) : undefined },
+        { label: 'X Handle', value: p.xHandle ? `@${p.xHandle}` : undefined },
+        { label: 'Description', value: p.description },
+        { label: 'Rationale', value: p.rationale },
+        { label: 'Signals', value: String(p.signals?.length ?? 0) },
+        { label: 'Tokens', value: p.tokens?.map(t => `${t.chain}:${t.address}`).join(', ') },
+        { label: 'Created', value: p.createdAt ? new Date(p.createdAt).toLocaleString() : undefined },
+        { label: 'Updated', value: p.updatedAt ? new Date(p.updatedAt).toLocaleString() : undefined },
+      ],
+    })))
+    output.showPagination(result.pagination)
+    return
+  }
+
+  const rows = result.data.map((p) => {
+    const ticker = p.coingeckoData?.symbol
+      ? ` (${p.coingeckoData.symbol.toUpperCase()})`
+      : ''
+    return {
+      score: p.momentumScore,
+      name: `${p.name}${ticker}`,
+      rationale: p.rationale ?? '-',
+      signalCount: p.signals?.length ?? 0,
+    }
+  })
 
   output.table(rows, PROJECT_LIST_COLUMNS)
   output.showPagination(result.pagination)
+  output.fullHint()
 }
 
 async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
@@ -205,6 +230,7 @@ async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
       outputFormat,
     ),
     'Failed to fetch project',
+    { silent: true },
   )
 
   const project = result.data
@@ -294,6 +320,7 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
       outputFormat,
     ),
     'Failed to fetch momentum',
+    { silent: true },
   )
 
   const momentum = result.data
@@ -343,6 +370,7 @@ async function handleChains(cmd: Command): Promise<void> {
       outputFormat,
     ),
     'Failed to fetch chains',
+    { silent: true },
   )
 
   const chains = result.data

@@ -5,29 +5,12 @@ import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 
-// -- Table column definitions --
-
-const SIGNAL_LIST_COLUMNS: output.TableColumn[] = [
-  { key: 'projectName', header: 'Project', width: 18 },
-  { key: 'category', header: 'Category', width: 20 },
-  { key: 'description', header: 'Description', width: 40 },
-  {
-    key: 'reinforcedAt',
-    header: 'Reinforced',
-    width: 20,
-    format: (v: unknown) => (typeof v === 'string' ? new Date(v).toLocaleDateString() : '-'),
-  },
-  { key: 'clusterNames', header: 'Clusters', width: 20 },
-]
-
-// -- Command registration --
-
 export function registerSignalsCommand(program: Command): void {
   program
     .command('signals')
     .description('Query and filter AIXBT signals')
     .option('--page <n>', 'Page number', '1')
-    .option('--limit <n>', 'Results per page', '20')
+    .option('--limit <n>', 'Results per page')
     .option('--project-ids <ids>', 'Filter by project IDs (comma-separated)')
     .option('--names <names>', 'Filter by project names (comma-separated)')
     .option('--x-handles <handles>', 'Filter by X handles (comma-separated)')
@@ -45,15 +28,24 @@ export function registerSignalsCommand(program: Command): void {
     })
 }
 
-// -- Handlers --
+function buildBadges(s: SignalData): string | undefined {
+  const badges: string[] = []
+  if ((s.clusters?.length ?? 0) >= 3) {
+    badges.push(output.fmt.red('[HOT]'))
+  }
+  if (s.hasOfficialSource) {
+    badges.push(output.fmt.green('[OFFICIAL]'))
+  }
+  return badges.length > 0 ? badges.join(' ') : undefined
+}
 
 async function handleSignalList(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat, full, limit } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
     page: opts.page as string,
-    limit: opts.limit as string,
+    limit,
     projectIds: opts.projectIds as string | undefined,
     names: opts.names as string | undefined,
     xHandles: opts.xHandles as string | undefined,
@@ -78,6 +70,7 @@ async function handleSignalList(cmd: Command): Promise<void> {
       outputFormat,
     ),
     'Failed to fetch signals',
+    { silent: true },
   )
 
   if (output.isStructuredFormat(outputFormat)) {
@@ -85,14 +78,43 @@ async function handleSignalList(cmd: Command): Promise<void> {
     return
   }
 
-  const rows = result.data.map((s) => ({
-    projectName: s.projectName,
-    category: s.category,
-    description: s.description,
-    reinforcedAt: s.reinforcedAt,
-    clusterNames: s.clusters.map((c) => c.name).join(', '),
-  }))
+  if (full) {
+    output.cards(result.data.map((s) => ({
+      title: s.projectName,
+      subtitle: s.category,
+      badge: buildBadges(s),
+      fields: [
+        { label: 'ID', value: s.id },
+        { label: 'Description', value: s.description },
+        { label: 'Detected', value: new Date(s.detectedAt).toLocaleString() },
+        { label: 'Reinforced', value: new Date(s.reinforcedAt).toLocaleString() },
+        { label: 'Clusters', value: s.clusters?.map(c => c.name).join(', ') || 'none' },
+        { label: 'Project ID', value: s.projectId },
+        { label: 'Official', value: s.hasOfficialSource ? 'Yes' : 'No' },
+        { label: 'Activity', value: s.activity.length > 0 ? `${s.activity.length} entries` : undefined },
+      ],
+    })))
+    output.showPagination(result.pagination)
+    return
+  }
 
-  output.table(rows, SIGNAL_LIST_COLUMNS)
+  output.cards(result.data.map((s) => ({
+    title: s.projectName,
+    subtitle: s.category,
+    badge: buildBadges(s),
+    fields: [
+      { label: 'Description', value: s.description },
+      { label: 'Detected', value: new Date(s.detectedAt).toLocaleString() },
+      { label: 'Reinforced', value: new Date(s.reinforcedAt).toLocaleString() },
+      {
+        label: 'Clusters',
+        value: (s.clusters?.length ?? 0) > 0
+          ? `${s.clusters.length} cluster${s.clusters.length !== 1 ? 's' : ''}`
+          : undefined,
+      },
+    ],
+  })))
+
   output.showPagination(result.pagination)
+  output.fullHint()
 }

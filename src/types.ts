@@ -40,7 +40,7 @@ export interface SignalData {
   projectName: string
   projectId: string
   category: string
-  officialSources: string[]
+  hasOfficialSource: boolean
   clusters: Array<{ id: string; name: string }>
   activity: Array<{
     date: string

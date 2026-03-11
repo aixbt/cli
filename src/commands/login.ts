@@ -1,9 +1,8 @@
 import type { Command } from 'commander'
 import { password } from '@inquirer/prompts'
-import { readConfig, writeConfig, resolveConfig } from '../lib/config.js'
+import { readConfig, writeConfig, resolveConfig, resolveFormat } from '../lib/config.js'
 import { validateApiKey, formatExpiry, isExpiringSoon } from '../lib/auth.js'
 import * as output from '../lib/output.js'
-import type { OutputFormat } from '../lib/output.js'
 import { CliError } from '../lib/errors.js'
 import { handlePurchasePass } from '../lib/x402.js'
 
@@ -17,7 +16,7 @@ export function registerLoginCommand(program: Command): void {
     .option('--payment-signature <base64>', 'Payment signature for x402 pass purchase')
     .action(async (_opts, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const outputFormat = (opts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveFormat(opts.format as string | undefined)
 
       // Handle purchase-pass flow
       if (opts.purchasePass !== undefined) {
@@ -84,7 +83,7 @@ export function registerLoginCommand(program: Command): void {
     .description('Remove stored API credentials')
     .action((_opts, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const outputFormat = (opts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveFormat(opts.format as string | undefined)
 
       const config = readConfig()
       delete config.apiKey
@@ -106,7 +105,7 @@ export function registerLoginCommand(program: Command): void {
     .description('Show current authentication status')
     .action(async (_opts, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const outputFormat = (opts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveFormat(opts.format as string | undefined)
 
       const resolved = resolveConfig({
         apiKey: opts.apiKey as string | undefined,

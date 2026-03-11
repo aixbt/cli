@@ -12,8 +12,8 @@ import { registerLoginCommand } from './commands/login.js'
 import { registerConfigCommand } from './commands/config.js'
 import { registerCompletionCommand } from './commands/completion.js'
 import * as output from './lib/output.js'
-import type { OutputFormat } from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
+import { resolveFormat } from './lib/config.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
@@ -22,7 +22,6 @@ export function createProgram(): Command {
 
   const formatOption = new Option('-f, --format <mode>', 'Output format: table, json, toon')
     .choices(['table', 'json', 'toon'])
-    .default('table')
 
   program
     .name('aixbt')
@@ -40,6 +39,7 @@ export function createProgram(): Command {
     })
 
   program.addOption(formatOption)
+  program.option('--full', 'Show all available fields')
 
   program.hook('preAction', (thisCommand) => {
     const opts = thisCommand.optsWithGlobals()
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       console.log()
       process.exit(0)
     }
-    const outputFormat = (program.opts().format as OutputFormat) ?? 'table'
+    const outputFormat = resolveFormat(program.opts().format as string | undefined)
     handleTopLevelError(err, outputFormat)
   }
 }

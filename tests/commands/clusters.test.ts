@@ -121,7 +121,7 @@ describe('clusters commands', () => {
       expect(callUrl.search).toBe('')
     })
 
-    it('should display table output with name, description, and ID', async () => {
+    it('should display card layout with name, description, and ID', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_CLUSTERS }),
       )
@@ -131,15 +131,17 @@ describe('clusters commands', () => {
       await program.parseAsync(['node', 'aixbt', 'clusters'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      // Table headers
-      expect(allOutput).toContain('Name')
-      expect(allOutput).toContain('Description')
-      expect(allOutput).toContain('ID')
-      // Data rows
+      // Card titles (cluster names)
       expect(allOutput).toContain('DeFi Trends')
       expect(allOutput).toContain('Market Sentiment')
       expect(allOutput).toContain('L2 Growth')
+      // Card fields
+      expect(allOutput).toContain('ID')
       expect(allOutput).toContain('cluster-1')
+      expect(allOutput).toContain('cluster-2')
+      expect(allOutput).toContain('cluster-3')
+      expect(allOutput).toContain('Description')
+      expect(allOutput).toContain('Signals related to decentralized finance')
       // Footer count
       expect(allOutput).toContain('3 clusters')
     })
