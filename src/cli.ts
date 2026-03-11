@@ -12,7 +12,6 @@ import { registerLoginCommand } from './commands/login.js'
 import { registerConfigCommand } from './commands/config.js'
 import { registerCompletionCommand } from './commands/completion.js'
 import * as output from './lib/output.js'
-import type { OutputFormat } from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
 import { resolveFormat } from './lib/config.js'
 

@@ -107,7 +107,7 @@ describe('recipe commands', () => {
 
   describe('recipe list', () => {
     const MOCK_RECIPES = [
-      { name: 'defi-analysis', version: '1.0', description: 'Analyze DeFi protocols', paramCount: 2 },
+      { name: 'defi-analysis', version: '1.0', description: 'Analyze DeFi protocols', paramCount: 2, estimatedTokens: 15000 },
       { name: 'market-scanner', version: '2.1', description: 'Scan market trends', paramCount: 0 },
     ]
 
@@ -125,10 +125,22 @@ describe('recipe commands', () => {
       expect(callUrl.pathname).toBe('/v2/cli/recipes')
 
       const allOutput = logs.join('\n')
-      // Card entries should be present
+      // Recipe names and versions should be present
       expect(allOutput).toContain('defi-analysis')
+      expect(allOutput).toContain('v1.0')
       expect(allOutput).toContain('market-scanner')
+      expect(allOutput).toContain('v2.1')
+      // Descriptions
+      expect(allOutput).toContain('Analyze DeFi protocols')
+      expect(allOutput).toContain('Scan market trends')
+      // Estimated tokens shown when present (15000 -> ~15k tokens)
+      expect(allOutput).toContain('15k tokens')
+      // Param count shown for recipes with params
+      expect(allOutput).toContain('2 params')
+      // Footer count
       expect(allOutput).toContain('2 recipes')
+      // Footer hint for recipe info
+      expect(allOutput).toContain('recipe info')
     })
 
     it('should fetch and display recipe list in JSON mode', async () => {

@@ -175,7 +175,7 @@ function distributeWidths(
     return contentWidths
   }
 
-  const minWidths = columns.map((col, i) => {
+  const minWidths = columns.map((col) => {
     const min = col.width
       ? Math.min(col.width, Math.floor(available / 2))
       : Math.min(col.header.length + 2, Math.floor(available / columns.length))
@@ -198,7 +198,7 @@ function distributeWidths(
   })
 }
 
-function wrapText(text: string, width: number, align?: 'left' | 'right'): string[] {
+function wrapText(text: string, width: number): string[] {
   if (width <= 0) return [text]
   if (text.length <= width) return [text]
 
@@ -258,7 +258,7 @@ export function table<T extends Record<string, unknown>>(
   for (const row of data) {
     const cellValues = columns.map((col, i) => {
       const raw = col.format ? col.format(row[col.key]) : String(row[col.key] ?? '')
-      return wrapText(raw, widths[i], col.align)
+      return wrapText(raw, widths[i])
     })
 
     const maxLines = Math.max(...cellValues.map(v => v.length))

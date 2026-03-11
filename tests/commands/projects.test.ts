@@ -184,9 +184,21 @@ describe('projects commands', () => {
       expect(callUrl.searchParams.get('limit')).toBe('10')
     })
 
-    it('should display table output with project names and momentum scores', async () => {
+    it('should display table output with score, name, rationale, and signals count', async () => {
+      const projectsWithRationale = [
+        {
+          ...MOCK_PROJECTS[0],
+          rationale: 'Institutional interest rising',
+          coingeckoData: { apiId: 'bitcoin', type: 'coin', symbol: 'BTC', slug: 'bitcoin', description: '', homepage: '', contractAddress: '', categories: [] },
+        },
+        {
+          ...MOCK_PROJECTS[1],
+          rationale: 'DeFi ecosystem expanding',
+          coingeckoData: { apiId: 'ethereum', type: 'coin', symbol: 'ETH', slug: 'ethereum', description: '', homepage: '', contractAddress: '', categories: [] },
+        },
+      ]
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_PROJECTS }),
+        jsonResponse(200, { status: 200, data: projectsWithRationale }),
       )
 
       const program = createProgram()
@@ -194,14 +206,66 @@ describe('projects commands', () => {
       await program.parseAsync(['node', 'aixbt', 'projects'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      // Table header should be present
+      // New table headers
+      expect(allOutput).toContain('Score')
       expect(allOutput).toContain('Name')
-      expect(allOutput).toContain('Momentum')
-      // Project data should be present
+      expect(allOutput).toContain('Rationale')
+      expect(allOutput).toContain('Signals')
+      // Project names with ticker suffix
       expect(allOutput).toContain('Bitcoin')
+      expect(allOutput).toContain('BTC')
       expect(allOutput).toContain('Ethereum')
-      expect(allOutput).toContain('85.50')
-      expect(allOutput).toContain('72.30')
+      expect(allOutput).toContain('ETH')
+      // Score should be rounded (Math.round), not formatted with decimals
+      expect(allOutput).toContain('86')
+      expect(allOutput).toContain('72')
+      // Rationale should be shown
+      expect(allOutput).toContain('Institutional interest rising')
+      expect(allOutput).toContain('DeFi ecosystem expanding')
+      // Full hint should be shown
+      expect(allOutput).toContain('--full')
+    })
+
+    it('should display card layout with --full flag', async () => {
+      const projectsWithDetails = [
+        {
+          ...MOCK_PROJECTS[0],
+          description: 'The first cryptocurrency',
+          rationale: 'Institutional interest rising',
+          coingeckoData: { apiId: 'bitcoin', type: 'coin', symbol: 'BTC', slug: 'bitcoin', description: '', homepage: '', contractAddress: '', categories: [] },
+          tokens: [{ chain: 'bitcoin', address: 'native', source: 'coingecko' }],
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z',
+        },
+      ]
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: projectsWithDetails }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--full', 'projects'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      // Card layout should show project name
+      expect(allOutput).toContain('Bitcoin')
+      // Ticker as subtitle
+      expect(allOutput).toContain('$BTC')
+      // Card fields
+      expect(allOutput).toContain('ID')
+      expect(allOutput).toContain('proj-1')
+      expect(allOutput).toContain('Score')
+      expect(allOutput).toContain('Popularity')
+      expect(allOutput).toContain('X Handle')
+      expect(allOutput).toContain('@bitcoin')
+      expect(allOutput).toContain('Description')
+      expect(allOutput).toContain('The first cryptocurrency')
+      expect(allOutput).toContain('Rationale')
+      expect(allOutput).toContain('Institutional interest rising')
+      expect(allOutput).toContain('Signals')
+      expect(allOutput).toContain('Tokens')
+      expect(allOutput).toContain('Created')
+      expect(allOutput).toContain('Updated')
     })
 
     it('should show pagination hint when hasMore is true', async () => {

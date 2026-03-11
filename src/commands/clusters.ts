@@ -4,23 +4,11 @@ import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { CliError } from '../lib/errors.js'
 
-// -- Response types --
-
 interface ClusterData {
   id: string
   name: string
   description: string
 }
-
-// -- Table column definitions --
-
-const CLUSTER_COLUMNS: output.TableColumn[] = [
-  { key: 'name', header: 'Name', width: 22 },
-  { key: 'description', header: 'Description', width: 50 },
-  { key: 'id', header: 'ID', width: 26 },
-]
-
-// -- Command registration --
 
 export function registerClustersCommand(program: Command): void {
   program
@@ -41,6 +29,7 @@ export function registerClustersCommand(program: Command): void {
         outputFormat,
         () => get<ClusterData[]>('/v2/clusters', undefined, clientOpts),
         'Failed to fetch clusters',
+        { silent: true },
       )
 
       if (output.isStructuredFormat(outputFormat)) {
@@ -48,14 +37,17 @@ export function registerClustersCommand(program: Command): void {
         return
       }
 
-      const rows = result.data.map((c) => ({
-        name: c.name,
-        description: c.description,
-        id: c.id,
-      }))
+      output.cards(result.data.map((c) => ({
+        title: c.name,
+        fields: [
+          { label: 'ID', value: c.id },
+          { label: 'Description', value: c.description },
+        ],
+      })))
 
-      output.table(rows, CLUSTER_COLUMNS)
-      console.log()
-      output.dim(`${result.data.length} clusters`)
+      if (result.data.length > 0) {
+        console.log()
+        output.dim(`${result.data.length} clusters`)
+      }
     })
 }
