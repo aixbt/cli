@@ -82,9 +82,11 @@ export function getClientOptions(cmd: Command): {
   clientOpts: ApiClientOptions
   authMode: AuthMode
   outputFormat: OutputFormat
+  full: boolean
 } {
   const opts = cmd.optsWithGlobals()
   const outputFormat = (opts.format as OutputFormat) ?? 'table'
+  const full = Boolean(opts.full)
   const authMode = resolveAuthMode({
     delayed: opts.delayed as boolean | undefined,
     payPerUse: opts.payPerUse as boolean | undefined,
@@ -95,5 +97,5 @@ export function getClientOptions(cmd: Command): {
     apiUrl: opts.apiUrl as string | undefined,
     paymentSignature: opts.paymentSignature as string | undefined,
   })
-  return { clientOpts, authMode, outputFormat }
+  return { clientOpts, authMode, outputFormat, full }
 }

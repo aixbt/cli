@@ -97,6 +97,15 @@ export function dim(msg: string): void {
   console.log(chalk.dim(msg))
 }
 
+export function hint(msg: string): void {
+  console.log()
+  console.log(chalk.dim(msg))
+}
+
+export function fullHint(): void {
+  hint('Use --full for complete details')
+}
+
 export function label(key: string, value: string): void {
   console.log(`${chalk.bold.white(key + ':')}  ${value}`)
 }
@@ -115,11 +124,16 @@ export async function withSpinner<T>(
   outputFormat: OutputFormat,
   fn: () => Promise<T>,
   failText?: string,
+  opts?: { silent?: boolean },
 ): Promise<T> {
   const spin = isStructuredFormat(outputFormat) ? null : spinner(text)
   try {
     const result = await fn()
-    spin?.succeed()
+    if (opts?.silent) {
+      spin?.stop()
+    } else {
+      spin?.succeed()
+    }
     return result
   } catch (err) {
     spin?.fail(failText ?? text)
@@ -146,6 +160,69 @@ interface TableColumn {
 
 export type { TableColumn }
 
+function getTerminalWidth(): number {
+  return process.stdout.columns || 80
+}
+
+function distributeWidths(
+  columns: TableColumn[],
+  contentWidths: number[],
+  available: number,
+): number[] {
+  const totalContent = contentWidths.reduce((sum, w) => sum + w, 0)
+
+  if (totalContent <= available) {
+    return contentWidths
+  }
+
+  const minWidths = columns.map((col, i) => {
+    const min = col.width
+      ? Math.min(col.width, Math.floor(available / 2))
+      : Math.min(col.header.length + 2, Math.floor(available / columns.length))
+    return min
+  })
+
+  const totalMin = minWidths.reduce((sum, w) => sum + w, 0)
+  const remaining = Math.max(0, available - totalMin)
+
+  const totalWanted = contentWidths.reduce(
+    (sum, w, i) => sum + Math.max(0, w - minWidths[i]),
+    0,
+  )
+
+  return minWidths.map((min, i) => {
+    if (totalWanted === 0) return min
+    const wanted = Math.max(0, contentWidths[i] - min)
+    const bonus = Math.floor((wanted / totalWanted) * remaining)
+    return min + bonus
+  })
+}
+
+function wrapText(text: string, width: number, align?: 'left' | 'right'): string[] {
+  if (width <= 0) return [text]
+  if (text.length <= width) return [text]
+
+  const lines: string[] = []
+  let remaining = text
+
+  while (remaining.length > 0) {
+    if (remaining.length <= width) {
+      lines.push(remaining)
+      break
+    }
+
+    let breakAt = remaining.lastIndexOf(' ', width)
+    if (breakAt <= 0) {
+      breakAt = width
+    }
+
+    lines.push(remaining.slice(0, breakAt).trimEnd())
+    remaining = remaining.slice(breakAt).trimStart()
+  }
+
+  return lines.length > 0 ? lines : ['']
+}
+
 export function table<T extends Record<string, unknown>>(
   data: T[],
   columns: TableColumn[],
@@ -155,34 +232,89 @@ export function table<T extends Record<string, unknown>>(
     return
   }
 
-  const widths = columns.map(col => {
+  const termWidth = getTerminalWidth()
+
+  const contentWidths = columns.map(col => {
     const headerLen = col.header.length
     const maxDataLen = data.reduce((max, row) => {
       const val = col.format ? col.format(row[col.key]) : String(row[col.key] ?? '')
       return Math.max(max, val.length)
     }, 0)
-    return col.width ?? Math.min(Math.max(headerLen, maxDataLen) + 2, 40)
+    const natural = Math.max(headerLen, maxDataLen) + 2
+    return col.width ? Math.max(natural, col.width) : natural
   })
+
+  const gutterWidth = (columns.length - 1) * 2
+  const available = termWidth - gutterWidth
+
+  const widths = distributeWidths(columns, contentWidths, available)
 
   const headerLine = columns
     .map((col, i) => chalk.dim(col.header.padEnd(widths[i])))
     .join('  ')
   console.log(headerLine)
-  console.log(chalk.dim('-'.repeat(headerLine.length)))
+  console.log(chalk.dim('-'.repeat(Math.min(headerLine.length, termWidth))))
 
   for (const row of data) {
-    const line = columns
-      .map((col, i) => {
-        const raw = col.format ? col.format(row[col.key]) : String(row[col.key] ?? '')
-        const truncated = raw.length > widths[i] - 1
-          ? raw.slice(0, widths[i] - 4) + '...'
-          : raw
+    const cellValues = columns.map((col, i) => {
+      const raw = col.format ? col.format(row[col.key]) : String(row[col.key] ?? '')
+      return wrapText(raw, widths[i], col.align)
+    })
+
+    const maxLines = Math.max(...cellValues.map(v => v.length))
+
+    for (let line = 0; line < maxLines; line++) {
+      const rowLine = columns.map((col, i) => {
+        const text = cellValues[i][line] ?? ''
         return col.align === 'right'
-          ? truncated.padStart(widths[i])
-          : truncated.padEnd(widths[i])
-      })
-      .join('  ')
-    console.log(line)
+          ? text.padStart(widths[i])
+          : text.padEnd(widths[i])
+      }).join('  ')
+      console.log(rowLine)
+    }
+  }
+}
+
+// -- Card layout --
+
+export interface CardField {
+  label: string
+  value: string | undefined | null
+}
+
+export interface CardItem {
+  title: string
+  subtitle?: string
+  badge?: string
+  fields: CardField[]
+}
+
+export function cards(items: CardItem[], opts?: { pad?: number }): void {
+  if (items.length === 0) {
+    dim('No results.')
+    return
+  }
+
+  const pad = opts?.pad ?? 18
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+
+    // Title line
+    const badgePart = item.badge ? `${item.badge} ` : ''
+    const subtitlePart = item.subtitle ? `  ${chalk.dim(item.subtitle)}` : ''
+    console.log(`${badgePart}${chalk.bold.white(item.title)}${subtitlePart}`)
+
+    // Fields
+    for (const field of item.fields) {
+      if (field.value == null || field.value === '') continue
+      keyValue(field.label, field.value, pad)
+    }
+
+    // Separator between items (not after the last one)
+    if (i < items.length - 1) {
+      console.log()
+    }
   }
 }
 

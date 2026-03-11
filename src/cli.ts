@@ -40,6 +40,7 @@ export function createProgram(): Command {
     })
 
   program.addOption(formatOption)
+  program.option('--full', 'Show all available fields')
 
   program.hook('preAction', (thisCommand) => {
     const opts = thisCommand.optsWithGlobals()
