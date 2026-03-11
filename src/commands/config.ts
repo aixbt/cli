@@ -1,7 +1,6 @@
 import type { Command } from 'commander'
-import { readConfig, writeConfig } from '../lib/config.js'
+import { readConfig, writeConfig, resolveFormat } from '../lib/config.js'
 import { CliError } from '../lib/errors.js'
-import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
 
 const ALLOWED_KEYS = ['format', 'apiUrl', 'limit'] as const
@@ -51,7 +50,7 @@ export function registerConfigCommand(program: Command): void {
     .description('Show config value(s)')
     .action((key: string | undefined, _opts: unknown, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const outputFormat = (opts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveFormat(opts.format as string | undefined)
       const cfg = readConfig()
 
       if (key !== undefined) {
@@ -88,7 +87,7 @@ export function registerConfigCommand(program: Command): void {
     .description('Set a config value')
     .action((key: string, value: string, _opts: unknown, cmd: Command) => {
       const opts = cmd.optsWithGlobals()
-      const outputFormat = (opts.format as OutputFormat) ?? 'table'
+      const outputFormat = resolveFormat(opts.format as string | undefined)
 
       if (!isAllowedKey(key)) {
         throw new CliError(`Unknown config key: ${key}. Allowed keys: ${ALLOWED_KEYS.join(', ')}`, 'INVALID_CONFIG_KEY')
