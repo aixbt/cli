@@ -103,7 +103,7 @@ export function registerProjectsCommand(program: Command): void {
     .description('List and search AIXBT projects')
     .argument('[id]', 'Project ID to get details for')
     .option('--page <n>', 'Page number', '1')
-    .option('--limit <n>', 'Results per page', '20')
+    .option('--limit <n>', 'Results per page')
     .option('--project-ids <ids>', 'Filter by project IDs (comma-separated)')
     .option('--names <names>', 'Filter by project names (comma-separated)')
     .option('--x-handles <handles>', 'Filter by X handles (comma-separated)')

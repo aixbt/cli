@@ -154,7 +154,7 @@ describe('projects commands', () => {
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
       expect(callUrl.pathname).toBe('/v2/projects')
       expect(callUrl.searchParams.get('page')).toBe('1')
-      expect(callUrl.searchParams.get('limit')).toBe('20')
+      expect(callUrl.searchParams.get('limit')).toBeNull()
       expect(callUrl.searchParams.get('sortBy')).toBe('momentumScore')
 
       // Verify JSON output contains project data

@@ -137,12 +137,12 @@ describe('CLI', () => {
       expect(program.opts().apiKey).toBe('my-secret-key')
     })
 
-    it('should default format to table and other global options to undefined when not passed', () => {
+    it('should default format to undefined and other global options to undefined when not passed', () => {
       const program = createProgram()
       program.exitOverride()
       program.parse(['node', 'test', 'login'], { from: 'node' })
       const opts = program.opts()
-      expect(opts.format).toBe('table')
+      expect(opts.format).toBeUndefined()
       expect(opts.delayed).toBeUndefined()
       expect(opts.payPerUse).toBeUndefined()
       expect(opts.apiKey).toBeUndefined()
@@ -363,7 +363,7 @@ describe('CLI', () => {
 
       // program2 should not be affected by program1's parsing
       program2.parse(['node', 'test', 'login'], { from: 'node' })
-      expect(program2.opts().format).toBe('table')
+      expect(program2.opts().format).toBeUndefined()
     })
   })
 })

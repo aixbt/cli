@@ -27,7 +27,7 @@ export function registerSignalsCommand(program: Command): void {
     .command('signals')
     .description('Query and filter AIXBT signals')
     .option('--page <n>', 'Page number', '1')
-    .option('--limit <n>', 'Results per page', '20')
+    .option('--limit <n>', 'Results per page')
     .option('--project-ids <ids>', 'Filter by project IDs (comma-separated)')
     .option('--names <names>', 'Filter by project names (comma-separated)')
     .option('--x-handles <handles>', 'Filter by X handles (comma-separated)')

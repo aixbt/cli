@@ -24,14 +24,14 @@ export interface ApiKeyInfo {
   expiresAt: string  // ISO 8601 or "never"
 }
 
-export function resolveAuthMode(flags: AuthModeFlags): AuthMode {
+export function resolveAuthMode(flags: AuthModeFlags, resolved?: ResolvedConfig): AuthMode {
   if (flags.delayed) {
     return { mode: 'delayed' }
   }
   if (flags.payPerUse) {
     return { mode: 'pay-per-use' }
   }
-  const config = resolveConfig({
+  const config = resolved ?? resolveConfig({
     apiKey: flags.apiKey,
     apiUrl: flags.apiUrl,
   })
@@ -83,19 +83,30 @@ export function getClientOptions(cmd: Command): {
   authMode: AuthMode
   outputFormat: OutputFormat
   full: boolean
+  limit: number | undefined
 } {
   const opts = cmd.optsWithGlobals()
-  const outputFormat = (opts.format as OutputFormat) ?? 'table'
+
+  const resolved = resolveConfig({
+    apiKey: opts.apiKey as string | undefined,
+    apiUrl: opts.apiUrl as string | undefined,
+    format: opts.format as string | undefined,
+    limit: opts.limit as string | undefined,
+  })
+
+  const outputFormat = resolved.format
   const full = Boolean(opts.full)
+  const limit = resolved.limit
+
   const authMode = resolveAuthMode({
     delayed: opts.delayed as boolean | undefined,
     payPerUse: opts.payPerUse as boolean | undefined,
-    apiKey: opts.apiKey as string | undefined,
-    apiUrl: opts.apiUrl as string | undefined,
-  })
+  }, resolved)
+
   const clientOpts = buildClientOptions(authMode, {
     apiUrl: opts.apiUrl as string | undefined,
     paymentSignature: opts.paymentSignature as string | undefined,
   })
-  return { clientOpts, authMode, outputFormat, full }
+
+  return { clientOpts, authMode, outputFormat, full, limit }
 }
