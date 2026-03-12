@@ -51,7 +51,7 @@ export function createProgram(): Command {
       lines.push('')
       lines.push(`  ${output.fmt.dim('docs.aixbt.tech/llms.txt')}`)
       lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli.mdx')}`)
-      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/recipes.mdx')}`)
+      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli/recipes.mdx')}`)
       return '\n' + lines.join('\n') + '\n'
     })
     .option('--delayed', 'Use free tier with delayed data (no auth required)')

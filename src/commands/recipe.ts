@@ -110,7 +110,7 @@ export function registerRecipeCommand(program: Command): void {
       `  guide to dive deeper.`,
       '',
       `  ${output.fmt.dim('Registry')}  aixbt recipe list`,
-      `  ${output.fmt.dim('Docs')}      ${output.fmt.link('https://docs.aixbt.tech/builders/recipes')}`,
+      `  ${output.fmt.dim('Docs')}      ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipes')}`,
       '',
     ].join('\n')
   })
