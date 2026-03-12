@@ -314,8 +314,8 @@ describe('signals commands', () => {
       await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Page 1')
-      expect(allOutput).toContain('50 total')
+      expect(allOutput).toContain('page 1')
+      expect(allOutput).toContain('of 50')
       expect(allOutput).toContain('--page 2')
     })
 
@@ -333,7 +333,7 @@ describe('signals commands', () => {
       await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Page 1')
+      expect(allOutput).toContain('page 1')
       expect(allOutput).not.toContain('--page 2')
     })
 

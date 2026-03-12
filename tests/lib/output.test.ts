@@ -208,7 +208,7 @@ describe('logging helpers', () => {
 
 // -- Table formatter --
 
-describe('table', () => {
+describe('human', () => {
   let mockLog: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -476,9 +476,9 @@ describe('outputResult', () => {
     expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2))
   })
 
-  it('should output table when format is table', () => {
+  it('should output human when format is human', () => {
     const data = [{ name: 'test' }]
-    outputResult(data, columns, 'table')
+    outputResult(data, columns, 'human')
 
     // Table produces: header + separator + data row = 3 calls
     expect(mockLog).toHaveBeenCalledTimes(3)
@@ -499,7 +499,7 @@ describe('outputResult', () => {
   })
 
   it('should output "No results." table for empty data in table format', () => {
-    outputResult([], columns, 'table')
+    outputResult([], columns, 'human')
 
     expect(mockLog).toHaveBeenCalledOnce()
     const output = stripAnsi(mockLog.mock.calls[0][0] as string)
@@ -555,8 +555,8 @@ describe('toon', () => {
 // -- isStructuredFormat --
 
 describe('isStructuredFormat', () => {
-  it('should return false for table format', () => {
-    expect(isStructuredFormat('table')).toBe(false)
+  it('should return false for human format', () => {
+    expect(isStructuredFormat('human')).toBe(false)
   })
 
   it('should return true for json format', () => {
@@ -838,7 +838,7 @@ describe('withSpinner', () => {
   it('should call stop() instead of succeed() when silent option is true', async () => {
     const result = await withSpinner(
       'Loading',
-      'table',
+      'human',
       async () => 'done',
       undefined,
       { silent: true },
@@ -852,7 +852,7 @@ describe('withSpinner', () => {
   it('should call succeed() when no opts passed (backward compatibility)', async () => {
     const result = await withSpinner(
       'Loading',
-      'table',
+      'human',
       async () => ({ data: 42 }),
     )
     expect(result).toEqual({ data: 42 })

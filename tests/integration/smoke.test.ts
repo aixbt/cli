@@ -41,7 +41,7 @@ async function runCli(args: string[]): Promise<void> {
   try {
     await program.parseAsync(args, { from: 'node' })
   } catch (err: unknown) {
-    handleTopLevelError(err, (program.opts().format as 'table' | 'json' | 'toon') ?? 'table')
+    handleTopLevelError(err, (program.opts().format as 'human' | 'json' | 'toon') ?? 'human')
   }
 }
 

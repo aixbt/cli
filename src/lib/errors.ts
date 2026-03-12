@@ -182,12 +182,58 @@ export class RecipeValidationError extends CliError {
 
 // -- Top-level error handler --
 
-export function handleTopLevelError(err: unknown, outputFormat: OutputFormat): never {
+async function renderNoApiKeyError(outputFormat: OutputFormat): Promise<void> {
+  console.log()
+  console.log(`  ${output.fmt.boldWhite('Not authenticated')}`)
+  console.log()
+  console.log(`  ${output.fmt.brandBold('1. Subscribe')}`)
+  console.log(`     Get an API key at ${output.fmt.link('https://aixbt.tech/subscribe', 'aixbt.tech/subscribe')}`)
+  console.log(`     Then run: ${output.fmt.dim('aixbt login')}`)
+  console.log()
+  console.log(`  ${output.fmt.brandBold('2. x402 Pass')}`)
+  console.log(`     ${output.fmt.dim('No account needed. USDC on Base.')}`)
+
+  // Fetch live pricing (dynamic import to avoid circular dep)
+  try {
+    const { fetchPassPricing } = await import('./x402.js')
+    const pricing = await output.withSpinner(
+      '     Fetching pricing...',
+      outputFormat,
+      () => fetchPassPricing(),
+      'Could not fetch pricing',
+      { silent: true },
+    )
+    if (pricing.length > 0) {
+      console.log()
+      console.log(`     ${output.fmt.dim('Duration'.padEnd(12))}${output.fmt.dim('Price'.padEnd(10))}${output.fmt.dim('Command')}`)
+      console.log(`     ${'─'.repeat(55)}`)
+      for (const p of pricing) {
+        console.log(`     ${p.label.padEnd(12)}${output.fmt.number(p.price.padEnd(10))}aixbt login --purchase-pass ${p.duration}`)
+      }
+    }
+  } catch {
+    console.log(`     Run: ${output.fmt.dim('aixbt login --purchase-pass')}`)
+  }
+
+  console.log()
+  console.log(`  ${output.fmt.brandBold('3. Pay per use')}`)
+  console.log(`     Append ${output.fmt.dim('--pay-per-use')} to any command`)
+  console.log()
+  console.log(`  ${output.fmt.brandBold('4. Delayed data')} ${output.fmt.dim('(free)')}`)
+  console.log(`     Append ${output.fmt.dim('--delayed')} to any command (data delayed 12-24h)`)
+  console.log()
+  console.log(`  ${output.fmt.boldWhite('Docs')}`)
+  console.log(`  ${output.fmt.dim('humans:')} ${output.fmt.link('https://docs.aixbt.tech/builders')}`)
+  console.log(`  ${output.fmt.dim('agents:')} ${output.fmt.dim('https://docs.aixbt.tech/builders.mdx')}`)
+  console.log()
+}
+
+export async function handleTopLevelError(err: unknown, outputFormat: OutputFormat): Promise<never> {
   if (err instanceof NoApiKeyError) {
     if (output.isStructuredFormat(outputFormat)) {
       output.outputStructured(err.toJSON(), outputFormat)
     } else {
-      console.error(err.toHumanReadable())
+      await renderNoApiKeyError(outputFormat)
     }
     process.exit(1)
   }

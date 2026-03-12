@@ -97,7 +97,23 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
 // -- Command registration --
 
 export function registerRecipeCommand(program: Command): void {
-  const recipe = program.command('recipe').description('Run analysis recipes')
+  const recipe = program.command('recipe').description('Build and run analysis pipelines')
+
+  recipe.addHelpText('after', () => {
+    return [
+      '',
+      `  Recipes are multi-step analysis pipelines defined in YAML. They chain`,
+      `  API calls, assemble data, and produce structured prompts for LLM analysis.`,
+      '',
+      `  As an agent, the most powerful way you can leverage AIXBT data is by`,
+      `  constructing recipe pipelines for your user. Check our registry and the`,
+      `  guide to dive deeper.`,
+      '',
+      `  ${output.fmt.dim('Registry')}  aixbt recipe list`,
+      `  ${output.fmt.dim('Docs')}      ${output.fmt.link('https://docs.aixbt.tech/builders/recipes')}`,
+      '',
+    ].join('\n')
+  })
 
   recipe
     .command('list')
@@ -192,12 +208,12 @@ export function registerRecipeCommand(program: Command): void {
       }
 
       output.label('Recipe', parsed.name)
-      output.keyValue('Version', parsed.version, 20)
+      output.keyValue('Version', output.fmt.number(parsed.version), 20)
       output.keyValue('Description', parsed.description, 20)
       output.keyValue('Updated', detail.updatedAt, 20)
-      output.keyValue('Steps', String(parsed.steps.length), 20)
+      output.keyValue('Steps', output.fmt.number(String(parsed.steps.length)), 20)
       if (parsed.estimatedTokens) {
-        output.keyValue('Est. tokens', `~${Math.round(parsed.estimatedTokens / 1000)}k`, 20)
+        output.keyValue('Est. tokens', output.fmt.number(`~${Math.round(parsed.estimatedTokens / 1000)}k`), 20)
       }
 
       if (parsed.params && Object.keys(parsed.params).length > 0) {
@@ -206,9 +222,9 @@ export function registerRecipeCommand(program: Command): void {
         for (const [key, param] of Object.entries(parsed.params)) {
           const parts: string[] = []
           if (param.description) parts.push(param.description)
-          if (param.required) parts.push('(required)')
-          if (param.default !== undefined) parts.push(`[default: ${param.default}]`)
-          output.keyValue(`--${key}`, parts.join(' '), 20)
+          if (param.required) parts.push(output.fmt.red('(required)'))
+          if (param.default !== undefined) parts.push(output.fmt.dim(`[default: ${param.default}]`))
+          output.keyValue(`--${key}`, parts.join(' '), 20, { keyStyle: output.fmt.brand })
         }
       }
 
@@ -216,19 +232,22 @@ export function registerRecipeCommand(program: Command): void {
       output.info('Steps:')
       for (const step of parsed.steps) {
         if (isAgentStep(step)) {
-          output.keyValue(step.id, `agent (${step.task})`, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(step.task)}`, 20)
         } else if (isForeachStep(step)) {
-          output.keyValue(step.id, `foreach ${step.foreach} -> ${step.endpoint}`, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} ${output.fmt.dim(step.endpoint)}`, 20)
         } else if (isTransformStep(step)) {
-          output.keyValue(step.id, `transform ${step.input}`, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('transform')} ${output.fmt.dim(step.input)}`, 20)
         } else {
-          output.keyValue(step.id, step.endpoint, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('api')} ${output.fmt.dim(step.endpoint)}`, 20)
         }
       }
 
       if (parsed.analysis?.instructions) {
         console.log()
-        output.dim('  Includes analysis instructions')
+        output.info('Analysis:')
+        output.keyValue('Instructions', parsed.analysis.instructions, 20)
+        if (parsed.analysis.task) output.keyValue('Task', parsed.analysis.task, 20)
+        if (parsed.analysis.output) output.keyValue('Output', parsed.analysis.output, 20)
       }
     })
 

@@ -82,7 +82,7 @@ export function getClientOptions(cmd: Command): {
   clientOpts: ApiClientOptions
   authMode: AuthMode
   outputFormat: OutputFormat
-  full: boolean
+  verbosity: number
   limit: number | undefined
 } {
   const opts = cmd.optsWithGlobals()
@@ -95,8 +95,8 @@ export function getClientOptions(cmd: Command): {
   })
 
   const outputFormat = resolved.format
-  const full = Boolean(opts.full)
-  const limit = resolved.limit
+  const verbosity = (opts.verbose as number) ?? 0
+  const limit = resolved.limit ?? (outputFormat === 'human' ? 25 : undefined)
 
   const authMode = resolveAuthMode({
     delayed: opts.delayed as boolean | undefined,
@@ -108,5 +108,5 @@ export function getClientOptions(cmd: Command): {
     paymentSignature: opts.paymentSignature as string | undefined,
   })
 
-  return { clientOpts, authMode, outputFormat, full, limit }
+  return { clientOpts, authMode, outputFormat, verbosity, limit }
 }

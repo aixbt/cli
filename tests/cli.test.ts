@@ -18,7 +18,6 @@ describe('CLI', () => {
     expect(commandNames).toContain('signals')
     expect(commandNames).toContain('clusters')
     expect(commandNames).toContain('recipe')
-    expect(commandNames).toContain('completion')
   })
 
   describe('banner', () => {
@@ -40,7 +39,7 @@ describe('CLI', () => {
       const program = createProgram()
       const formatOpt = program.options.find((o) => o.long === '--format')
       expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toBe('Output format: table, json, toon')
+      expect(formatOpt!.description).toBe('Output format: human, json, toon')
     })
 
     it('should have --delayed option registered', () => {
@@ -152,7 +151,7 @@ describe('CLI', () => {
       const program = createProgram()
       const formatOpt = program.options.find((o) => o.long === '--format')
       expect(formatOpt).toBeDefined()
-      expect(formatOpt!.argChoices).toEqual(['table', 'json', 'toon'])
+      expect(formatOpt!.argChoices).toEqual(['human', 'json', 'toon'])
     })
 
     it('should have --delayed as a boolean flag (no argument)', () => {
@@ -326,9 +325,9 @@ describe('CLI', () => {
   })
 
   describe('command count', () => {
-    it('should have exactly 9 registered commands', () => {
+    it('should have exactly 8 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(9)
+      expect(program.commands).toHaveLength(8)
     })
   })
 

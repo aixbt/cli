@@ -2,7 +2,13 @@ import type { RateLimitInfo, ApiResponse } from '../types.js'
 import { resolveConfig } from './config.js'
 import { ApiError, RateLimitError, AuthError, NetworkError, PaymentRequiredError } from './errors.js'
 
+import type { FreeTierMeta } from '../types.js'
+
 export type { ApiClientOptions }
+
+/** Last free-tier meta received from any API response. */
+let _lastMeta: FreeTierMeta | undefined
+export function getLastMeta(): FreeTierMeta | undefined { return _lastMeta }
 
 interface ApiClientOptions {
   apiKey?: string
@@ -125,7 +131,7 @@ async function executeWithBackoff<T>(
     )
   }
 
-  let body: { status: number; data: T; error?: string; pagination?: unknown }
+  let body: { status: number; data: T; error?: string; meta?: unknown; pagination?: unknown }
   try {
     body = await res.json() as typeof body
   } catch {
@@ -134,9 +140,13 @@ async function executeWithBackoff<T>(
 
   const paymentResponse = decodeBase64JsonHeader<Record<string, unknown>>(res.headers, 'payment-response')
 
+  const meta = body.meta as ApiResponse<T>['meta']
+  if (meta) _lastMeta = meta
+
   return {
     status: body.status,
     data: body.data,
+    meta,
     pagination: body.pagination as ApiResponse<T>['pagination'],
     rateLimit,
     paymentResponse,

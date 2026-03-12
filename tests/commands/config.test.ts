@@ -96,7 +96,7 @@ describe('config commands', () => {
       writeConfig({
         apiKey: 'secret-key',
         apiUrl: 'https://custom.api.com',
-        format: 'table',
+        format: 'human',
       })
 
       const program = createProgram()
@@ -206,13 +206,13 @@ describe('config commands', () => {
       expect(config.apiUrl).toBe('https://new.api.com')
     })
 
-    it('should set format to table', async () => {
+    it('should set format to human', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'table'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'human'], { from: 'node' })
 
       const config = readConfig()
-      expect(config.format).toBe('table')
+      expect(config.format).toBe('human')
     })
 
     it('should set format to json', async () => {
@@ -337,10 +337,10 @@ describe('config commands', () => {
       expect(config.limit).toBe(30)
     })
 
-    it('should show success message in table format', async () => {
+    it('should show success message in human format', async () => {
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'table'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'config', 'set', 'format', 'human'], { from: 'node' })
 
       const output = logs.join('\n')
       expect(output).toContain('Set format')

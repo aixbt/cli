@@ -6,7 +6,7 @@ import * as output from '../lib/output.js'
 const ALLOWED_KEYS = ['format', 'apiUrl', 'limit'] as const
 type AllowedKey = (typeof ALLOWED_KEYS)[number]
 
-const VALID_FORMATS = ['table', 'json', 'toon'] as const
+const VALID_FORMATS = ['human', 'json', 'toon'] as const
 
 function isAllowedKey(key: string): key is AllowedKey {
   return (ALLOWED_KEYS as readonly string[]).includes(key)

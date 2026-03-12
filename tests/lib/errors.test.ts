@@ -286,7 +286,7 @@ describe('handleTopLevelError', () => {
     it('should output to stderr and exit with error exitCode', () => {
       const err = new CliError('something failed', 'FAIL_CODE')
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('error: something failed')
       expect(mockExit).toHaveBeenCalledWith(1)
@@ -311,7 +311,7 @@ describe('handleTopLevelError', () => {
     it('should output access options text to stderr', () => {
       const err = new NoApiKeyError()
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledOnce()
       const output = mockError.mock.calls[0][0] as string
@@ -325,7 +325,7 @@ describe('handleTopLevelError', () => {
     it('should print expired-key hint when code is API_KEY_EXPIRED', () => {
       const err = new AuthError('Key expired', 'API_KEY_EXPIRED')
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('error: Key expired')
       expect(mockError).toHaveBeenCalledWith('\nYour API key has expired. Run: aixbt login')
@@ -334,7 +334,7 @@ describe('handleTopLevelError', () => {
     it('should print invalid-key hint when code is INVALID_API_KEY', () => {
       const err = new AuthError('Invalid key', 'INVALID_API_KEY')
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('\nYour API key is invalid. Run: aixbt login')
     })
@@ -353,7 +353,7 @@ describe('handleTopLevelError', () => {
       }
       const err = new RateLimitError('Rate limited', rateLimit)
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('\nRetry after: 45s')
     })
@@ -369,7 +369,7 @@ describe('handleTopLevelError', () => {
       }
       const err = new RateLimitError('Rate limited', rateLimit)
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('\nRetry after: 2026-01-01T00:01:00Z')
     })
@@ -379,7 +379,7 @@ describe('handleTopLevelError', () => {
     it('should print connection troubleshooting hint', () => {
       const err = new NetworkError('ECONNREFUSED')
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith(
         '\nCheck your internet connection and try again.',
@@ -405,7 +405,7 @@ describe('handleTopLevelError', () => {
     it('should handle non-CliError errors in human mode', () => {
       const err = new TypeError('Cannot read properties of undefined')
 
-      expect(() => handleTopLevelError(err, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith(
         'error: Cannot read properties of undefined',
@@ -426,7 +426,7 @@ describe('handleTopLevelError', () => {
     })
 
     it('should handle non-Error values in human mode', () => {
-      expect(() => handleTopLevelError(42, 'table')).toThrow('process.exit called')
+      expect(() => handleTopLevelError(42, 'human')).toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith(
         'error: An unexpected error occurred',
