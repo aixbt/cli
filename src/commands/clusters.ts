@@ -13,9 +13,9 @@ interface ClusterData {
 export function registerClustersCommand(program: Command): void {
   program
     .command('clusters')
-    .description('Browse and inspect signal clusters')
+    .description('Explore signal clusters')
     .action(async (_opts: unknown, cmd: Command) => {
-      const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
+      const { clientOpts, authMode, outputFormat, verbosity } = getClientOptions(cmd)
 
       if (authMode.mode === 'pay-per-use') {
         throw new CliError(
@@ -33,15 +33,15 @@ export function registerClustersCommand(program: Command): void {
       )
 
       if (output.isStructuredFormat(outputFormat)) {
-        output.outputStructured(result.data, outputFormat)
+        output.outputStructured({ data: result.data, ...(result.meta && { meta: result.meta }) }, outputFormat)
         return
       }
 
       output.cards(result.data.map((c) => ({
         title: c.name,
         fields: [
-          { label: 'ID', value: c.id },
-          { label: 'Description', value: c.description },
+          { label: 'ID', value: output.fmt.id(c.id) },
+          ...(verbosity >= 1 ? [{ label: 'Description', value: c.description }] : []),
         ],
       })))
 
@@ -49,5 +49,6 @@ export function registerClustersCommand(program: Command): void {
         console.log()
         output.dim(`${result.data.length} clusters`)
       }
+
     })
 }

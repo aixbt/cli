@@ -1,5 +1,5 @@
 import type { AuthMode } from './auth.js'
-import { readConfig, writeConfig } from './config.js'
+import { readConfig, writeConfig, resolveConfig } from './config.js'
 import { CliError, PaymentRequiredError } from './errors.js'
 import type { OutputFormat } from './output.js'
 import * as output from './output.js'
@@ -68,6 +68,13 @@ export const X402_API_KEY_ENDPOINTS: Record<string, string> = {
 
 const VALID_DURATIONS = Object.keys(X402_API_KEY_ENDPOINTS)
 
+/** User-facing pass options with labels */
+export const PASS_OPTIONS: Array<{ duration: string; label: string }> = [
+  { duration: '1d', label: '1 day' },
+  { duration: '1w', label: '1 week' },
+  { duration: '4w', label: '4 weeks' },
+]
+
 // -- Header decoding --
 
 /**
@@ -118,6 +125,45 @@ export function reconstructCommand(commandName: string, opts: Record<string, unk
   return parts.join(' ')
 }
 
+// -- Pricing --
+
+export interface PassPricing {
+  duration: string
+  label: string
+  price: string
+  network: string
+}
+
+/**
+ * Fetch live pricing for all pass durations by triggering 402s in parallel.
+ */
+export async function fetchPassPricing(): Promise<PassPricing[]> {
+  const results = await Promise.allSettled(
+    PASS_OPTIONS.map(async (opt) => {
+      try {
+        await apiRequest('POST', X402_API_KEY_ENDPOINTS[opt.duration], { noAuth: true })
+        return null // shouldn't happen
+      } catch (err) {
+        if (err instanceof PaymentRequiredError) {
+          const info = err.headers ? decodePaymentRequiredHeader(err.headers) : null
+          const accept = info?.accepts[0]
+          return {
+            duration: opt.duration,
+            label: opt.label,
+            price: accept?.amount ? formatUsdcAmount(accept.amount) : '?',
+            network: accept?.network ?? 'base',
+          }
+        }
+        return null
+      }
+    }),
+  )
+
+  return results
+    .map((r) => (r.status === 'fulfilled' ? r.value : null))
+    .filter((r): r is PassPricing => r !== null)
+}
+
 // -- Purchase pass flow --
 
 /**
@@ -147,16 +193,58 @@ export async function handlePurchasePass(
 
     try {
       await apiRequest('POST', endpoint, { noAuth: true })
-      // Unexpected success without payment
       spin?.succeed('Pass generated without payment (unexpected)')
     } catch (err) {
       spin?.stop()
       if (err instanceof PaymentRequiredError) {
-        handlePaymentRequired(
-          err,
-          `aixbt login --purchase-pass ${duration}`,
-          outputFormat,
-        )
+        const paymentInfo = err.headers ? decodePaymentRequiredHeader(err.headers) : null
+        const accept = paymentInfo?.accepts[0]
+
+        if (!paymentInfo || !accept) {
+          output.error('Could not extract payment details from server response')
+          process.exit(1)
+        }
+
+        const amount = accept.amount ? formatUsdcAmount(accept.amount) : 'unknown'
+        const config = resolveConfig({})
+        const fullUrl = `${config.apiUrl.replace(/\/$/, '')}${endpoint}`
+        const label = PASS_OPTIONS.find(p => p.duration === duration)?.label ?? duration
+
+        if (output.isStructuredFormat(outputFormat)) {
+          output.outputStructured({
+            status: 'payment_required',
+            pass: { duration, label, amount },
+            payment: {
+              network: 'Base',
+              asset: 'USDC',
+              payTo: accept.payTo,
+              scheme: accept.scheme,
+              rawAmount: accept.amount,
+              assetContract: accept.asset,
+              networkId: accept.network,
+            },
+            endpoint: { method: 'POST', url: fullUrl },
+            storeKeyCommand: 'aixbt login --api-key <key>',
+            guide: 'https://docs.aixbt.tech/builders/agent-x402-guide',
+          }, outputFormat)
+        } else {
+          console.log()
+          console.log(`  ${output.fmt.brandBold(`${label} pass`)} — ${output.fmt.number(amount)} USDC on Base`)
+          console.log()
+          console.log(`  ${output.fmt.dim('Pay to')}    ${accept.payTo}`)
+          console.log()
+          console.log(`  POST to the endpoint with an x402-enabled client (e.g. @x402/fetch):`)
+          console.log(`  ${fullUrl}`)
+          console.log()
+          console.log(`  The payment is handled automatically. Save the returned API key, then:`)
+          console.log(`  ${output.fmt.dim('aixbt login --api-key <key>')}`)
+          console.log()
+          console.log(`  ${output.fmt.boldWhite('Guide')}`)
+          console.log(`  ${output.fmt.dim('humans:')} ${output.fmt.link('https://docs.aixbt.tech/builders/agent-x402-guide')}`)
+          console.log(`  ${output.fmt.dim('agents:')} ${output.fmt.dim('https://docs.aixbt.tech/builders/agent-x402-guide.mdx')}`)
+        }
+
+        process.exit(0)
       }
       throw err
     }

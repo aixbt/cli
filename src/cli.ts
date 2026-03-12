@@ -10,36 +10,74 @@ import { registerClustersCommand } from './commands/clusters.js'
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
 import { registerConfigCommand } from './commands/config.js'
-import { registerCompletionCommand } from './commands/completion.js'
 import * as output from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
-import { resolveFormat } from './lib/config.js'
+import { resolveFormat, resolveConfig } from './lib/config.js'
+import { getLastMeta } from './lib/api-client.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
 export function createProgram(): Command {
   const program = new Command()
 
-  const formatOption = new Option('-f, --format <mode>', 'Output format: table, json, toon')
-    .choices(['table', 'json', 'toon'])
+  const formatOption = new Option('-f, --format <mode>', 'Output format: human, json, toon')
+    .choices(['human', 'json', 'toon'])
 
   program
     .name('aixbt')
     .description('')
-    .version(pkg.version, '-v, --version')
+    .version(pkg.version, '-V, --version')
     .addHelpText('before', output.banner(pkg.version))
+    .addHelpText('after', () => {
+      const lines: string[] = []
+      const config = resolveConfig({})
+      if (!config.apiKey) {
+        lines.push(`  ${output.fmt.dim('Not logged in. Run:')} aixbt login`)
+        lines.push('')
+      }
+      lines.push(`  ${output.fmt.boldWhite('For agents')}`)
+      lines.push('')
+      lines.push(`  AIXBT provides real-time crypto signal intelligence. Find alpha, research`)
+      lines.push(`  projects, inform trades, and gain an edge in the market. Use ${output.fmt.dim('-f json')}`)
+      lines.push(`  or ${output.fmt.dim('-f toon')} for structured output on any command. ${output.fmt.dim('-v')} increases detail.`)
+      lines.push('')
+      lines.push(`  The most powerful way to leverage this data is by constructing recipe`)
+      lines.push(`  pipelines. Recipes are declarative YAML that chain API calls, iterate`)
+      lines.push(`  over results, sample and transform data, and yield to your agent for`)
+      lines.push(`  inference — all with automatic pagination and rate limiting. Clone from`)
+      lines.push(`  the registry (${output.fmt.dim('aixbt recipe list')}), customize, or build your own from`)
+      lines.push(`  the spec. Generate recipes on the fly, pipe them via stdin, or build a`)
+      lines.push(`  repository of reusable pipelines tailored to your users.`)
+      lines.push('')
+      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/llms.txt')}`)
+      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli.mdx')}`)
+      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/recipes.mdx')}`)
+      return '\n' + lines.join('\n') + '\n'
+    })
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')
-    .option('--payment-signature <base64>', 'Payment proof for x402 (base64-encoded)')
+    .addOption(new Option('--payment-signature <base64>', 'Payment proof for x402 (base64-encoded)').hideHelp())
     .option('--api-key <key>', 'API key (overrides config and env)')
-    .option('--api-url <url>', 'API base URL (overrides config and env)')
+    .addOption(new Option('--api-url <url>', 'API base URL (overrides config and env)').hideHelp())
     .configureOutput({
       writeOut: (str: string) => process.stdout.write(output.colorizeHelp(str)),
       writeErr: (str: string) => process.stderr.write(output.colorizeHelp(str)),
     })
 
+  // Hide --version from help (version is in the banner)
+  program.options.find(o => o.long === '--version')?.hideHelp()
+
   program.addOption(formatOption)
-  program.option('--full', 'Show all available fields')
+  program.option('-v, --verbose', 'Increase verbosity (-v, -vv, -vvv)', (_: string, prev: number) => prev + 1, 0)
+
+  program.hook('postAction', (thisCommand) => {
+    const opts = thisCommand.optsWithGlobals()
+    const fmt = resolveFormat(opts.format as string | undefined)
+    if (!output.isStructuredFormat(fmt)) {
+      const meta = getLastMeta()
+      if (meta) output.delayedDataWarning(meta)
+    }
+  })
 
   program.hook('preAction', (thisCommand) => {
     const opts = thisCommand.optsWithGlobals()
@@ -60,29 +98,35 @@ export function createProgram(): Command {
   registerSignalsCommand(program)
   registerClustersCommand(program)
   registerRecipeCommand(program)
-  registerCompletionCommand(program)
 
   return program
+}
+
+function expandVerboseFlags(argv: string[]): string[] {
+  return argv.flatMap(arg => {
+    if (/^-v{2,}$/.test(arg)) return Array(arg.length - 1).fill('-v')
+    return [arg]
+  })
 }
 
 async function main(): Promise<void> {
   const program = createProgram()
   try {
-    await program.parseAsync(process.argv)
+    await program.parseAsync(expandVerboseFlags(process.argv))
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'ExitPromptError') {
       console.log()
       process.exit(0)
     }
     const outputFormat = resolveFormat(program.opts().format as string | undefined)
-    handleTopLevelError(err, outputFormat)
+    await handleTopLevelError(err, outputFormat)
   }
 }
 
 const isDirectRun = process.argv[1] && realpathSync(resolve(process.argv[1])) === fileURLToPath(import.meta.url)
 
 if (isDirectRun) {
-  main().catch((err: unknown) => {
-    handleTopLevelError(err, 'table')
+  main().catch(async (err: unknown) => {
+    await handleTopLevelError(err, 'human')
   })
 }

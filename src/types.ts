@@ -10,9 +10,22 @@ export interface RateLimitInfo {
   retryAfterSeconds?: number  // Only present on 429
 }
 
+export interface FreeTierMeta {
+  tier: 'free'
+  dataDelayHours: number
+  dataAsOf: string
+  upgrade: {
+    description: string
+    protocol: string
+    payment: string
+    options: Array<{ period: string; price: string; method: string; url: string }>
+  }
+}
+
 export interface ApiResponse<T> {
   status: number
   data: T
+  meta?: FreeTierMeta
   pagination?: {
     page: number
     limit: number
@@ -42,14 +55,17 @@ export interface SignalData {
   category: string
   hasOfficialSource: boolean
   clusters: Array<{ id: string; name: string }>
-  activity: Array<{
-    date: string
-    source: string
-    cluster: { id: string; name: string } | null
-    incoming: string
-    result: string
-    fromSignal?: { signalId: string; projectId: string; projectName: string }
-  }>
+  activity: ActivityEntry[]
+}
+
+export interface ActivityEntry {
+  date: string
+  source: string
+  cluster: { id: string; name: string } | null
+  incoming: string
+  result: string
+  isOfficial?: boolean
+  fromSignal?: { signalId: string; projectId: string; projectName: string }
 }
 
 // -- Recipe YAML schema types --

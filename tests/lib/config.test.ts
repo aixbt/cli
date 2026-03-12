@@ -211,9 +211,9 @@ describe('config', () => {
       expect(resolved.scopes).toEqual(['admin', 'read', 'write'])
     })
 
-    it('should default format to table when not configured or flagged', () => {
+    it('should default format to human when not configured or flagged', () => {
       const resolved = resolveConfig()
-      expect(resolved.format).toBe('table')
+      expect(resolved.format).toBe('human')
     })
 
     it('should use config format when no flag provided', () => {
@@ -282,9 +282,9 @@ describe('config', () => {
       expect(result).toBe('json')
     })
 
-    it('should return table as default when neither flag nor config set', () => {
+    it('should return human as default when neither flag nor config set', () => {
       const result = resolveFormat()
-      expect(result).toBe('table')
+      expect(result).toBe('human')
     })
 
     it('should prefer flag over config value', () => {

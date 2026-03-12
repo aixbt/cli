@@ -111,7 +111,7 @@ describe('recipe commands', () => {
       { name: 'market-scanner', version: '2.1', description: 'Scan market trends', paramCount: 0 },
     ]
 
-    it('should fetch and display recipe list in table mode', async () => {
+    it('should fetch and display recipe list in human mode', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_RECIPES }),
       )

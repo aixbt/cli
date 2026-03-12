@@ -1,4 +1,5 @@
 import type { Command } from 'commander'
+import chalk from 'chalk'
 import type { SignalData } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
@@ -8,7 +9,7 @@ import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 export function registerSignalsCommand(program: Command): void {
   program
     .command('signals')
-    .description('Query and filter AIXBT signals')
+    .description('Query real-time detected signals')
     .option('--page <n>', 'Page number', '1')
     .option('--limit <n>', 'Results per page')
     .option('--project-ids <ids>', 'Filter by project IDs (comma-separated)')
@@ -22,7 +23,8 @@ export function registerSignalsCommand(program: Command): void {
     .option('--detected-before <date>', 'Detected before date (ISO 8601)')
     .option('--reinforced-after <date>', 'Reinforced after date (ISO 8601)')
     .option('--reinforced-before <date>', 'Reinforced before date (ISO 8601)')
-    .option('--sort-by <field>', 'Sort by field (reinforcedAt, createdAt)', 'reinforcedAt')
+    .option('--official', 'Show only signals with official sources')
+    .option('--sort-by <field>', 'Sort by field (createdAt, reinforcedAt)', 'createdAt')
     .action(async (_opts: unknown, cmd: Command) => {
       await handleSignalList(cmd)
     })
@@ -31,16 +33,16 @@ export function registerSignalsCommand(program: Command): void {
 function buildBadges(s: SignalData): string | undefined {
   const badges: string[] = []
   if ((s.clusters?.length ?? 0) >= 3) {
-    badges.push(output.fmt.red('[HOT]'))
+    badges.push(output.fmt.tag('HOT', '#e05b73'))
   }
   if (s.hasOfficialSource) {
-    badges.push(output.fmt.green('[OFFICIAL]'))
+    badges.push(output.fmt.tag('OFFICIAL', '#87ceeb'))
   }
   return badges.length > 0 ? badges.join(' ') : undefined
 }
 
 async function handleSignalList(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, outputFormat, full, limit } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat, verbosity, limit } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
@@ -58,6 +60,7 @@ async function handleSignalList(cmd: Command): Promise<void> {
     reinforcedAfter: opts.reinforcedAfter as string | undefined,
     reinforcedBefore: opts.reinforcedBefore as string | undefined,
     sortBy: opts.sortBy as string,
+    hasOfficialSource: opts.official ? true : undefined,
   }
 
   const result = await output.withSpinner(
@@ -74,47 +77,81 @@ async function handleSignalList(cmd: Command): Promise<void> {
   )
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputStructured(result.data, outputFormat)
+    output.outputStructured({ data: result.data.map(s => filterSignalFields(s, verbosity)), ...(result.meta && { meta: result.meta }) }, outputFormat)
     return
   }
 
-  if (full) {
-    output.cards(result.data.map((s) => ({
-      title: s.projectName,
-      subtitle: s.category,
-      badge: buildBadges(s),
-      fields: [
-        { label: 'ID', value: s.id },
-        { label: 'Description', value: s.description },
-        { label: 'Detected', value: new Date(s.detectedAt).toLocaleString() },
-        { label: 'Reinforced', value: new Date(s.reinforcedAt).toLocaleString() },
-        { label: 'Clusters', value: s.clusters?.map(c => c.name).join(', ') || 'none' },
-        { label: 'Project ID', value: s.projectId },
-        { label: 'Official', value: s.hasOfficialSource ? 'Yes' : 'No' },
-        { label: 'Activity', value: s.activity.length > 0 ? `${s.activity.length} entries` : undefined },
-      ],
-    })))
-    output.showPagination(result.pagination)
-    return
+  // Build stable cluster color map across all signals
+  const clusterColorMap = new Map<string, number>()
+  for (const s of result.data) {
+    for (const c of s.clusters ?? []) {
+      if (!clusterColorMap.has(c.id)) {
+        clusterColorMap.set(c.id, clusterColorMap.size)
+      }
+    }
   }
 
-  output.cards(result.data.map((s) => ({
-    title: s.projectName,
-    subtitle: s.category,
-    badge: buildBadges(s),
-    fields: [
-      { label: 'Description', value: s.description },
-      { label: 'Detected', value: new Date(s.detectedAt).toLocaleString() },
-      { label: 'Reinforced', value: new Date(s.reinforcedAt).toLocaleString() },
-      {
-        label: 'Clusters',
-        value: (s.clusters?.length ?? 0) > 0
-          ? `${s.clusters.length} cluster${s.clusters.length !== 1 ? 's' : ''}`
-          : undefined,
-      },
-    ],
-  })))
+  for (let i = 0; i < result.data.length; i++) {
+    const s = result.data[i]
+    if (i > 0) console.log()
 
-  output.showPagination(result.pagination)
-  output.fullHint()
+    // Title line: name  CATEGORY  [HOT] [OFFICIAL]
+    const badge = buildBadges(s)
+    const badgePart = badge ? ` ${badge}` : ''
+    console.log(`${chalk.bold.white(s.projectName)}  ${output.fmt.tag(s.category || 'UNCATEGORIZED')}${badgePart}`)
+
+    // Description
+    console.log(s.description)
+
+    // Meta line
+    const updates = s.activity?.length ?? 0
+    console.log(output.fmt.dim(`Detected ${output.timeAgo(s.detectedAt)} · Reinforced ${output.timeAgo(s.reinforcedAt)} · ${updates} update${updates !== 1 ? 's' : ''}`))
+
+    // Cluster dots
+    const clusterTags = (s.clusters ?? []).map(c =>
+      `${output.clusterDot(clusterColorMap.get(c.id) ?? 0, c.name)} ${output.fmt.dim(c.name)}`,
+    ).join('  ')
+    if (clusterTags) console.log(clusterTags)
+
+    // Activity (verbose)
+    if (verbosity >= 1 && (s.activity?.length ?? 0) > 1) {
+      console.log(output.fmt.boldWhite('activity'))
+      const entries = output.formatActivity(s.activity, clusterColorMap)
+      for (let j = 0; j < entries.length; j++) {
+        if (j > 0) console.log()
+        console.log(entries[j])
+      }
+    }
+  }
+
+  console.log()
+  output.showPagination(result.pagination, result.data.length)
+
+  if (verbosity < 1) output.verboseHint('Use -v for activity details')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filterSignalFields(s: SignalData, verbosity: number): Record<string, any> {
+  // v0: essentials
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: Record<string, any> = {
+    projectName: s.projectName,
+    category: s.category,
+    description: s.description,
+    detectedAt: s.detectedAt,
+    reinforcedAt: s.reinforcedAt,
+    clusterCount: s.clusters?.length ?? 0,
+  }
+
+  // v1: + identifiers, full clusters, official source, activity
+  if (verbosity >= 1) {
+    result.id = s.id
+    result.projectId = s.projectId
+    result.clusters = s.clusters
+    result.hasOfficialSource = s.hasOfficialSource
+    result.activity = s.activity
+    delete result.clusterCount
+  }
+
+  return result
 }

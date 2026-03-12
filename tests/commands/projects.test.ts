@@ -184,17 +184,19 @@ describe('projects commands', () => {
       expect(callUrl.searchParams.get('limit')).toBe('10')
     })
 
-    it('should display table output with score, name, rationale, and signals count', async () => {
+    it('should display human output with score, name, rationale, and 24h change', async () => {
       const projectsWithRationale = [
         {
           ...MOCK_PROJECTS[0],
           rationale: 'Institutional interest rising',
           coingeckoData: { apiId: 'bitcoin', type: 'coin', symbol: 'BTC', slug: 'bitcoin', description: '', homepage: '', contractAddress: '', categories: [] },
+          metrics: { usd: 50000, usdMarketCap: 1e12, usd24hVol: 5e10, usd24hChange: 2.5, lastUpdatedAt: 0 },
         },
         {
           ...MOCK_PROJECTS[1],
           rationale: 'DeFi ecosystem expanding',
           coingeckoData: { apiId: 'ethereum', type: 'coin', symbol: 'ETH', slug: 'ethereum', description: '', homepage: '', contractAddress: '', categories: [] },
+          metrics: { usd: 3000, usdMarketCap: 3.6e11, usd24hVol: 2e10, usd24hChange: -1.2, lastUpdatedAt: 0 },
         },
       ]
       mockFetch.mockResolvedValueOnce(
@@ -210,15 +212,18 @@ describe('projects commands', () => {
       expect(allOutput).toContain('Score')
       expect(allOutput).toContain('Name')
       expect(allOutput).toContain('Rationale')
-      expect(allOutput).toContain('Signals')
+      expect(allOutput).toContain('24h')
       // Project names with ticker suffix
       expect(allOutput).toContain('Bitcoin')
       expect(allOutput).toContain('BTC')
       expect(allOutput).toContain('Ethereum')
       expect(allOutput).toContain('ETH')
-      // Score should be rounded (Math.round), not formatted with decimals
-      expect(allOutput).toContain('86')
-      expect(allOutput).toContain('72')
+      // Score should be shown as-is from API
+      expect(allOutput).toContain('85.5')
+      expect(allOutput).toContain('72.3')
+      // 24h change values
+      expect(allOutput).toContain('2.50%')
+      expect(allOutput).toContain('1.20%')
       // Rationale should be shown
       expect(allOutput).toContain('Institutional interest rising')
       expect(allOutput).toContain('DeFi ecosystem expanding')
@@ -235,7 +240,7 @@ describe('projects commands', () => {
           coingeckoData: { apiId: 'bitcoin', type: 'coin', symbol: 'BTC', slug: 'bitcoin', description: '', homepage: '', contractAddress: '', categories: [] },
           tokens: [{ chain: 'bitcoin', address: 'native', source: 'coingecko' }],
           createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2026-03-01T00:00:00Z',
+          reinforcedAt: '2026-03-01T00:00:00Z',
         },
       ]
       mockFetch.mockResolvedValueOnce(
@@ -265,7 +270,7 @@ describe('projects commands', () => {
       expect(allOutput).toContain('Signals')
       expect(allOutput).toContain('Tokens')
       expect(allOutput).toContain('Created')
-      expect(allOutput).toContain('Updated')
+      expect(allOutput).toContain('Reinforced')
     })
 
     it('should show pagination hint when hasMore is true', async () => {
@@ -282,8 +287,8 @@ describe('projects commands', () => {
       await program.parseAsync(['node', 'aixbt', 'projects'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Page 1')
-      expect(allOutput).toContain('100 total')
+      expect(allOutput).toContain('page 1')
+      expect(allOutput).toContain('of 100')
       expect(allOutput).toContain('--page 2')
     })
 
@@ -301,7 +306,7 @@ describe('projects commands', () => {
       await program.parseAsync(['node', 'aixbt', 'projects'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Page 1')
+      expect(allOutput).toContain('page 1')
       expect(allOutput).not.toContain('--page 2')
     })
 
@@ -346,7 +351,7 @@ describe('projects commands', () => {
       expect(parsed.name).toBe('Bitcoin')
     })
 
-    it('should display key-value output in table mode', async () => {
+    it('should display key-value output in human mode', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_PROJECT_DETAIL }),
       )
@@ -423,7 +428,7 @@ describe('projects commands', () => {
       expect(callUrl.searchParams.get('end')).toBe('2026-02-01')
     })
 
-    it('should display table output with momentum data', async () => {
+    it('should display human output with momentum data', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_MOMENTUM }),
       )
@@ -476,7 +481,7 @@ describe('projects commands', () => {
       expect(parsed).toEqual(MOCK_CHAINS)
     })
 
-    it('should display chain list in table mode', async () => {
+    it('should display chain list in human mode', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_CHAINS }),
       )

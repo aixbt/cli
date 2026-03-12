@@ -104,7 +104,7 @@ export function resolveConfig(flags?: {
 
   const resolvedFormat = flags?.format
     || config.format
-    || 'table'
+    || 'human'
 
   const resolvedLimit = flags?.limit
     ? parseInt(flags.limit, 10)
@@ -125,7 +125,7 @@ export function resolveFormat(flagValue?: string): OutputFormat {
   const config = readConfig()
   const resolved = flagValue
     || config.format
-    || 'table'
+    || 'human'
   return resolved as OutputFormat
 }
 

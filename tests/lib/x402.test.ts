@@ -316,7 +316,7 @@ describe('handlePaymentRequired', () => {
       const headers = new Headers({ 'PAYMENT-REQUIRED': encoded })
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'human')).toThrow(
         'process.exit called',
       )
 
@@ -359,7 +359,7 @@ describe('handlePaymentRequired', () => {
       const headers = new Headers()
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'human')).toThrow(
         'process.exit called',
       )
 
@@ -371,7 +371,7 @@ describe('handlePaymentRequired', () => {
     it('should exit with code 1 when err.headers is null', () => {
       const err = new PaymentRequiredError({ message: 'Payment required' }, null)
 
-      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'human')).toThrow(
         'process.exit called',
       )
 
@@ -389,7 +389,7 @@ describe('handlePaymentRequired', () => {
       const headers = new Headers({ 'PAYMENT-REQUIRED': encoded })
       const err = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
-      expect(() => handlePaymentRequired(err, 'projects', 'table')).toThrow(
+      expect(() => handlePaymentRequired(err, 'projects', 'human')).toThrow(
         'process.exit called',
       )
 
@@ -457,7 +457,7 @@ describe('withPayPerUse', () => {
       () => Promise.resolve({ data: 'hello' }),
       authMode,
       'projects',
-      'table',
+      'human',
     )
 
     expect(result).toEqual({ data: 'hello' })
@@ -470,7 +470,7 @@ describe('withPayPerUse', () => {
     const payErr = new PaymentRequiredError({ message: 'Payment required' }, headers)
 
     await expect(
-      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', 'table'),
+      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', 'human'),
     ).rejects.toThrow('process.exit called')
 
     // handlePaymentRequired was called (it calls process.exit(0))
@@ -482,7 +482,7 @@ describe('withPayPerUse', () => {
     const payErr = new PaymentRequiredError({ message: 'Payment required' }, null)
 
     await expect(
-      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', 'table'),
+      withPayPerUse(() => Promise.reject(payErr), authMode, 'projects', 'human'),
     ).rejects.toThrow('Payment required')
 
     // process.exit should NOT have been called (the error is rethrown directly)
@@ -494,7 +494,7 @@ describe('withPayPerUse', () => {
     const genericErr = new Error('Something else went wrong')
 
     await expect(
-      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', 'table'),
+      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', 'human'),
     ).rejects.toThrow('Something else went wrong')
 
     expect(mockExit).not.toHaveBeenCalled()
@@ -505,7 +505,7 @@ describe('withPayPerUse', () => {
     const genericErr = new Error('Network failure')
 
     await expect(
-      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', 'table'),
+      withPayPerUse(() => Promise.reject(genericErr), authMode, 'projects', 'human'),
     ).rejects.toThrow('Network failure')
 
     expect(mockExit).not.toHaveBeenCalled()
@@ -556,7 +556,7 @@ describe('handlePurchasePass', () => {
       )
 
       await expect(
-        handlePurchasePass('1d', undefined, 'table'),
+        handlePurchasePass('1d', undefined, 'human'),
       ).rejects.toThrow('process.exit called')
 
       // handlePaymentRequired exits with 0 (payment required is an expected flow step)
@@ -618,7 +618,7 @@ describe('handlePurchasePass', () => {
         jsonResponse(200, { status: 201, data: passResponse }),
       )
 
-      await handlePurchasePass('1w', 'base64-payment-proof', 'table')
+      await handlePurchasePass('1w', 'base64-payment-proof', 'human')
 
       const config = readConfig()
       expect(config.apiKey).toBe('test-api-key-123')
@@ -673,7 +673,7 @@ describe('handlePurchasePass', () => {
         jsonResponse(200, { status: 201, data: passResponse }),
       )
 
-      await handlePurchasePass('1d', 'my-payment-sig', 'table')
+      await handlePurchasePass('1d', 'my-payment-sig', 'human')
 
       const [, init] = mockFetch.mock.calls[0]
       expect(init.headers['PAYMENT-SIGNATURE']).toBe('my-payment-sig')
@@ -683,7 +683,7 @@ describe('handlePurchasePass', () => {
   describe('validation', () => {
     it('should reject invalid duration', async () => {
       await expect(
-        handlePurchasePass('invalid', undefined, 'table'),
+        handlePurchasePass('invalid', undefined, 'human'),
       ).rejects.toThrow('Invalid duration')
     })
 
@@ -692,7 +692,7 @@ describe('handlePurchasePass', () => {
       mockFetch.mockRejectedValueOnce(new Error('Network failure'))
 
       await expect(
-        handlePurchasePass('1d', undefined, 'table'),
+        handlePurchasePass('1d', undefined, 'human'),
       ).rejects.toThrow('Network failure')
 
       // process.exit should NOT have been called with 0 (no payment flow)
