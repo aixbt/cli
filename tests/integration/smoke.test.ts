@@ -41,7 +41,7 @@ async function runCli(args: string[]): Promise<void> {
   try {
     await program.parseAsync(args, { from: 'node' })
   } catch (err: unknown) {
-    handleTopLevelError(err, (program.opts().format as 'human' | 'json' | 'toon') ?? 'human')
+    await handleTopLevelError(err, (program.opts().format as 'human' | 'json' | 'toon') ?? 'human')
   }
 }
 
@@ -87,12 +87,12 @@ describe('E2E smoke tests', () => {
   // ----------------------------------------------------------------
 
   describe('--version flag', () => {
-    it('should throw CommanderError with exitCode 0 when -v is passed', () => {
+    it('should throw CommanderError with exitCode 0 when -V is passed', () => {
       const program = createProgram()
       program.exitOverride()
 
       try {
-        program.parse(['node', 'test', '-v'], { from: 'node' })
+        program.parse(['node', 'test', '-V'], { from: 'node' })
         expect.unreachable('should have thrown')
       } catch (err: unknown) {
         expect(err).toBeInstanceOf(Error)
@@ -182,7 +182,7 @@ describe('E2E smoke tests', () => {
       expect(mockExit).toHaveBeenCalledWith(1)
     })
 
-    it('should output human-readable NoApiKeyError to stderr when running projects without --json', async () => {
+    it('should output human-readable NoApiKeyError when running projects without --json', async () => {
       delete process.env.AIXBT_API_KEY
 
       try {
@@ -191,9 +191,10 @@ describe('E2E smoke tests', () => {
         // handleTopLevelError calls process.exit
       }
 
-      const errorOutput = errors.join('\n')
-      expect(errorOutput).toContain('No API key configured')
-      expect(errorOutput).toContain('aixbt login')
+      // renderNoApiKeyError outputs to console.log (stdout)
+      const allOutput = logs.join('\n')
+      expect(allOutput).toContain('Not authenticated')
+      expect(allOutput).toContain('aixbt login')
       expect(mockExit).toHaveBeenCalledWith(1)
     })
   })
@@ -230,13 +231,13 @@ describe('E2E smoke tests', () => {
       const callOptions = mockFetch.mock.calls[0][1] as { headers: Record<string, string> }
       expect(callOptions.headers['X-API-Key']).toBe('smoke-test-key')
 
-      // Verify JSON output
-      const jsonOutput = logs.find((l) => l.includes('proj-1'))
+      // Verify JSON output (outputApiResult wraps in { data: ... } envelope)
+      const jsonOutput = logs.find((l) => l.includes('Bitcoin'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed).toHaveLength(2)
-      expect(parsed[0].name).toBe('Bitcoin')
-      expect(parsed[1].name).toBe('Ethereum')
+      expect(parsed.data).toHaveLength(2)
+      expect(parsed.data[0].name).toBe('Bitcoin')
+      expect(parsed.data[1].name).toBe('Ethereum')
     })
   })
 
@@ -305,13 +306,10 @@ steps:
 
       process.env.AIXBT_API_KEY = 'test-key'
 
-      const program = createProgram()
-      program.exitOverride()
-
       try {
-        await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
+        await runCli(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath])
       } catch {
-        // process.exit called
+        // process.exit throws
       }
 
       expect(mockExit).toHaveBeenCalledWith(1)
@@ -397,11 +395,8 @@ steps:
 
       process.env.AIXBT_API_KEY = 'test-key'
 
-      const program = createProgram()
-      program.exitOverride()
-
       try {
-        await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'run', filePath], { from: 'node' })
+        await runCli(['node', 'test', '--format', 'json', 'recipe', 'run', filePath])
       } catch {
         // process.exit throws
       }
@@ -427,13 +422,14 @@ steps:
       await program.parseAsync(['node', 'test', '--format', 'json', 'projects'], { from: 'node' })
 
       // Data should be in logs (console.log -> stdout), not errors (console.error -> stderr)
-      const jsonData = logs.find((l) => l.includes('p1'))
+      // outputApiResult wraps in { data: ... } envelope; id is filtered at default verbosity, use name
+      const jsonData = logs.find((l) => l.includes('"Test"'))
       expect(jsonData).toBeDefined()
-      const errorData = errors.find((l) => l.includes('p1'))
+      const errorData = errors.find((l) => l.includes('"Test"'))
       expect(errorData).toBeUndefined()
     })
 
-    it('should write error messages to stderr in non-JSON mode', async () => {
+    it('should write NoApiKeyError output to stdout in non-JSON mode', async () => {
       delete process.env.AIXBT_API_KEY
 
       try {
@@ -442,13 +438,13 @@ steps:
         // process.exit throws
       }
 
-      // Error should be in errors (console.error -> stderr)
-      const errorMsg = errors.find((l) => l.includes('No API key configured'))
-      expect(errorMsg).toBeDefined()
+      // renderNoApiKeyError outputs to console.log (stdout), not stderr
+      const logMsg = logs.find((l) => l.includes('Not authenticated'))
+      expect(logMsg).toBeDefined()
 
-      // Error should NOT be in logs (console.log -> stdout)
-      const logError = logs.find((l) => l.includes('No API key configured'))
-      expect(logError).toBeUndefined()
+      // The styled no-API-key output should NOT be in console.error (stderr)
+      const errMsg = errors.find((l) => l.includes('Not authenticated'))
+      expect(errMsg).toBeUndefined()
     })
   })
 

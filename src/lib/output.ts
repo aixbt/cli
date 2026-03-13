@@ -681,20 +681,39 @@ export function colorizeHelp(text: string): string {
 
 // -- Output mode helper --
 
-export function outputResult<T extends Record<string, unknown>>(
-  data: T[],
-  columns: TableColumn[],
-  outputFormat: OutputFormat,
-): void {
-  switch (outputFormat) {
-    case 'json':
-      json(data)
-      break
-    case 'toon':
-      toon(data)
-      break
-    case 'human':
-      table(data, columns)
-      break
+/** Output an API result with optional meta in structured format. */
+export function outputApiResult(result: { data: unknown; meta?: unknown }, outputFormat: StructuredFormat): void {
+  const out: Record<string, unknown> = { data: result.data }
+  if (result.meta) out.meta = result.meta
+  outputStructured(out, outputFormat)
+}
+
+/**
+ * Build a cluster color map from items that have a clusters array.
+ * Assigns sequential color indices to each unique cluster ID.
+ */
+export function buildClusterColorMap(items: Array<{ clusters?: Array<{ id: string }> }>): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const item of items) {
+    for (const c of item.clusters ?? []) {
+      if (!map.has(c.id)) {
+        map.set(c.id, map.size)
+      }
+    }
   }
+  return map
+}
+
+/** Format a large number as a human-readable string (e.g. 1.5M, 2.3B). */
+export function formatLargeNumber(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`
+  return n.toFixed(2)
+}
+
+/** Format a percentage change with color (green for positive, red for negative). */
+export function formatChange(change: number): string {
+  const text = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`
+  return change >= 0 ? fmt.green(text) : fmt.red(text)
 }

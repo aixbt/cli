@@ -538,7 +538,7 @@ describe('handlePurchasePass', () => {
   })
 
   describe('step 1 (no payment-signature)', () => {
-    it('should catch PaymentRequiredError and delegate to handlePaymentRequired', async () => {
+    it('should catch PaymentRequiredError and output payment details', async () => {
       const paymentRequired = {
         x402Version: 2,
         resource: { url: 'https://api.aixbt.tech/x402/v2/api-keys/1d', description: 'API key for 1 day', mimeType: 'application/json' },
@@ -559,12 +559,13 @@ describe('handlePurchasePass', () => {
         handlePurchasePass('1d', undefined, 'human'),
       ).rejects.toThrow('process.exit called')
 
-      // handlePaymentRequired exits with 0 (payment required is an expected flow step)
+      // exits with 0 (payment required is an expected flow step)
       expect(mockExit).toHaveBeenCalledWith(0)
 
-      // Verify the retry command was shown
+      // Verify the pass info and endpoint URL were shown
       const allLogOutput = mockLog.mock.calls.map(c => String(c[0])).join('\n')
-      expect(allLogOutput).toContain('--payment-signature')
+      expect(allLogOutput).toContain('0x8e4b195c14f20e1ba4c40234f471e1781f293b45')
+      expect(allLogOutput).toContain('/x402/v2/api-keys/1d')
     })
 
     it('should output JSON payment details in step 1 with outputFormat=json', async () => {
@@ -598,8 +599,13 @@ describe('handlePurchasePass', () => {
       const outputData = JSON.parse(jsonCalls[0][0] as string)
 
       expect(outputData.status).toBe('payment_required')
-      expect(outputData.payment.amount).toBe('$50.00')
-      expect(outputData.retryCommand).toContain('--purchase-pass 1w')
+      expect(outputData.pass.duration).toBe('1w')
+      expect(outputData.pass.label).toBe('1 week')
+      expect(outputData.pass.amount).toBe('$50.00')
+      expect(outputData.payment.payTo).toBe('0x8e4b195c14f20e1ba4c40234f471e1781f293b45')
+      expect(outputData.endpoint.method).toBe('POST')
+      expect(outputData.endpoint.url).toContain('/x402/v2/api-keys/1w')
+      expect(outputData.storeKeyCommand).toContain('--api-key')
     })
   })
 

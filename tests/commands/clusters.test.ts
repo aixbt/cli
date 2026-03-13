@@ -101,10 +101,10 @@ describe('clusters commands', () => {
       const jsonOutput = logs.find(l => l.includes('cluster-1'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed).toHaveLength(3)
-      expect(parsed[0].name).toBe('DeFi Trends')
-      expect(parsed[1].name).toBe('Market Sentiment')
-      expect(parsed[2].name).toBe('L2 Growth')
+      expect(parsed.data).toHaveLength(3)
+      expect(parsed.data[0].name).toBe('DeFi Trends')
+      expect(parsed.data[1].name).toBe('Market Sentiment')
+      expect(parsed.data[2].name).toBe('L2 Growth')
     })
 
     it('should not pass any query params to the API', async () => {
@@ -128,7 +128,7 @@ describe('clusters commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-v', 'clusters'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       // Card titles (cluster names)

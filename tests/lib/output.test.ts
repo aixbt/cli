@@ -32,10 +32,9 @@ import {
   outputStructured,
   maskApiKey,
   table,
-  outputResult,
+  outputApiResult,
   colorizeHelp,
   hint,
-  fullHint,
   cards,
   withSpinner,
 } from '../../src/lib/output.js'
@@ -245,7 +244,7 @@ describe('human', () => {
 
     expect(headerLine).toContain('Name')
     expect(headerLine).toContain('Value')
-    expect(separatorLine).toMatch(/^-+$/)
+    expect(separatorLine).toMatch(/^─+$/)
     expect(dataLine).toContain('Alice')
     expect(dataLine).toContain('100')
   })
@@ -451,9 +450,9 @@ describe('human', () => {
   })
 })
 
-// -- outputResult --
+// -- outputApiResult --
 
-describe('outputResult', () => {
+describe('outputApiResult', () => {
   let mockLog: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -464,53 +463,29 @@ describe('outputResult', () => {
     vi.restoreAllMocks()
   })
 
-  const columns: TableColumn[] = [
-    { key: 'name', header: 'Name' },
-  ]
-
-  it('should output JSON when format is json', () => {
-    const data = [{ name: 'test' }]
-    outputResult(data, columns, 'json')
+  it('should output JSON with data and meta when meta is present', () => {
+    outputApiResult({ data: [{ name: 'test' }], meta: { tier: 'free' } }, 'json')
 
     expect(mockLog).toHaveBeenCalledOnce()
-    expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2))
+    const parsed = JSON.parse(mockLog.mock.calls[0][0] as string)
+    expect(parsed).toEqual({ data: [{ name: 'test' }], meta: { tier: 'free' } })
   })
 
-  it('should output human when format is human', () => {
-    const data = [{ name: 'test' }]
-    outputResult(data, columns, 'human')
+  it('should output JSON with data only when meta is undefined', () => {
+    outputApiResult({ data: [{ name: 'test' }] }, 'json')
 
-    // Table produces: header + separator + data row = 3 calls
-    expect(mockLog).toHaveBeenCalledTimes(3)
-    const headerLine = stripAnsi(mockLog.mock.calls[0][0] as string)
-    expect(headerLine).toContain('Name')
+    expect(mockLog).toHaveBeenCalledOnce()
+    const parsed = JSON.parse(mockLog.mock.calls[0][0] as string)
+    expect(parsed).toEqual({ data: [{ name: 'test' }] })
+    expect(parsed).not.toHaveProperty('meta')
   })
 
-  it('should output TOON when format is toon', () => {
-    const data = [{ name: 'test' }]
-    outputResult(data, columns, 'toon')
+  it('should output TOON format', () => {
+    outputApiResult({ data: [{ name: 'test' }] }, 'toon')
 
     expect(mockLog).toHaveBeenCalledOnce()
     const output = mockLog.mock.calls[0][0] as string
     expect(output).toContain('test')
-    expect(output).toContain('name')
-    // TOON uses columnar format for arrays, not JSON object syntax
-    expect(output).not.toContain('"name"')
-  })
-
-  it('should output "No results." table for empty data in table format', () => {
-    outputResult([], columns, 'human')
-
-    expect(mockLog).toHaveBeenCalledOnce()
-    const output = stripAnsi(mockLog.mock.calls[0][0] as string)
-    expect(output).toBe('No results.')
-  })
-
-  it('should output empty JSON array for empty data in json format', () => {
-    outputResult([], columns, 'json')
-
-    expect(mockLog).toHaveBeenCalledOnce()
-    expect(mockLog).toHaveBeenCalledWith('[]')
   })
 })
 
@@ -909,30 +884,6 @@ describe('hint', () => {
     // Second call: the dimmed message text
     const output = stripAnsi(mockLog.mock.calls[1][0] as string)
     expect(output).toBe('Try --verbose for more details')
-  })
-})
-
-describe('fullHint', () => {
-  let mockLog: ReturnType<typeof vi.spyOn>
-
-  beforeEach(() => {
-    mockLog = vi.spyOn(console, 'log').mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('should print the standard "--full" message', () => {
-    fullHint()
-
-    // fullHint calls hint(), which calls console.log() twice
-    expect(mockLog).toHaveBeenCalledTimes(2)
-    // First call: blank line
-    expect(mockLog.mock.calls[0]).toEqual([])
-    // Second call: the hint message about --full
-    const output = stripAnsi(mockLog.mock.calls[1][0] as string)
-    expect(output).toBe('Use --full for complete details')
   })
 })
 

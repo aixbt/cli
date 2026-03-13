@@ -1,5 +1,4 @@
 import type { Command } from 'commander'
-import chalk from 'chalk'
 import type { SignalData } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
@@ -77,19 +76,12 @@ async function handleSignalList(cmd: Command): Promise<void> {
   )
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputStructured({ data: result.data.map(s => filterSignalFields(s, verbosity)), ...(result.meta && { meta: result.meta }) }, outputFormat)
+    output.outputApiResult({ data: result.data.map(s => filterSignalFields(s, verbosity)), meta: result.meta }, outputFormat)
     return
   }
 
   // Build stable cluster color map across all signals
-  const clusterColorMap = new Map<string, number>()
-  for (const s of result.data) {
-    for (const c of s.clusters ?? []) {
-      if (!clusterColorMap.has(c.id)) {
-        clusterColorMap.set(c.id, clusterColorMap.size)
-      }
-    }
-  }
+  const clusterColorMap = output.buildClusterColorMap(result.data)
 
   for (let i = 0; i < result.data.length; i++) {
     const s = result.data[i]
@@ -98,7 +90,7 @@ async function handleSignalList(cmd: Command): Promise<void> {
     // Title line: name  CATEGORY  [HOT] [OFFICIAL]
     const badge = buildBadges(s)
     const badgePart = badge ? ` ${badge}` : ''
-    console.log(`${chalk.bold.white(s.projectName)}  ${output.fmt.tag(s.category || 'UNCATEGORIZED')}${badgePart}`)
+    console.log(`${output.fmt.boldWhite(s.projectName)}  ${output.fmt.tag(s.category || 'UNCATEGORIZED')}${badgePart}`)
 
     // Description
     console.log(s.description)
@@ -130,11 +122,8 @@ async function handleSignalList(cmd: Command): Promise<void> {
   if (verbosity < 1) output.verboseHint('Use -v for activity details')
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function filterSignalFields(s: SignalData, verbosity: number): Record<string, any> {
-  // v0: essentials
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result: Record<string, any> = {
+function filterSignalFields(s: SignalData, verbosity: number): Record<string, unknown> {
+  const result: Record<string, unknown> = {
     projectName: s.projectName,
     category: s.category,
     description: s.description,

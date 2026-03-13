@@ -4,7 +4,7 @@ import { readConfig, writeConfig, resolveConfig, resolveFormat } from '../lib/co
 import { validateApiKey, formatExpiry, isExpiringSoon } from '../lib/auth.js'
 import * as output from '../lib/output.js'
 import { CliError } from '../lib/errors.js'
-import { handlePurchasePass, fetchPassPricing, PASS_OPTIONS } from '../lib/x402.js'
+import { handlePurchasePass, fetchPassPricing } from '../lib/x402.js'
 
 export function registerLoginCommand(program: Command): void {
   // -- login --

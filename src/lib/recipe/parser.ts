@@ -1,6 +1,6 @@
 import { parse as parseYaml } from 'yaml'
-import { RecipeValidationError } from './errors.js'
-import type { Recipe, RecipeStep, RecipeParam, ValidationIssue, TransformBlock, SampleTransform } from '../types.js'
+import { RecipeValidationError } from '../errors.js'
+import type { Recipe, RecipeStep, RecipeParam, ValidationIssue, TransformBlock, SampleTransform } from '../../types.js'
 
 function validateTransformBlock(
   raw: unknown,

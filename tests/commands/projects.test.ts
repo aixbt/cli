@@ -158,12 +158,12 @@ describe('projects commands', () => {
       expect(callUrl.searchParams.get('sortBy')).toBe('momentumScore')
 
       // Verify JSON output contains project data
-      const jsonOutput = logs.find(l => l.includes('proj-1'))
+      const jsonOutput = logs.find(l => l.includes('Bitcoin'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed).toHaveLength(2)
-      expect(parsed[0].name).toBe('Bitcoin')
-      expect(parsed[1].name).toBe('Ethereum')
+      expect(parsed.data).toHaveLength(2)
+      expect(parsed.data[0].name).toBe('Bitcoin')
+      expect(parsed.data[1].name).toBe('Ethereum')
     })
 
     it('should pass filter options as query params', async () => {
@@ -227,11 +227,11 @@ describe('projects commands', () => {
       // Rationale should be shown
       expect(allOutput).toContain('Institutional interest rising')
       expect(allOutput).toContain('DeFi ecosystem expanding')
-      // Full hint should be shown
-      expect(allOutput).toContain('--full')
+      // Verbose hint should be shown
+      expect(allOutput).toContain('-v')
     })
 
-    it('should display card layout with --full flag', async () => {
+    it('should display card layout with -v flag', async () => {
       const projectsWithDetails = [
         {
           ...MOCK_PROJECTS[0],
@@ -249,7 +249,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--full', 'projects'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-v', 'projects'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       // Card layout should show project name
@@ -338,7 +338,7 @@ describe('projects commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects', 'proj-1'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', '-v', 'projects', 'proj-1'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -347,8 +347,8 @@ describe('projects commands', () => {
       const jsonOutput = logs.find(l => l.includes('Bitcoin'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.id).toBe('proj-1')
-      expect(parsed.name).toBe('Bitcoin')
+      expect(parsed.data.id).toBe('proj-1')
+      expect(parsed.data.name).toBe('Bitcoin')
     })
 
     it('should display key-value output in human mode', async () => {
@@ -366,7 +366,7 @@ describe('projects commands', () => {
       expect(allOutput).toContain('@bitcoin')
       expect(allOutput).toContain('85.50')
       // Metrics should be displayed
-      expect(allOutput).toContain('Price (USD)')
+      expect(allOutput).toContain('Price')
       expect(allOutput).toContain('Market Cap')
       // Token info
       expect(allOutput).toContain('bitcoin')
@@ -407,8 +407,8 @@ describe('projects commands', () => {
       const jsonOutput = logs.find(l => l.includes('projectId'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.projectId).toBe('proj-1')
-      expect(parsed.data).toHaveLength(2)
+      expect(parsed.data.projectId).toBe('proj-1')
+      expect(parsed.data.data).toHaveLength(2)
     })
 
     it('should pass start and end date params', async () => {
@@ -442,7 +442,7 @@ describe('projects commands', () => {
       expect(allOutput).toContain('Bitcoin')
       // Table headers
       expect(allOutput).toContain('Score')
-      expect(allOutput).toContain('Top Cluster')
+      expect(allOutput).toContain('Clusters:mentions')
     })
 
     it('should show "No momentum data" when data array is empty', async () => {
@@ -478,7 +478,7 @@ describe('projects commands', () => {
       const jsonOutput = logs.find(l => l.includes('ethereum'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed).toEqual(MOCK_CHAINS)
+      expect(parsed.data).toEqual(MOCK_CHAINS)
     })
 
     it('should display chain list in human mode', async () => {

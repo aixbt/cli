@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { resolveValue, resolveEndpoint, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe-engine.js'
+import { resolveValue, resolveEndpoint, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe/engine.js'
 import type { ExecutionContext, StepResult } from '../../src/types.js'
-import { CliError } from '../../src/lib/errors.js'
+import { CliError, PaymentRequiredError, RateLimitError } from '../../src/lib/errors.js'
 import * as apiClient from '../../src/lib/api-client.js'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -761,49 +761,27 @@ describe('executeRecipe', () => {
     })
 
     it('should throw STEP_NOT_FOUND when resuming from nonexistent step', async () => {
-      await expect(
-        executeRecipe({
-          yaml: AGENT_RECIPE,
-          params: {},
-          clientOptions: {},
-          resumeFromStep: 'nonexistent',
-        }),
-      ).rejects.toThrow(CliError)
+      const err = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'nonexistent',
+      }).catch((e: unknown) => e)
 
-      try {
-        await executeRecipe({
-          yaml: AGENT_RECIPE,
-          params: {},
-          clientOptions: {},
-          resumeFromStep: 'nonexistent',
-        })
-      } catch (err) {
-        expect(err).toBeInstanceOf(CliError)
-        expect((err as CliError).code).toBe('STEP_NOT_FOUND')
-      }
+      expect(err).toBeInstanceOf(CliError)
+      expect((err as CliError).code).toBe('STEP_NOT_FOUND')
     })
 
     it('should throw INVALID_RESUME_STEP when resuming from a non-agent step', async () => {
-      await expect(
-        executeRecipe({
-          yaml: AGENT_RECIPE,
-          params: {},
-          clientOptions: {},
-          resumeFromStep: 'surging',
-        }),
-      ).rejects.toThrow(CliError)
+      const err = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'surging',
+      }).catch((e: unknown) => e)
 
-      try {
-        await executeRecipe({
-          yaml: AGENT_RECIPE,
-          params: {},
-          clientOptions: {},
-          resumeFromStep: 'surging',
-        })
-      } catch (err) {
-        expect(err).toBeInstanceOf(CliError)
-        expect((err as CliError).code).toBe('INVALID_RESUME_STEP')
-      }
+      expect(err).toBeInstanceOf(CliError)
+      expect((err as CliError).code).toBe('INVALID_RESUME_STEP')
     })
   })
 
@@ -1659,6 +1637,36 @@ steps:
       const momentumData = data.momentum as unknown[]
       expect(momentumData).toEqual([])
     })
+
+    it('should throw FOREACH_SOURCE_NOT_ARRAY when source is not an array', async () => {
+      // projects step returns an object instead of an array
+      mockGet.mockResolvedValueOnce(mockApiResponse({ count: 5 }))
+
+      const err = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      }).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(CliError)
+      expect((err as CliError).code).toBe('FOREACH_SOURCE_NOT_ARRAY')
+      expect((err as CliError).message).toContain('momentum')
+      expect((err as CliError).message).toContain('expected array')
+    })
+
+    it('should throw FOREACH_SOURCE_MISSING when source resolves to null', async () => {
+      // projects step returns null data, so foreach source resolves to null
+      mockGet.mockResolvedValueOnce(mockApiResponse(null))
+
+      const err = await executeRecipe({
+        yaml: FOREACH_RECIPE,
+        params: {},
+        clientOptions: {},
+      }).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(CliError)
+      expect((err as CliError).code).toBe('FOREACH_SOURCE_MISSING')
+    })
   })
 
   // -- Required params validation --
@@ -2214,6 +2222,52 @@ steps:
         expect((err as CliError).message).toContain('signals')
         expect((err as CliError).message).toContain('page 2')
       }
+    })
+
+    it('should preserve CliError subclass type when API step fails', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+`
+      mockGet.mockRejectedValueOnce(new PaymentRequiredError({ detail: 'pay up' }))
+
+      const err = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: {},
+      }).catch((e: unknown) => e)
+
+      // Must still be a PaymentRequiredError, not wrapped in generic CliError
+      expect(err).toBeInstanceOf(PaymentRequiredError)
+      expect((err as CliError).message).toContain('signals')
+    })
+
+    it('should wrap non-CliError failures with STEP_EXECUTION_FAILED', async () => {
+      const yaml = `
+name: test-recipe
+version: "1.0"
+description: test
+steps:
+  - id: signals
+    endpoint: /v2/signals
+`
+      mockGet.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+      const err = await executeRecipe({
+        yaml,
+        params: {},
+        clientOptions: {},
+      }).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(CliError)
+      expect(err).not.toBeInstanceOf(PaymentRequiredError)
+      expect((err as CliError).code).toBe('STEP_EXECUTION_FAILED')
+      expect((err as CliError).message).toContain('signals')
+      expect((err as CliError).message).toContain('fetch failed')
     })
 
     it('should pause for rate limit when remainingPerMinute is low between pages', async () => {

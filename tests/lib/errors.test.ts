@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
+vi.mock('../../src/lib/x402.js', () => ({
+  fetchPassPricing: vi.fn().mockResolvedValue([]),
+}))
+
 import {
   CliError,
   ApiError,
@@ -252,10 +256,10 @@ describe('handleTopLevelError', () => {
   })
 
   describe('CliError in JSON mode', () => {
-    it('should output JSON to stdout and exit with error exitCode', () => {
+    it('should output JSON to stdout and exit with error exitCode', async () => {
       const err = new CliError('something failed', 'FAIL_CODE')
 
-      expect(() => handleTopLevelError(err, 'json')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'json')).rejects.toThrow('process.exit called')
 
       expect(mockLog).toHaveBeenCalledOnce()
       const output = JSON.parse(mockLog.mock.calls[0][0] as string)
@@ -268,10 +272,10 @@ describe('handleTopLevelError', () => {
   })
 
   describe('CliError in TOON mode', () => {
-    it('should output structured TOON to stdout and exit with error exitCode', () => {
+    it('should output structured TOON to stdout and exit with error exitCode', async () => {
       const err = new CliError('something failed', 'FAIL_CODE')
 
-      expect(() => handleTopLevelError(err, 'toon')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'toon')).rejects.toThrow('process.exit called')
 
       expect(mockLog).toHaveBeenCalledOnce()
       const output = mockLog.mock.calls[0][0] as string
@@ -283,10 +287,10 @@ describe('handleTopLevelError', () => {
   })
 
   describe('CliError in human mode', () => {
-    it('should output to stderr and exit with error exitCode', () => {
+    it('should output to stderr and exit with error exitCode', async () => {
       const err = new CliError('something failed', 'FAIL_CODE')
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('error: something failed')
       expect(mockExit).toHaveBeenCalledWith(1)
@@ -294,10 +298,10 @@ describe('handleTopLevelError', () => {
   })
 
   describe('NoApiKeyError in JSON mode', () => {
-    it('should output options JSON to stdout', () => {
+    it('should output options JSON to stdout', async () => {
       const err = new NoApiKeyError()
 
-      expect(() => handleTopLevelError(err, 'json')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'json')).rejects.toThrow('process.exit called')
 
       expect(mockLog).toHaveBeenCalledOnce()
       const output = JSON.parse(mockLog.mock.calls[0][0] as string)
@@ -308,40 +312,42 @@ describe('handleTopLevelError', () => {
   })
 
   describe('NoApiKeyError in human mode', () => {
-    it('should output access options text to stderr', () => {
+    it('should output access options text to stdout and exit', async () => {
       const err = new NoApiKeyError()
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
-      expect(mockError).toHaveBeenCalledOnce()
-      const output = mockError.mock.calls[0][0] as string
-      expect(output).toContain('No API key configured.')
-      expect(output).toContain('Access options:')
+      // renderNoApiKeyError writes to console.log, not console.error
+      expect(mockLog).toHaveBeenCalled()
+      const allOutput = mockLog.mock.calls.map((c) => c[0] as string).join('\n')
+      expect(allOutput).toContain('Not authenticated')
+      expect(allOutput).toContain('Subscribe')
+      expect(allOutput).toContain('x402')
       expect(mockExit).toHaveBeenCalledWith(1)
     })
   })
 
   describe('AuthError in human mode', () => {
-    it('should print expired-key hint when code is API_KEY_EXPIRED', () => {
+    it('should print expired-key hint when code is API_KEY_EXPIRED', async () => {
       const err = new AuthError('Key expired', 'API_KEY_EXPIRED')
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('error: Key expired')
       expect(mockError).toHaveBeenCalledWith('\nYour API key has expired. Run: aixbt login')
     })
 
-    it('should print invalid-key hint when code is INVALID_API_KEY', () => {
+    it('should print invalid-key hint when code is INVALID_API_KEY', async () => {
       const err = new AuthError('Invalid key', 'INVALID_API_KEY')
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('\nYour API key is invalid. Run: aixbt login')
     })
   })
 
   describe('RateLimitError in human mode', () => {
-    it('should print retry-after seconds when available', () => {
+    it('should print retry-after seconds when available', async () => {
       const rateLimit: RateLimitInfo = {
         limitPerMinute: 100,
         remainingPerMinute: 0,
@@ -353,12 +359,12 @@ describe('handleTopLevelError', () => {
       }
       const err = new RateLimitError('Rate limited', rateLimit)
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('\nRetry after: 45s')
     })
 
-    it('should print resetMinute when no retryAfterSeconds', () => {
+    it('should print resetMinute when no retryAfterSeconds', async () => {
       const rateLimit: RateLimitInfo = {
         limitPerMinute: 100,
         remainingPerMinute: 0,
@@ -369,17 +375,17 @@ describe('handleTopLevelError', () => {
       }
       const err = new RateLimitError('Rate limited', rateLimit)
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith('\nRetry after: 2026-01-01T00:01:00Z')
     })
   })
 
   describe('NetworkError in human mode', () => {
-    it('should print connection troubleshooting hint', () => {
+    it('should print connection troubleshooting hint', async () => {
       const err = new NetworkError('ECONNREFUSED')
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith(
         '\nCheck your internet connection and try again.',
@@ -388,10 +394,10 @@ describe('handleTopLevelError', () => {
   })
 
   describe('unknown error', () => {
-    it('should handle non-CliError errors in JSON mode', () => {
+    it('should handle non-CliError errors in JSON mode', async () => {
       const err = new TypeError('Cannot read properties of undefined')
 
-      expect(() => handleTopLevelError(err, 'json')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'json')).rejects.toThrow('process.exit called')
 
       expect(mockLog).toHaveBeenCalledOnce()
       const output = JSON.parse(mockLog.mock.calls[0][0] as string)
@@ -402,10 +408,10 @@ describe('handleTopLevelError', () => {
       expect(mockExit).toHaveBeenCalledWith(1)
     })
 
-    it('should handle non-CliError errors in human mode', () => {
+    it('should handle non-CliError errors in human mode', async () => {
       const err = new TypeError('Cannot read properties of undefined')
 
-      expect(() => handleTopLevelError(err, 'human')).toThrow('process.exit called')
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith(
         'error: Cannot read properties of undefined',
@@ -413,8 +419,8 @@ describe('handleTopLevelError', () => {
       expect(mockExit).toHaveBeenCalledWith(1)
     })
 
-    it('should handle non-Error values in JSON mode', () => {
-      expect(() => handleTopLevelError('string error', 'json')).toThrow(
+    it('should handle non-Error values in JSON mode', async () => {
+      await expect(handleTopLevelError('string error', 'json')).rejects.toThrow(
         'process.exit called',
       )
 
@@ -425,8 +431,8 @@ describe('handleTopLevelError', () => {
       })
     })
 
-    it('should handle non-Error values in human mode', () => {
-      expect(() => handleTopLevelError(42, 'human')).toThrow('process.exit called')
+    it('should handle non-Error values in human mode', async () => {
+      await expect(handleTopLevelError(42, 'human')).rejects.toThrow('process.exit called')
 
       expect(mockError).toHaveBeenCalledWith(
         'error: An unexpected error occurred',

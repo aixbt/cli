@@ -113,15 +113,15 @@ describe('signals commands', () => {
       expect(callUrl.pathname).toBe('/v2/signals')
       expect(callUrl.searchParams.get('page')).toBe('1')
       expect(callUrl.searchParams.get('limit')).toBeNull()
-      expect(callUrl.searchParams.get('sortBy')).toBe('reinforcedAt')
+      expect(callUrl.searchParams.get('sortBy')).toBe('createdAt')
 
       // Verify JSON output
-      const jsonOutput = logs.find(l => l.includes('sig-1'))
+      const jsonOutput = logs.find(l => l.includes('Ethereum'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed).toHaveLength(2)
-      expect(parsed[0].projectName).toBe('Ethereum')
-      expect(parsed[1].projectName).toBe('Bitcoin')
+      expect(parsed.data).toHaveLength(2)
+      expect(parsed.data[0].projectName).toBe('Ethereum')
+      expect(parsed.data[1].projectName).toBe('Bitcoin')
     })
 
     it('should pass filter options as query params', async () => {
@@ -209,23 +209,23 @@ describe('signals commands', () => {
       await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      // Card titles (project names)
+      // Project names shown
       expect(allOutput).toContain('Ethereum')
       expect(allOutput).toContain('Bitcoin')
-      // Card subtitles (categories)
+      // Categories shown inline
       expect(allOutput).toContain('DeFi')
       expect(allOutput).toContain('Adoption')
-      // Card fields
-      expect(allOutput).toContain('Description')
+      // Descriptions shown inline (no label)
       expect(allOutput).toContain('Significant increase in DeFi TVL across Ethereum L2s')
       expect(allOutput).toContain('New institutional custody solution launched')
+      // Detected/Reinforced in meta line
       expect(allOutput).toContain('Detected')
       expect(allOutput).toContain('Reinforced')
-      // Cluster count shown in default mode
-      expect(allOutput).toContain('2 clusters')
-      expect(allOutput).toContain('1 cluster')
-      // Full hint shown
-      expect(allOutput).toContain('--full')
+      // Cluster names shown via dots
+      expect(allOutput).toContain('DeFi Trends')
+      expect(allOutput).toContain('Institutional')
+      // Verbose hint shown
+      expect(allOutput).toContain('-v')
     })
 
     it('should display OFFICIAL badge when hasOfficialSource is true', async () => {
@@ -277,27 +277,30 @@ describe('signals commands', () => {
       expect(allOutput).not.toContain('OFFICIAL')
     })
 
-    it('should display full card layout with --full flag', async () => {
+    it('should display verbose output with -v flag including cluster names', async () => {
+      const signalWithActivity = {
+        ...MOCK_SIGNALS[0],
+        activity: [
+          { date: '2026-03-01', source: 'twitter', incoming: 'L2 TVL surge detected' },
+          { date: '2026-03-02', source: 'twitter', incoming: 'Continued growth confirmed', result: 'Signal reinforced' },
+        ],
+      }
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_SIGNALS }),
+        jsonResponse(200, { status: 200, data: [signalWithActivity] }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--full', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-v', 'signals'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      // Full mode shows additional fields
-      expect(allOutput).toContain('ID')
-      expect(allOutput).toContain('sig-1')
-      expect(allOutput).toContain('Project ID')
-      expect(allOutput).toContain('proj-eth')
-      expect(allOutput).toContain('Official')
-      // Cluster names shown in full mode (not just count)
+      // Project name still shown
+      expect(allOutput).toContain('Ethereum')
+      // Cluster names shown via dots
       expect(allOutput).toContain('DeFi Trends')
       expect(allOutput).toContain('L2 Growth')
-      // Activity field
-      expect(allOutput).toContain('Activity')
+      // Activity section shown when activity.length > 1
+      expect(allOutput).toContain('activity')
     })
 
     it('should show pagination hint when hasMore is true', async () => {
@@ -337,7 +340,7 @@ describe('signals commands', () => {
       expect(allOutput).not.toContain('--page 2')
     })
 
-    it('should show "No results" when signal list is empty', async () => {
+    it('should show verbose hint when signal list is empty', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: [] }),
       )
@@ -347,7 +350,7 @@ describe('signals commands', () => {
       await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('No results')
+      expect(allOutput).toContain('-v')
     })
   })
 

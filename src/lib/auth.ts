@@ -1,4 +1,5 @@
 import type { Command } from 'commander'
+import type { KeyType } from '../types.js'
 import { resolveConfig, type ResolvedConfig } from './config.js'
 import { NoApiKeyError } from './errors.js'
 import { get, type ApiClientOptions } from './api-client.js'
@@ -19,7 +20,7 @@ interface AuthModeFlags {
 
 export interface ApiKeyInfo {
   id: string
-  type: 'demo' | 'full' | 'x402'
+  type: KeyType
   scopes: string[]
   expiresAt: string  // ISO 8601 or "never"
 }

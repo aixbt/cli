@@ -9,7 +9,7 @@ import { registerSignalsCommand } from './commands/signals.js'
 import { registerClustersCommand } from './commands/clusters.js'
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
-import { registerConfigCommand } from './commands/config.js'
+
 import * as output from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
 import { resolveFormat, resolveConfig } from './lib/config.js'
@@ -20,7 +20,7 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 export function createProgram(): Command {
   const program = new Command()
 
-  const formatOption = new Option('-f, --format <mode>', 'Output format: human, json, toon')
+  const formatOption = new Option('-f, --format <mode>', 'Output format')
     .choices(['human', 'json', 'toon'])
 
   program
@@ -35,7 +35,10 @@ export function createProgram(): Command {
         lines.push(`  ${output.fmt.dim('Not logged in. Run:')} aixbt login`)
         lines.push('')
       }
-      lines.push(`  ${output.fmt.boldWhite('For agents')}`)
+      const title = ' FOR AI AGENTS: '
+      const maxWidth = Math.min(process.stdout.columns || 76, 76)
+      const tail = Math.max(0, maxWidth - 1 - title.length)
+      lines.push(output.fmt.dim('━' + title + '━'.repeat(tail)))
       lines.push('')
       lines.push(`  AIXBT provides real-time crypto signal intelligence. Find alpha, research`)
       lines.push(`  projects, inform trades, and gain an edge in the market. Use ${output.fmt.dim('-f json')}`)
@@ -51,7 +54,7 @@ export function createProgram(): Command {
       lines.push('')
       lines.push(`  ${output.fmt.dim('docs.aixbt.tech/llms.txt')}`)
       lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli.mdx')}`)
-      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/recipes.mdx')}`)
+      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli/recipes.mdx')}`)
       return '\n' + lines.join('\n') + '\n'
     })
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
@@ -93,7 +96,6 @@ export function createProgram(): Command {
   })
 
   registerLoginCommand(program)
-  registerConfigCommand(program)
   registerProjectsCommand(program)
   registerSignalsCommand(program)
   registerClustersCommand(program)
