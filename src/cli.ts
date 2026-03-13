@@ -101,7 +101,71 @@ export function createProgram(): Command {
   registerClustersCommand(program)
   registerRecipeCommand(program)
 
+  // `aixbt help all` — full reference of every command and option
+  program.addHelpCommand(false)
+  program
+    .command('help [command]')
+    .description('display help for command ("all" for full reference)')
+    .action((cmdName: string | undefined) => {
+      if (cmdName === 'all') {
+        printFullReference(program)
+        return
+      }
+      if (cmdName) {
+        const sub = program.commands.find(c => c.name() === cmdName)
+        if (sub) sub.help()
+        else program.error(`unknown command '${cmdName}'`)
+      } else {
+        program.help()
+      }
+    })
+
   return program
+}
+
+function printFullReference(program: Command): void {
+  const lines: string[] = []
+  lines.push(output.banner(pkg.version))
+  lines.push('')
+
+  function printCommand(cmd: Command, prefix: string): void {
+    const usage = cmd.usage()
+    const fullName = prefix ? `${prefix} ${cmd.name()}` : cmd.name()
+    lines.push(output.fmt.boldWhite(`${fullName}`) + output.fmt.dim(usage ? ` ${usage}` : ''))
+    const desc = cmd.description()
+    if (desc) lines.push(`  ${desc}`)
+
+    const opts = cmd.options.filter(o => !o.hidden)
+    if (opts.length > 0) {
+      for (const opt of opts) {
+        const flags = opt.flags.padEnd(32)
+        lines.push(`  ${output.fmt.dim(flags)}${opt.description || ''}`)
+      }
+    }
+    lines.push('')
+
+    for (const sub of cmd.commands) {
+      if (sub.name() === 'help') continue
+      printCommand(sub, fullName)
+    }
+  }
+
+  // Global options
+  lines.push(output.fmt.boldWhite('Global Options'))
+  const globalOpts = program.options.filter(o => !o.hidden)
+  for (const opt of globalOpts) {
+    const flags = opt.flags.padEnd(32)
+    lines.push(`  ${output.fmt.dim(flags)}${opt.description || ''}`)
+  }
+  lines.push('')
+
+  // All commands
+  for (const cmd of program.commands) {
+    if (cmd.name() === 'help') continue
+    printCommand(cmd, 'aixbt')
+  }
+
+  process.stdout.write(output.colorizeHelp(lines.join('\n') + '\n'))
 }
 
 function expandVerboseFlags(argv: string[]): string[] {
