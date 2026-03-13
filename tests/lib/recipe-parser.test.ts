@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { parseRecipe } from '../../src/lib/recipe-parser.js'
+import { parseRecipe } from '../../src/lib/recipe/parser.js'
 import { RecipeValidationError } from '../../src/lib/errors.js'
 import { isAgentStep, isForeachStep, isApiStep, isTransformStep } from '../../src/types.js'
 import type { AgentStep, ForeachStep, ApiStep, TransformStep } from '../../src/types.js'
@@ -1247,104 +1247,24 @@ steps:
   })
 })
 
-// -- Step type guards --
+// -- Step type guards (smoke test) --
 
 describe('step type guards', () => {
-  const apiStep: ApiStep = {
-    id: 'api1',
-    endpoint: 'GET /v2/projects',
+  const steps = {
+    api: { id: 'api1', endpoint: 'GET /v2/projects' } as ApiStep,
+    foreach: { id: 'foreach1', foreach: 'api1.data', endpoint: 'GET /v2/projects/{{item.id}}' } as ForeachStep,
+    agent: { id: 'agent1', type: 'agent', context: ['api1'], task: 'Analyze', instructions: 'Analysis step', returns: { summary: 'string' } } as AgentStep,
+    transform: { id: 'transform1', input: 'api1', transform: { select: ['id', 'name'] } } as TransformStep,
   }
 
-  const foreachStep: ForeachStep = {
-    id: 'foreach1',
-    foreach: 'api1.data',
-    endpoint: 'GET /v2/projects/{{item.id}}',
-  }
-
-  const agentStep: AgentStep = {
-    id: 'agent1',
-    type: 'agent',
-    context: ['api1'],
-    task: 'Analyze',
-    prompt: 'Analysis step',
-    returns: { summary: 'string' },
-  }
-
-  const transformStep: TransformStep = {
-    id: 'transform1',
-    input: 'api1',
-    transform: { select: ['id', 'name'] },
-  }
-
-  describe('isAgentStep', () => {
-    it('should return true for an agent step', () => {
-      expect(isAgentStep(agentStep)).toBe(true)
-    })
-
-    it('should return false for an API step', () => {
-      expect(isAgentStep(apiStep)).toBe(false)
-    })
-
-    it('should return false for a foreach step', () => {
-      expect(isAgentStep(foreachStep)).toBe(false)
-    })
-
-    it('should return false for a transform step', () => {
-      expect(isAgentStep(transformStep)).toBe(false)
-    })
-  })
-
-  describe('isForeachStep', () => {
-    it('should return true for a foreach step', () => {
-      expect(isForeachStep(foreachStep)).toBe(true)
-    })
-
-    it('should return false for an API step', () => {
-      expect(isForeachStep(apiStep)).toBe(false)
-    })
-
-    it('should return false for an agent step', () => {
-      expect(isForeachStep(agentStep)).toBe(false)
-    })
-
-    it('should return false for a transform step', () => {
-      expect(isForeachStep(transformStep)).toBe(false)
-    })
-  })
-
-  describe('isApiStep', () => {
-    it('should return true for an API step', () => {
-      expect(isApiStep(apiStep)).toBe(true)
-    })
-
-    it('should return false for a foreach step', () => {
-      expect(isApiStep(foreachStep)).toBe(false)
-    })
-
-    it('should return false for an agent step', () => {
-      expect(isApiStep(agentStep)).toBe(false)
-    })
-
-    it('should return false for a transform step', () => {
-      expect(isApiStep(transformStep)).toBe(false)
-    })
-  })
-
-  describe('isTransformStep', () => {
-    it('should return true for a transform step', () => {
-      expect(isTransformStep(transformStep)).toBe(true)
-    })
-
-    it('should return false for an API step', () => {
-      expect(isTransformStep(apiStep)).toBe(false)
-    })
-
-    it('should return false for a foreach step', () => {
-      expect(isTransformStep(foreachStep)).toBe(false)
-    })
-
-    it('should return false for an agent step', () => {
-      expect(isTransformStep(agentStep)).toBe(false)
-    })
+  it.each([
+    ['isAgentStep', isAgentStep, 'agent'],
+    ['isForeachStep', isForeachStep, 'foreach'],
+    ['isApiStep', isApiStep, 'api'],
+    ['isTransformStep', isTransformStep, 'transform'],
+  ] as const)('%s returns true only for %s steps', (_name, guard, trueKey) => {
+    for (const [key, step] of Object.entries(steps)) {
+      expect(guard(step)).toBe(key === trueKey)
+    }
   })
 })

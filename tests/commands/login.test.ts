@@ -155,8 +155,8 @@ describe('login commands', () => {
 
       // Verify the payment details were output (human-readable mode)
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Payment required')
-      expect(allOutput).toContain('--payment-signature')
+      expect(allOutput).toContain('USDC on Base')
+      expect(allOutput).toContain('Pay to')
 
       // Verify POST was made to the correct endpoint
       const [url, init] = mockFetch.mock.calls[0]
@@ -197,10 +197,10 @@ describe('login commands', () => {
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.status).toBe('payment_required')
-      expect(parsed.x402Version).toBe(2)
-      expect(parsed.payment.amount).toBe('$10.00')
-      expect(parsed.payment.network).toBe('eip155:8453')
-      expect(parsed.retryCommand).toContain('--payment-signature')
+      expect(parsed.pass.duration).toBe('1d')
+      expect(parsed.pass.amount).toBe('$10.00')
+      expect(parsed.payment.networkId).toBe('eip155:8453')
+      expect(parsed.storeKeyCommand).toContain('--api-key')
 
       exitSpy.mockRestore()
     })

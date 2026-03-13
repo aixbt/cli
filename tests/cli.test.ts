@@ -185,10 +185,10 @@ describe('CLI', () => {
       expect(version).toMatch(/^\d+\.\d+\.\d+/)
     })
 
-    it('should configure -v as the short flag for version', () => {
+    it('should configure -V as the short flag for version', () => {
       const program = createProgram()
       const versionOpt = program.options.find(
-        (o) => o.short === '-v' && o.long === '--version',
+        (o) => o.short === '-V' && o.long === '--version',
       )
       expect(versionOpt).toBeDefined()
     })
@@ -302,7 +302,7 @@ describe('CLI', () => {
       expect(stripped).toContain('--delayed')
       expect(stripped).toContain('--pay-per-use')
       expect(stripped).toContain('--api-key')
-      expect(stripped).toContain('-v, --version')
+      expect(stripped).not.toContain('-V, --version')
     })
 
     it('should include all subcommands in help output', () => {

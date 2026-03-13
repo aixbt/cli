@@ -3,14 +3,14 @@ import { readFileSync, existsSync, writeFileSync } from 'node:fs'
 import type { Recipe } from '../types.js'
 import { isAgentStep, isForeachStep, isTransformStep } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
-import { executeRecipe } from '../lib/recipe-engine.js'
-import { parseRecipe } from '../lib/recipe-parser.js'
-import { validateRecipeCollectIssues } from '../lib/recipe-validator.js'
+import { executeRecipe } from '../lib/recipe/engine.js'
+import { parseRecipe } from '../lib/recipe/parser.js'
+import { validateRecipeCollectIssues } from '../lib/recipe/validator.js'
 import { CliError, RecipeValidationError } from '../lib/errors.js'
+import { resolveFormat } from '../lib/config.js'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../lib/registry.js'
 import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
-import { resolveConfig } from '../lib/config.js'
 
 // -- Helpers --
 
@@ -120,7 +120,7 @@ export function registerRecipeCommand(program: Command): void {
     .description('List available recipes from the AIXBT registry')
     .action(async (_opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
+      const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
       const recipes = await output.withSpinner(
         'Fetching recipes...',
@@ -166,7 +166,7 @@ export function registerRecipeCommand(program: Command): void {
     .description('Show details of a recipe from the AIXBT registry')
     .action(async (name: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
+      const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
       const detail = await output.withSpinner(
         'Fetching recipe...',
@@ -257,17 +257,11 @@ export function registerRecipeCommand(program: Command): void {
     .option('--out <path>', 'Output file path (default: ./<name>.yaml)')
     .action(async (name: string, opts: Record<string, unknown>, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
+      const outputFormat = resolveFormat(globalOpts.format as string | undefined)
       const outPath = (opts.out as string) ?? `./${name}.yaml`
 
       if (existsSync(outPath)) {
-        if (output.isStructuredFormat(outputFormat)) {
-          output.outputStructured({ error: 'FILE_EXISTS', message: `File already exists: ${outPath}`, path: outPath }, outputFormat)
-        } else {
-          output.error(`File already exists: ${outPath}`)
-          output.dim('Use --out to specify a different path')
-        }
-        process.exit(1)
+        throw new CliError(`File already exists: ${outPath}. Use --out to specify a different path`, 'FILE_EXISTS')
       }
 
       const detail = await output.withSpinner(
@@ -297,15 +291,10 @@ export function registerRecipeCommand(program: Command): void {
     .description('Validate a recipe YAML file without executing')
     .action(async (file: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
-      const outputFormat = resolveConfig({ format: globalOpts.format as string | undefined }).format
+      const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
       if (!existsSync(file)) {
-        if (output.isStructuredFormat(outputFormat)) {
-          output.outputStructured({ status: 'invalid', file, issueCount: 1, issues: [{ path: '', message: `File not found: ${file}` }] }, outputFormat)
-        } else {
-          output.error(`File not found: ${file}`)
-        }
-        process.exit(1)
+        throw new CliError(`File not found: ${file}`, 'FILE_NOT_FOUND')
       }
 
       const yamlString = readFileSync(file, 'utf-8')
@@ -347,21 +336,11 @@ export function registerRecipeCommand(program: Command): void {
       } else if (source && existsSync(source)) {
         yaml = readFileSync(source, 'utf-8')
       } else if (source && (source.includes('/') || source.endsWith('.yaml') || source.endsWith('.yml'))) {
-        if (output.isStructuredFormat(outputFormat)) {
-          output.outputStructured({ error: 'FILE_NOT_FOUND', message: `File not found: ${source}` }, outputFormat)
-        } else {
-          output.error(`File not found: ${source}`)
-        }
-        process.exit(1)
+        throw new CliError(`File not found: ${source}`, 'FILE_NOT_FOUND')
       } else if (source) {
         yaml = await fetchRecipeFromRegistry(source, clientOptions)
       } else {
-        if (output.isStructuredFormat(outputFormat)) {
-          output.outputStructured({ error: 'NO_SOURCE', message: 'Provide a recipe file path, registry name, or --stdin' }, outputFormat)
-        } else {
-          output.error('Provide a recipe file path, registry name, or --stdin')
-        }
-        process.exit(1)
+        throw new CliError('Provide a recipe file path, registry name, or --stdin', 'NO_SOURCE')
       }
 
       const params = extractDynamicParams(cmd)
@@ -372,12 +351,7 @@ export function registerRecipeCommand(program: Command): void {
           resumeInput = JSON.parse(opts.input as string) as Record<string, unknown>
         } catch (err) {
           const detail = err instanceof Error ? err.message : 'parse error'
-          if (output.isStructuredFormat(outputFormat)) {
-            output.outputStructured({ error: 'INVALID_INPUT', message: `Invalid JSON for --input: ${detail}` }, outputFormat)
-          } else {
-            output.error(`Invalid JSON for --input: ${detail}`)
-          }
-          process.exit(1)
+          throw new CliError(`Invalid JSON for --input: ${detail}`, 'INVALID_INPUT')
         }
       }
 

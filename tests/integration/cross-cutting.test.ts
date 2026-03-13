@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import { executeRecipe } from '../../src/lib/recipe-engine.js'
+import { executeRecipe } from '../../src/lib/recipe/engine.js'
 import { fetchRecipeFromRegistry } from '../../src/lib/registry.js'
 import { setConfigPath } from '../../src/lib/config.js'
 import { PaymentRequiredError } from '../../src/lib/errors.js'

@@ -243,11 +243,7 @@ describe('recipe commands', () => {
 
       await expect(
         program.parseAsync(['node', 'aixbt', 'recipe', 'validate', missingFile], { from: 'node' }),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const allErrors = errors.join('\n')
-      expect(allErrors).toContain('File not found')
+      ).rejects.toThrow('File not found')
     })
 
     it('should output JSON with status valid for a valid recipe when --format json is used', async () => {
@@ -295,14 +291,7 @@ describe('recipe commands', () => {
 
       await expect(
         program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'validate', missingFile], { from: 'node' }),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const jsonOutput = logs.find(l => l.includes('"status"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.status).toBe('invalid')
-      expect(parsed.issues[0].message).toContain('File not found')
+      ).rejects.toThrow('File not found')
     })
 
     it('should display step count and param count in the summary', async () => {
@@ -363,13 +352,7 @@ describe('recipe commands', () => {
 
       await expect(
         program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'run'], { from: 'node' }),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const jsonOutput = logs.find(l => l.includes('"error"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('NO_SOURCE')
+      ).rejects.toThrow('Provide a recipe file path, registry name, or --stdin')
     })
 
     it('should error when source looks like a file path but does not exist', async () => {
@@ -378,13 +361,7 @@ describe('recipe commands', () => {
 
       await expect(
         program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'run', './nonexistent.yaml'], { from: 'node' }),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const jsonOutput = logs.find(l => l.includes('"error"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('FILE_NOT_FOUND')
+      ).rejects.toThrow('File not found: ./nonexistent.yaml')
     })
 
     it('should output recipe result as JSON when --format json is used', async () => {
@@ -451,11 +428,7 @@ analysis:
 
       await expect(
         program.parseAsync(['node', 'aixbt', 'recipe', 'run'], { from: 'node' }),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const allErrors = errors.join('\n')
-      expect(allErrors).toContain('Provide a recipe file path, registry name, or --stdin')
+      ).rejects.toThrow('Provide a recipe file path, registry name, or --stdin')
     })
 
     it('should error with invalid JSON for --input flag', async () => {
@@ -470,13 +443,7 @@ analysis:
           ['node', 'aixbt', '--format', 'json', 'recipe', 'run', '--resume-from', 'step:agent1', '--input', 'not-json', recipeFile],
           { from: 'node' },
         ),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const jsonOutput = logs.find(l => l.includes('"error"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('INVALID_INPUT')
+      ).rejects.toThrow('Invalid JSON for --input')
     })
 
     it('should use --delayed flag for recipe run (no auth required)', async () => {
@@ -559,13 +526,7 @@ steps:
           ['node', 'aixbt', '--format', 'json', 'recipe', 'run', './nonexistent/recipe.yaml'],
           { from: 'node' },
         ),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const jsonOutput = logs.find(l => l.includes('"error"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('FILE_NOT_FOUND')
+      ).rejects.toThrow('File not found: ./nonexistent/recipe.yaml')
     })
 
     it('should error with FILE_NOT_FOUND for .yml extension that does not exist', async () => {
@@ -577,13 +538,7 @@ steps:
           ['node', 'aixbt', '--format', 'json', 'recipe', 'run', 'missing.yml'],
           { from: 'node' },
         ),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const jsonOutput = logs.find(l => l.includes('"error"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('FILE_NOT_FOUND')
+      ).rejects.toThrow('File not found: missing.yml')
     })
 
     it('should treat source with slash as file path, not registry name', async () => {
@@ -595,13 +550,7 @@ steps:
           ['node', 'aixbt', '--format', 'json', 'recipe', 'run', 'recipes/my-recipe'],
           { from: 'node' },
         ),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-      const jsonOutput = logs.find(l => l.includes('"error"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('FILE_NOT_FOUND')
+      ).rejects.toThrow('File not found: recipes/my-recipe')
       // Should NOT have made any fetch calls (no registry lookup)
       expect(mockFetch).not.toHaveBeenCalled()
     })
@@ -902,15 +851,7 @@ steps:
           ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', outPath],
           { from: 'node' },
         ),
-      ).rejects.toThrow()
-
-      expect(mockExit).toHaveBeenCalledWith(1)
-
-      // Verify the error JSON output
-      const jsonOutput = logs.find(l => l.includes('"error"'))
-      expect(jsonOutput).toBeDefined()
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.error).toBe('FILE_EXISTS')
+      ).rejects.toThrow('File already exists')
 
       // Verify the file was NOT overwritten
       const content = readFileSync(outPath, 'utf-8')

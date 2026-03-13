@@ -7,7 +7,7 @@ import {
   extractStepReferences,
   extractTemplateRefs,
   extractAllTemplateRefs,
-} from '../../src/lib/recipe-validator.js'
+} from '../../src/lib/recipe/validator.js'
 
 import { RecipeValidationError } from '../../src/lib/errors.js'
 

@@ -1,3 +1,4 @@
+import type { KeyType } from '../types.js'
 import type { AuthMode } from './auth.js'
 import { readConfig, writeConfig, resolveConfig } from './config.js'
 import { CliError, PaymentRequiredError } from './errors.js'
@@ -50,7 +51,7 @@ interface PurchasePassResult {
   apiKey: string
   expiresAt: string
   period: string
-  type: string
+  type: KeyType
   scopes: string[]
   rateLimit: { requestsPerMinute: number; requestsPerDay: number }
   warning: string

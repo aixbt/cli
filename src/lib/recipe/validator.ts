@@ -1,6 +1,6 @@
-import { RecipeValidationError } from './errors.js'
-import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../types.js'
-import { isAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../types.js'
+import { RecipeValidationError } from '../errors.js'
+import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../../types.js'
+import { isAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../../types.js'
 
 export function extractTemplateRefs(str: string): string[] {
   const refs: string[] = []

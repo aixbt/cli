@@ -80,7 +80,7 @@ const PROJECT_LIST_COLUMNS: output.TableColumn[] = [
     align: 'right' as const,
     format: (v: unknown) => {
       if (typeof v !== 'number') return '-'
-      return formatChange(v)
+      return output.formatChange(v)
     },
   },
 ]
@@ -180,7 +180,7 @@ async function handleProjectList(cmd: Command): Promise<void> {
   )
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputStructured({ data: result.data.map(p => filterProjectFields(p, verbosity)), ...(result.meta && { meta: result.meta }) }, outputFormat)
+    output.outputApiResult({ data: result.data.map(p => filterProjectFields(p, verbosity)), meta: result.meta }, outputFormat)
     return
   }
 
@@ -229,7 +229,7 @@ async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
   const project = result.data
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputStructured({ data: filterProjectFields(project, verbosity), ...(result.meta && { meta: result.meta }) }, outputFormat)
+    output.outputApiResult({ data: filterProjectFields(project, verbosity), meta: result.meta }, outputFormat)
     return
   }
 
@@ -265,7 +265,7 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
   const momentum = result.data
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputStructured({ data: momentum, ...(result.meta && { meta: result.meta }) }, outputFormat)
+    output.outputApiResult({ data: momentum, meta: result.meta }, outputFormat)
     return
   }
 
@@ -278,14 +278,7 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
   }
 
   // Build cluster color map across all data points
-  const clusterColorMap = new Map<string, number>()
-  for (const point of momentum.data) {
-    for (const c of point.clusters) {
-      if (!clusterColorMap.has(c.id)) {
-        clusterColorMap.set(c.id, clusterColorMap.size)
-      }
-    }
-  }
+  const clusterColorMap = output.buildClusterColorMap(momentum.data)
 
   // Show last 10 data points
   const rows = momentum.data.slice(-10).map((point) => {
@@ -324,7 +317,7 @@ async function handleChains(cmd: Command): Promise<void> {
   const chains = result.data
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputStructured({ data: chains, ...(result.meta && { meta: result.meta }) }, outputFormat)
+    output.outputApiResult({ data: chains, meta: result.meta }, outputFormat)
     return
   }
 
@@ -358,9 +351,9 @@ function buildProjectCard(p: ProjectData, verbosity: number): output.CardItem {
       { label: 'Rationale', value: p.rationale },
       ...(verbosity < 2 ? [{ label: 'Signals', value: output.fmt.number(String(p.signals?.length ?? 0)) }] : []),
       { label: 'Price', value: p.metrics?.usd != null ? metricsColor(p)(`$${p.metrics.usd.toFixed(6)}`) : undefined },
-      { label: 'Market Cap', value: p.metrics?.usdMarketCap != null ? metricsColor(p)(`$${formatLargeNumber(p.metrics.usdMarketCap)}`) : undefined },
-      { label: '24h Volume', value: p.metrics?.usd24hVol != null ? metricsColor(p)(`$${formatLargeNumber(p.metrics.usd24hVol)}`) : undefined },
-      { label: '24h Change', value: p.metrics?.usd24hChange != null ? formatChange(p.metrics.usd24hChange) : undefined },
+      { label: 'Market Cap', value: p.metrics?.usdMarketCap != null ? metricsColor(p)(`$${output.formatLargeNumber(p.metrics.usdMarketCap)}`) : undefined },
+      { label: '24h Volume', value: p.metrics?.usd24hVol != null ? metricsColor(p)(`$${output.formatLargeNumber(p.metrics.usd24hVol)}`) : undefined },
+      { label: '24h Change', value: p.metrics?.usd24hChange != null ? output.formatChange(p.metrics.usd24hChange) : undefined },
       { label: 'Tokens', value: p.tokens?.map(t => `${t.chain}:${output.fmt.address(t.address)}`).join('\n') },
       { label: 'Created', value: p.createdAt ? output.timeAgo(p.createdAt) : undefined },
       { label: 'Reinforced', value: p.reinforcedAt ? output.timeAgo(p.reinforcedAt) : undefined },
@@ -386,23 +379,12 @@ function metricsColor(p: { metrics?: { usd24hChange?: number } }): (s: string) =
   return change >= 0 ? output.fmt.green : output.fmt.red
 }
 
-function formatChange(change: number): string {
-  const text = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`
-  return change >= 0 ? output.fmt.green(text) : output.fmt.red(text)
-}
 
 function formatSignals(signals: SignalData[] | undefined, verbosity: number): output.CardField[] {
   if (verbosity < 2 || !signals || signals.length === 0) return []
 
   // Build a stable color map across all clusters in all signals
-  const clusterColorMap = new Map<string, number>()
-  for (const s of signals) {
-    for (const c of s.clusters ?? []) {
-      if (!clusterColorMap.has(c.id)) {
-        clusterColorMap.set(c.id, clusterColorMap.size)
-      }
-    }
-  }
+  const clusterColorMap = output.buildClusterColorMap(signals)
 
   const fields: output.CardField[] = []
   fields.push({ label: 'signals', value: '', section: true })
@@ -430,11 +412,8 @@ function formatSignals(signals: SignalData[] | undefined, verbosity: number): ou
   return fields
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function filterProjectFields(p: ProjectData, verbosity: number): Record<string, any> {
-  // v0: essentials for scanning
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result: Record<string, any> = {
+function filterProjectFields(p: ProjectData, verbosity: number): Record<string, unknown> {
+  const result: Record<string, unknown> = {
     name: p.name,
     momentumScore: p.momentumScore,
     rationale: p.rationale,
@@ -487,9 +466,3 @@ function filterProjectFields(p: ProjectData, verbosity: number): Record<string, 
   return result
 }
 
-function formatLargeNumber(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`
-  return n.toFixed(2)
-}

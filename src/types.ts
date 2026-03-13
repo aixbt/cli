@@ -1,5 +1,7 @@
 // Shared types for @aixbt/cli
 
+export type KeyType = 'demo' | 'full' | 'x402'
+
 export interface RateLimitInfo {
   limitPerMinute: number
   remainingPerMinute: number
@@ -180,12 +182,12 @@ export function isApiStep(step: RecipeStep): step is ApiStep {
 // -- Execution types --
 
 export interface ExecutionContext {
-  recipe: Recipe
-  params: Record<string, string>
+  readonly recipe: Recipe
+  readonly params: Record<string, string>
   results: Map<string, StepResult>
   currentRateLimit: RateLimitInfo | null
   currentSegmentIndex: number
-  segments: Segment[]
+  readonly segments: Segment[]
   agentInput: Record<string, unknown> | null
   resumedFromStep: string | null
 }

@@ -1,4 +1,4 @@
-import type { SampleTransform } from '../types.js'
+import type { SampleTransform, TransformBlock } from '../types.js'
 
 // -- Helpers --
 
@@ -220,4 +220,23 @@ export function applySample(items: unknown[], config: SampleTransform): unknown[
   result.sort((a, b) => a.index - b.index)
 
   return result.map((w) => w.item)
+}
+
+// -- Combined transform pipeline --
+
+export function applyTransforms(data: unknown, transform: TransformBlock): unknown {
+  const isArray = Array.isArray(data)
+  let items: unknown[] = isArray ? data : [data]
+
+  // Sample runs first to preserve access to weight fields
+  if (transform.sample) {
+    items = applySample(items, transform.sample)
+  }
+
+  // Select runs second on potentially sampled data
+  if (transform.select) {
+    items = applySelect(items, transform.select)
+  }
+
+  return isArray ? items : items[0]
 }

@@ -33,7 +33,7 @@ export function registerClustersCommand(program: Command): void {
       )
 
       if (output.isStructuredFormat(outputFormat)) {
-        output.outputStructured({ data: result.data, ...(result.meta && { meta: result.meta }) }, outputFormat)
+        output.outputApiResult({ data: result.data, meta: result.meta }, outputFormat)
         return
       }
 

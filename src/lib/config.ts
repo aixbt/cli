@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { NoApiKeyError } from './errors.js'
+import type { KeyType } from '../types.js'
 import type { OutputFormat } from './output.js'
 
 // -- Types --
@@ -10,7 +10,7 @@ import type { OutputFormat } from './output.js'
 export interface AixbtConfig {
   apiKey?: string
   apiUrl?: string
-  keyType?: string      // 'full' | 'x402' | 'demo'
+  keyType?: KeyType
   expiresAt?: string    // ISO 8601 or null
   scopes?: string[]
   format?: string
@@ -87,11 +87,17 @@ export const DEFAULT_API_URL = 'https://api.aixbt.tech'
 export interface ResolvedConfig {
   apiKey: string | undefined
   apiUrl: string
-  keyType: string | undefined
+  keyType: KeyType | undefined
   expiresAt: string | undefined
   scopes: string[]
   format: OutputFormat
   limit: number | undefined
+}
+
+const VALID_FORMATS: readonly string[] = ['human', 'json', 'toon']
+
+function validateFormat(value: string): OutputFormat {
+  return VALID_FORMATS.includes(value) ? value as OutputFormat : 'human'
 }
 
 export function resolveConfig(flags?: {
@@ -116,7 +122,7 @@ export function resolveConfig(flags?: {
     keyType: config.keyType,
     expiresAt: config.expiresAt,
     scopes: config.scopes ?? [],
-    format: resolvedFormat as OutputFormat,
+    format: validateFormat(resolvedFormat),
     limit: resolvedLimit,
   }
 }
@@ -126,15 +132,5 @@ export function resolveFormat(flagValue?: string): OutputFormat {
   const resolved = flagValue
     || config.format
     || 'human'
-  return resolved as OutputFormat
-}
-
-// -- Require API key --
-
-export function requireApiKey(flags?: { apiKey?: string }): string {
-  const resolved = resolveConfig(flags)
-  if (!resolved.apiKey) {
-    throw new NoApiKeyError()
-  }
-  return resolved.apiKey
+  return validateFormat(resolved)
 }
