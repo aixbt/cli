@@ -69,7 +69,7 @@ function resolveTargetCount(items: unknown[], config: SampleTransform): number {
     return config.count
   }
 
-  if (config.maxTokens !== undefined) {
+  if (config.tokenBudget !== undefined) {
     let totalTokens = 0
     let count = 0
     for (const item of items) {
@@ -79,7 +79,7 @@ function resolveTargetCount(items: unknown[], config: SampleTransform): number {
       } catch {
         itemTokens = 100
       }
-      if (totalTokens + itemTokens > config.maxTokens && count > 0) break
+      if (totalTokens + itemTokens > config.tokenBudget && count > 0) break
       totalTokens += itemTokens
       count++
     }
@@ -195,11 +195,13 @@ export function applySample(items: unknown[], config: SampleTransform): unknown[
   }))
 
   // Guarantee top-weighted items
-  const guaranteeFraction = config.guarantee ?? 0.3
-  const guaranteedCount = Math.min(
-    Math.ceil(targetCount * guaranteeFraction),
-    items.length,
-  )
+  let guaranteedCount: number
+  if (config.guaranteeCount !== undefined) {
+    guaranteedCount = Math.min(config.guaranteeCount, items.length)
+  } else {
+    const pct = config.guaranteePercent ?? 0.3
+    guaranteedCount = Math.min(Math.ceil(targetCount * pct), items.length)
+  }
 
   // Sort by weight descending for guaranteed selection
   const sorted = [...weighted].sort((a, b) => b.weight - a.weight)

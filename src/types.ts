@@ -151,8 +151,9 @@ export interface RecipeAnalysis {
 
 export interface SampleTransform {
   count?: number
-  maxTokens?: number
-  guarantee?: number
+  tokenBudget?: number
+  guaranteePercent?: number
+  guaranteeCount?: number
   weight_by?: string
 }
 

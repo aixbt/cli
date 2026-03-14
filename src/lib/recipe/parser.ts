@@ -46,12 +46,12 @@ function validateTransformBlock(
       const sampleResult: SampleTransform = {}
 
       const hasCount = 'count' in sample && sample.count !== undefined
-      const hasMaxTokens = 'maxTokens' in sample && sample.maxTokens !== undefined
+      const hasTokenBudget = 'tokenBudget' in sample && sample.tokenBudget !== undefined
 
-      if (!hasCount && !hasMaxTokens) {
+      if (!hasCount && !hasTokenBudget) {
         issues.push({
           path: `${path}.sample`,
-          message: 'sample must have either count or maxTokens',
+          message: 'sample must have either count or tokenBudget',
         })
       }
 
@@ -66,25 +66,46 @@ function validateTransformBlock(
         }
       }
 
-      if (hasMaxTokens) {
-        if (typeof sample.maxTokens !== 'number' || !Number.isFinite(sample.maxTokens) || sample.maxTokens < 1) {
+      if (hasTokenBudget) {
+        if (typeof sample.tokenBudget !== 'number' || !Number.isFinite(sample.tokenBudget) || sample.tokenBudget < 1) {
           issues.push({
-            path: `${path}.sample.maxTokens`,
-            message: 'maxTokens must be a positive number',
+            path: `${path}.sample.tokenBudget`,
+            message: 'tokenBudget must be a positive number',
           })
         } else {
-          sampleResult.maxTokens = sample.maxTokens
+          sampleResult.tokenBudget = sample.tokenBudget
         }
       }
 
-      if ('guarantee' in sample && sample.guarantee !== undefined) {
-        if (typeof sample.guarantee !== 'number' || sample.guarantee < 0 || sample.guarantee > 1) {
+      const hasGuaranteePercent = 'guaranteePercent' in sample && sample.guaranteePercent !== undefined
+      const hasGuaranteeCount = 'guaranteeCount' in sample && sample.guaranteeCount !== undefined
+
+      if (hasGuaranteePercent && hasGuaranteeCount) {
+        issues.push({
+          path: `${path}.sample`,
+          message: 'guaranteePercent and guaranteeCount are mutually exclusive',
+        })
+      }
+
+      if (hasGuaranteePercent) {
+        if (typeof sample.guaranteePercent !== 'number' || sample.guaranteePercent < 0 || sample.guaranteePercent > 1) {
           issues.push({
-            path: `${path}.sample.guarantee`,
-            message: 'guarantee must be a number between 0 and 1',
+            path: `${path}.sample.guaranteePercent`,
+            message: 'guaranteePercent must be a number between 0 and 1',
           })
         } else {
-          sampleResult.guarantee = sample.guarantee
+          sampleResult.guaranteePercent = sample.guaranteePercent
+        }
+      }
+
+      if (hasGuaranteeCount) {
+        if (typeof sample.guaranteeCount !== 'number' || !Number.isFinite(sample.guaranteeCount) || sample.guaranteeCount < 1 || !Number.isInteger(sample.guaranteeCount)) {
+          issues.push({
+            path: `${path}.sample.guaranteeCount`,
+            message: 'guaranteeCount must be a positive integer',
+          })
+        } else {
+          sampleResult.guaranteeCount = sample.guaranteeCount
         }
       }
 

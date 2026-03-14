@@ -878,17 +878,17 @@ steps:
     transform:
       sample:
         count: 80
-        guarantee: 0.3
+        guaranteePercent: 0.3
 `
       const recipe = parseRecipe(yaml)
       const step = recipe.steps[0] as ApiStep
       expect(step.transform).toBeDefined()
       expect(step.transform!.sample).toBeDefined()
       expect(step.transform!.sample!.count).toBe(80)
-      expect(step.transform!.sample!.guarantee).toBe(0.3)
+      expect(step.transform!.sample!.guaranteePercent).toBe(0.3)
     })
 
-    it('should parse transform block with sample using maxTokens', () => {
+    it('should parse transform block with sample using tokenBudget', () => {
       const yaml = `
 name: test-recipe
 steps:
@@ -896,14 +896,14 @@ steps:
     endpoint: "GET /v2/signals"
     transform:
       sample:
-        maxTokens: 2000
+        tokenBudget: 2000
         weight_by: "metrics.score"
 `
       const recipe = parseRecipe(yaml)
       const step = recipe.steps[0] as ApiStep
       expect(step.transform).toBeDefined()
       expect(step.transform!.sample).toBeDefined()
-      expect(step.transform!.sample!.maxTokens).toBe(2000)
+      expect(step.transform!.sample!.tokenBudget).toBe(2000)
       expect(step.transform!.sample!.weight_by).toBe('metrics.score')
       expect(step.transform!.sample!.count).toBeUndefined()
     })
@@ -918,14 +918,32 @@ steps:
       select: [id, name, score]
       sample:
         count: 50
-        guarantee: 0.5
+        guaranteePercent: 0.5
 `
       const recipe = parseRecipe(yaml)
       const step = recipe.steps[0] as ApiStep
       expect(step.transform).toBeDefined()
       expect(step.transform!.select).toEqual(['id', 'name', 'score'])
       expect(step.transform!.sample!.count).toBe(50)
-      expect(step.transform!.sample!.guarantee).toBe(0.5)
+      expect(step.transform!.sample!.guaranteePercent).toBe(0.5)
+    })
+
+    it('should parse transform block with sample using guaranteeCount', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample:
+        tokenBudget: 50000
+        guaranteeCount: 30
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.transform!.sample!.tokenBudget).toBe(50000)
+      expect(step.transform!.sample!.guaranteeCount).toBe(30)
+      expect(step.transform!.sample!.guaranteePercent).toBeUndefined()
     })
 
     it('should parse transform block on foreach step', () => {
@@ -1034,7 +1052,7 @@ steps:
       )
     })
 
-    it('should throw when sample is missing count and maxTokens', () => {
+    it('should throw when sample is missing count and tokenBudget', () => {
       const yaml = `
 name: test-recipe
 steps:
@@ -1045,7 +1063,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('sample must have either count or maxTokens'),
+        expect.stringContaining('sample must have either count or tokenBudget'),
       )
     })
 
@@ -1065,7 +1083,7 @@ steps:
       )
     })
 
-    it('should throw when sample guarantee is out of range', () => {
+    it('should throw when sample guaranteePercent is out of range', () => {
       const yaml = `
 name: test-recipe
 steps:
@@ -1074,11 +1092,46 @@ steps:
     transform:
       sample:
         count: 10
-        guarantee: 1.5
+        guaranteePercent: 1.5
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('guarantee must be a number between 0 and 1'),
+        expect.stringContaining('guaranteePercent must be a number between 0 and 1'),
+      )
+    })
+
+    it('should throw when guaranteePercent and guaranteeCount are both set', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample:
+        count: 10
+        guaranteePercent: 0.3
+        guaranteeCount: 5
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('guaranteePercent and guaranteeCount are mutually exclusive'),
+      )
+    })
+
+    it('should throw when guaranteeCount is not a positive integer', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    endpoint: "GET /v2/signals"
+    transform:
+      sample:
+        count: 10
+        guaranteeCount: -5
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('guaranteeCount must be a positive integer'),
       )
     })
 

@@ -116,7 +116,7 @@ describe('applySample', () => {
 
     // Run multiple trials to confirm deterministic guarantee
     for (let trial = 0; trial < 20; trial++) {
-      const result = applySample(items, { count: 10, guarantee: 0.5, weight_by: 'score' })
+      const result = applySample(items, { count: 10, guaranteePercent: 0.5, weight_by: 'score' })
       expect(result).toHaveLength(10)
       const resultIds = result.map((r) => (r as { id: number }).id)
       for (const id of topIds) {
@@ -125,22 +125,22 @@ describe('applySample', () => {
     }
   })
 
-  it('should respect maxTokens budget when count is not set', () => {
+  it('should respect tokenBudget when count is not set', () => {
     // Each item serializes to roughly the same size
     const items = Array.from({ length: 20 }, (_, i) => ({ id: i, label: `item-${i}` }))
     // Compute token budget for ~5 items
     const singleItemTokens = JSON.stringify(items[0]).length / 4
     const budget = Math.floor(singleItemTokens * 5)
 
-    const result = applySample(items, { maxTokens: budget })
+    const result = applySample(items, { tokenBudget: budget })
     // Should get approximately 5 items (could be 4-5 depending on exact sizes)
     expect(result.length).toBeGreaterThanOrEqual(4)
     expect(result.length).toBeLessThanOrEqual(5)
   })
 
-  it('should prioritize count over maxTokens when both are set', () => {
+  it('should prioritize count over tokenBudget when both are set', () => {
     const items = makeItems(50)
-    const result = applySample(items, { count: 5, maxTokens: 99999 })
+    const result = applySample(items, { count: 5, tokenBudget: 99999 })
     expect(result).toHaveLength(5)
   })
 
@@ -156,7 +156,7 @@ describe('applySample', () => {
     const lowScoreAppearances: Record<number, number> = {}
 
     for (let trial = 0; trial < 500; trial++) {
-      const result = applySample(items, { count: 10, weight_by: 'score', guarantee: 0 })
+      const result = applySample(items, { count: 10, weight_by: 'score', guaranteePercent: 0 })
       for (const r of result) {
         const id = (r as { id: number }).id
         if (id >= 20) {
@@ -180,12 +180,54 @@ describe('applySample', () => {
       score: i * 10,
     }))
 
-    // With guarantee: 0, no items are guaranteed — all are sampled
+    // With guaranteePercent: 0, no items are guaranteed — all are sampled
     // Run a few times to check it works without errors
     for (let trial = 0; trial < 10; trial++) {
-      const result = applySample(items, { count: 5, guarantee: 0, weight_by: 'score' })
+      const result = applySample(items, { count: 5, guaranteePercent: 0, weight_by: 'score' })
       expect(result).toHaveLength(5)
     }
+  })
+
+  it('should keep exactly guaranteeCount items when using fixed count guarantee', () => {
+    const items = Array.from({ length: 50 }, (_, i) => ({
+      id: i,
+      score: (i + 1) * 10,
+    }))
+    // guaranteeCount: 10, target: 20 => 10 guaranteed + 10 sampled
+    const topIds = [49, 48, 47, 46, 45, 44, 43, 42, 41, 40]
+
+    for (let trial = 0; trial < 20; trial++) {
+      const result = applySample(items, { count: 20, guaranteeCount: 10, weight_by: 'score' })
+      expect(result).toHaveLength(20)
+      const resultIds = result.map((r) => (r as { id: number }).id)
+      for (const id of topIds) {
+        expect(resultIds).toContain(id)
+      }
+    }
+  })
+
+  it('should allow guaranteeCount to exceed targetCount (guarantee wins)', () => {
+    const items = Array.from({ length: 50 }, (_, i) => ({
+      id: i,
+      score: (i + 1) * 10,
+    }))
+    // guaranteeCount: 30, but tokenBudget only fits ~10
+    const singleItemTokens = JSON.stringify(items[0]).length / 4
+    const budget = Math.floor(singleItemTokens * 10)
+
+    const result = applySample(items, { tokenBudget: budget, guaranteeCount: 30, weight_by: 'score' })
+    // Should get 30 items (guarantee wins over budget)
+    expect(result).toHaveLength(30)
+  })
+
+  it('should cap guaranteeCount to items.length when fewer items exist', () => {
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      id: i,
+      score: (i + 1) * 10,
+    }))
+    const result = applySample(items, { count: 20, guaranteeCount: 30, weight_by: 'score' })
+    // Only 10 items exist, so all 10 are returned
+    expect(result).toHaveLength(10)
   })
 
   it('should maintain original array order in the output', () => {
@@ -231,7 +273,7 @@ describe('applySample', () => {
     let recentCount = 0
     const trials = 50
     for (let t = 0; t < trials; t++) {
-      const result = applySample(items, { count: 5, guarantee: 0 })
+      const result = applySample(items, { count: 5, guaranteePercent: 0 })
       for (const r of result) {
         if (((r as { id: string }).id).startsWith('recent')) recentCount++
       }
@@ -257,7 +299,7 @@ describe('applySample', () => {
     let recentCount = 0
     const trials = 50
     for (let t = 0; t < trials; t++) {
-      const result = applySample(items, { count: 2, guarantee: 0 })
+      const result = applySample(items, { count: 2, guaranteePercent: 0 })
       for (const r of result) {
         if (((r as { id: string }).id).startsWith('recent')) recentCount++
       }
@@ -277,7 +319,7 @@ describe('applySample', () => {
     let strongCount = 0
     const trials = 50
     for (let t = 0; t < trials; t++) {
-      const result = applySample(items, { count: 2, guarantee: 0 })
+      const result = applySample(items, { count: 2, guaranteePercent: 0 })
       for (const r of result) {
         if (((r as { id: string }).id).startsWith('strong')) strongCount++
       }
