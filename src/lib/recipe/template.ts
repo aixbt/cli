@@ -83,7 +83,12 @@ function resolveString(
   // Check if entire string is a single template expression — preserve type
   const singleMatch = /^\{([^}]+)\}$/.exec(str)
   if (singleMatch) {
-    return resolveExpression(singleMatch[1], ctx, foreachItem)
+    const resolved = resolveExpression(singleMatch[1], ctx, foreachItem)
+    // If the resolved value is a relative time string, convert it
+    if (typeof resolved === 'string' && RELATIVE_TIME_REGEX.test(resolved)) {
+      return resolveRelativeTime(resolved)
+    }
+    return resolved
   }
 
   // Mixed string interpolation
