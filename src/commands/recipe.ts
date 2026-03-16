@@ -328,7 +328,15 @@ export function registerRecipeCommand(program: Command): void {
     .option('--output-dir <path>', 'Write segment data to files instead of stdout')
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
-      const { clientOpts: clientOptions, outputFormat } = getClientOptions(cmd)
+      const { clientOpts: clientOptions } = getClientOptions(cmd)
+      const formatFlag = cmd.optsWithGlobals().format as string | undefined
+      if (formatFlag === 'human') {
+        throw new CliError(
+          'Recipes do not support --format human. Use --format json or --format toon.',
+          'INVALID_FORMAT',
+        )
+      }
+      const recipeFormat: output.StructuredFormat = formatFlag === 'toon' ? 'toon' : 'json'
 
       let yaml: string
       if (opts.stdin) {
@@ -357,7 +365,7 @@ export function registerRecipeCommand(program: Command): void {
 
       const result = await output.withSpinner(
         'Executing recipe...',
-        outputFormat,
+        recipeFormat,
         () =>
           executeRecipe({
             yaml,
@@ -366,15 +374,12 @@ export function registerRecipeCommand(program: Command): void {
             resumeFromStep: opts.resumeFrom as string | undefined,
             resumeInput,
             outputDir: opts.outputDir as string | undefined,
+            outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
           }),
         'Recipe execution failed',
       )
 
-      if (output.isStructuredFormat(outputFormat)) {
-        output.outputStructured(result, outputFormat)
-      } else {
-        output.json(result)
-      }
+      output.outputStructured(result, recipeFormat)
     })
 }

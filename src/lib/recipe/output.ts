@@ -1,5 +1,6 @@
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { encode } from '@toon-format/toon'
 import type {
   ExecutionContext, AgentStep,
   RecipeAwaitingAgent, RecipeComplete,
@@ -63,17 +64,21 @@ export function buildAwaitingAgentOutput(
 export function buildCompleteOutput(
   ctx: ExecutionContext,
   outputDir?: string,
+  outputFormat?: string,
 ): RecipeComplete {
   const data: Record<string, unknown> = {}
 
   if (outputDir) {
+    const useToon = outputFormat === 'toon'
+    const ext = useToon ? 'toon' : 'json'
     try {
       mkdirSync(outputDir, { recursive: true })
       let fileIndex = 1
       for (const [stepId, result] of ctx.results) {
-        const filename = `segment-${String(fileIndex).padStart(3, '0')}.json`
+        const filename = `segment-${String(fileIndex).padStart(3, '0')}.${ext}`
         const filePath = join(outputDir, filename)
-        writeFileSync(filePath, JSON.stringify(result.data, null, 2))
+        const content = useToon ? encode(result.data) : JSON.stringify(result.data, null, 2)
+        writeFileSync(filePath, content)
         data[stepId] = { dataFile: filePath }
         fileIndex++
       }

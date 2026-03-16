@@ -267,6 +267,7 @@ export async function executeRecipe(options: {
   resumeFromStep?: string
   resumeInput?: Record<string, unknown>
   outputDir?: string
+  outputFormat?: string
   recipeSource?: string
 }): Promise<RecipeAwaitingAgent | RecipeComplete> {
   const recipe = parseRecipe(options.yaml)
@@ -325,5 +326,5 @@ export async function executeRecipe(options: {
     }
   }
 
-  return buildCompleteOutput(ctx, options.outputDir)
+  return buildCompleteOutput(ctx, options.outputDir, options.outputFormat)
 }
