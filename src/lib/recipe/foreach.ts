@@ -160,12 +160,20 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
           latestRateLimit = result.rateLimit
         }
       } else {
-        results.push({
-          _error: true,
-          item: result.item,
-          error: result.error,
-          status: result.status,
-        })
+        if (step.fallback) {
+          console.error(`warning: step "${step.id}" item failed (${result.error}), using fallback`)
+          results.push({
+            _fallback: true,
+            message: `Step "${step.id}" data unavailable for this item — ${step.fallback}`,
+          })
+        } else {
+          results.push({
+            _error: true,
+            item: result.item,
+            error: result.error,
+            status: result.status,
+          })
+        }
       }
     }
 

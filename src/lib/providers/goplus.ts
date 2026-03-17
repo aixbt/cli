@@ -1,6 +1,10 @@
 import type { Provider, ActionDefinition } from './types.js'
 import { CliError } from '../errors.js'
 
+function hasValue(v: unknown): v is string | number {
+  return v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'null'
+}
+
 /** Map CoinGecko platform IDs to EIP-155 numeric chain IDs */
 const CHAIN_TO_CHAIN_ID: Record<string, string> = {
   'ethereum': '1',
@@ -108,6 +112,41 @@ const actions: Record<string, ActionDefinition> = {
     hint: 'You need the list of chain IDs that GoPlus supports for token and address security checks',
     params: [],
     minTier: 'free',
+  },
+  'security-check': {
+    method: 'GET',
+    description: 'Token security check — routes to EVM, Solana, or Sui security endpoint based on chain',
+    hint: 'You have a token address and chain and need security analysis including holder concentration, honeypot checks, and contract risks',
+    params: [
+      { name: 'chain', required: true, description: 'Chain name (e.g., "ethereum", "solana", "sui") — CoinGecko chain names accepted' },
+      { name: 'address', required: true, description: 'Token contract address' },
+    ],
+    minTier: 'free',
+    resolve: (params) => {
+      if (!hasValue(params.chain) || !hasValue(params.address)) return null
+
+      const chain = String(params.chain).toLowerCase()
+
+      if (chain === 'solana') {
+        return {
+          action: 'solana-token-security',
+          params: { contract_addresses: params.address },
+        }
+      }
+
+      if (chain === 'sui') {
+        return {
+          action: 'sui-token-security',
+          params: { contract_addresses: params.address },
+        }
+      }
+
+      // EVM — pass chain as chain_id, mapParams handles the CoinGecko name → numeric mapping
+      return {
+        action: 'token-security',
+        params: { chain_id: params.chain, contract_addresses: params.address },
+      }
+    },
   },
 }
 

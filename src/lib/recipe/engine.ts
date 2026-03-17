@@ -26,7 +26,7 @@ export { applyTransforms } from '../transforms.js'
 
 // -- Fallback helpers --
 
-const FALLBACK_ERROR_CODES = new Set(['TIER_INSUFFICIENT', 'MISSING_PROVIDER_KEY'])
+const FALLBACK_ERROR_CODES = new Set(['TIER_INSUFFICIENT', 'MISSING_PROVIDER_KEY', 'ACTION_UNRESOLVABLE'])
 
 function isProviderUnavailableError(err: unknown): err is CliError {
   return err instanceof CliError && FALLBACK_ERROR_CODES.has(err.code)
@@ -39,9 +39,9 @@ function buildFallbackResult(
   startedAt: Date,
 ): StepResult {
   const completedAt = new Date()
-  const message =
-    `Step "${stepId}" was skipped — no ${source} API key configured. ` +
-    `Use your available tools to resolve: ${fallback}`
+  const message = fallback
+    ? `Step "${stepId}" was skipped — no ${source} API key configured — ${fallback}`
+    : `Step "${stepId}" was skipped — no ${source} API key configured.`
 
   return {
     stepId,
