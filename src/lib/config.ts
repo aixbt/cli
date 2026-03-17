@@ -35,6 +35,14 @@ export function getConfigPath(): string {
   return configPathOverride || process.env.AIXBT_CONFIG || DEFAULT_CONFIG_FILE
 }
 
+export function getConfigDir(): string {
+  return dirname(getConfigPath())
+}
+
+export function getRecipesDir(): string {
+  return join(getConfigDir(), 'recipes')
+}
+
 // -- Read/Write --
 
 function ensureConfigDir(): void {

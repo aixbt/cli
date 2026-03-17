@@ -106,6 +106,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
   let latestRateLimit = currentRateLimit
   const results: unknown[] = []
   const rateLimitTracker: RateLimitTracker = { paused: false, waitedMs: 0 }
+  const fallbackCounts = new Map<string, number>()
 
   let offset = 0
   while (offset < items.length) {
@@ -161,11 +162,20 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
         }
       } else {
         if (step.fallback) {
-          console.error(`warning: step "${step.id}" item failed (${result.error}), using fallback`)
-          results.push({
+          fallbackCounts.set(result.error, (fallbackCounts.get(result.error) ?? 0) + 1)
+          const fallbackEntry: Record<string, unknown> = {
             _fallback: true,
             message: `Step "${step.id}" data unavailable for this item — ${step.fallback}`,
-          })
+          }
+          // Carry forward identifying fields from the source item so the agent
+          // knows which item this fallback corresponds to.
+          if (result.item && typeof result.item === 'object') {
+            const src = result.item as Record<string, unknown>
+            for (const key of ['id', '_id', 'name', 'symbol', 'slug']) {
+              if (src[key] !== undefined) fallbackEntry[key] = src[key]
+            }
+          }
+          results.push(fallbackEntry)
         } else {
           results.push({
             _error: true,
@@ -181,6 +191,10 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
     if (!isExternalProvider) {
       concurrency = deriveConcurrency(latestRateLimit)
     }
+  }
+
+  for (const [error, count] of fallbackCounts) {
+    console.error(`warning: step "${step.id}" — ${count} item${count > 1 ? 's' : ''} failed (${error}), using fallback`)
   }
 
   const failures = results.filter(isErrorMarker)
