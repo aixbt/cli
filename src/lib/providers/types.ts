@@ -56,6 +56,11 @@ export interface Provider {
    * Used by providers with different auth headers per tier (e.g., CoinGecko).
    */
   resolveAuth?: (apiKey: string, tier: ProviderTier) => Record<string, string>
+  /**
+   * Transform params before the request — used for chain ID mapping, etc.
+   * Called after template resolution, before path substitution and query params.
+   */
+  mapParams?: (params: Record<string, string | number | boolean | undefined>, actionName: string) => Record<string, string | number | boolean | undefined>
 }
 
 export interface ProviderKeyConfig {

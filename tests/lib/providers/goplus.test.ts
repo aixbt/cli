@@ -545,4 +545,32 @@ describe('goplusProvider', () => {
       expect(result).toBe('primitive-value')
     })
   })
+
+  // -- mapParams (chain ID mapping) --
+
+  describe('mapParams', () => {
+    it('should map CoinGecko chain name to numeric chain ID', () => {
+      const result = goplusProvider.mapParams!(
+        { chain_id: 'ethereum', contract_addresses: '0xabc' },
+        'token-security',
+      )
+      expect(result.chain_id).toBe('1')
+    })
+
+    it('should map binance-smart-chain to 56', () => {
+      const result = goplusProvider.mapParams!(
+        { chain_id: 'binance-smart-chain', contract_addresses: '0xabc' },
+        'token-security',
+      )
+      expect(result.chain_id).toBe('56')
+    })
+
+    it('should pass through already-numeric chain IDs', () => {
+      const result = goplusProvider.mapParams!(
+        { chain_id: '1', contract_addresses: '0xabc' },
+        'token-security',
+      )
+      expect(result.chain_id).toBe('1')
+    })
+  })
 })

@@ -73,11 +73,13 @@ export async function providerRequest(
     baseUrl = baseUrl.replace('{apiKey}', resolvedKey.apiKey)
   }
 
+  const mappedParams = provider.mapParams ? provider.mapParams(params, actionName) : params
+
   const actionPath = action.pathByTier?.[effectiveTier] ?? action.path
-  const resolvedPath = resolveActionPath(actionPath, params)
+  const resolvedPath = resolveActionPath(actionPath, mappedParams)
   const url = new URL(resolvedPath, baseUrl)
 
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(mappedParams)) {
     if (value === undefined || value === '') continue
     const isPathParam = action.params.some(p => p.inPath && p.name === key)
     if (!isPathParam) {

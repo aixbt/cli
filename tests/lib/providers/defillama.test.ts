@@ -298,4 +298,40 @@ describe('defillamaProvider', () => {
       expect(result).toEqual({})
     })
   })
+
+  // -- mapParams (chain name mapping) --
+
+  describe('mapParams', () => {
+    it('should map CoinGecko chain name to DeFiLlama format', () => {
+      const result = defillamaProvider.mapParams!(
+        { chain: 'ethereum' },
+        'chain-tvl',
+      )
+      expect(result.chain).toBe('Ethereum')
+    })
+
+    it('should map binance-smart-chain to BSC', () => {
+      const result = defillamaProvider.mapParams!(
+        { chain: 'binance-smart-chain' },
+        'chain-tvl',
+      )
+      expect(result.chain).toBe('BSC')
+    })
+
+    it('should pass through already-correct chain names', () => {
+      const result = defillamaProvider.mapParams!(
+        { chain: 'Ethereum' },
+        'chain-tvl',
+      )
+      expect(result.chain).toBe('Ethereum')
+    })
+
+    it('should not affect params without chain field', () => {
+      const result = defillamaProvider.mapParams!(
+        { protocol: 'aave' },
+        'protocol',
+      )
+      expect(result.protocol).toBe('aave')
+    })
+  })
 })

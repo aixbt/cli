@@ -73,6 +73,7 @@ describe('coingeckoProvider', () => {
       'pool',
       'token-pools',
       'trending-pools',
+      'token-ohlcv',
     ]
 
     const COINGECKO_ONLY_ACTIONS = [
@@ -89,11 +90,12 @@ describe('coingeckoProvider', () => {
       'pool',
       'token-pools',
       'trending-pools',
+      'token-ohlcv',
     ]
 
-    it('should define all 10 actions', () => {
+    it('should define all 11 actions', () => {
       const actionNames = Object.keys(coingeckoProvider.actions)
-      expect(actionNames).toHaveLength(10)
+      expect(actionNames).toHaveLength(11)
       for (const name of ALL_ACTION_NAMES) {
         expect(coingeckoProvider.actions).toHaveProperty(name)
       }
@@ -567,6 +569,64 @@ describe('coingeckoProvider', () => {
       const body = { foo: 'bar' }
       const result = coingeckoProvider.normalize(body, 'unknown-action')
       expect(result).toEqual({ foo: 'bar' })
+    })
+
+    it('should normalize token-ohlcv as GeckoTerminal response', () => {
+      const body = { data: { attributes: { ohlcv_list: [[1710000000, 1, 2, 0.5, 1.5, 100]] } } }
+      const result = coingeckoProvider.normalize(body, 'token-ohlcv')
+      expect(result).toHaveProperty('ohlcv_list')
+    })
+  })
+
+  // -- mapParams (chain mapping) --
+
+  describe('mapParams', () => {
+    it('should map CoinGecko chain name to GeckoTerminal network ID', () => {
+      const result = coingeckoProvider.mapParams!(
+        { network: 'ethereum', address: '0xabc' },
+        'token-ohlcv',
+      )
+      expect(result.network).toBe('eth')
+    })
+
+    it('should map binance-smart-chain to bsc', () => {
+      const result = coingeckoProvider.mapParams!(
+        { network: 'binance-smart-chain', address: '0xabc' },
+        'token-price',
+      )
+      expect(result.network).toBe('bsc')
+    })
+
+    it('should pass through already-correct network IDs', () => {
+      const result = coingeckoProvider.mapParams!(
+        { network: 'eth', address: '0xabc' },
+        'token-ohlcv',
+      )
+      expect(result.network).toBe('eth')
+    })
+
+    it('should not map network param for non-network actions', () => {
+      const result = coingeckoProvider.mapParams!(
+        { network: 'ethereum', id: 'bitcoin' },
+        'ohlc',
+      )
+      expect(result.network).toBe('ethereum')
+    })
+
+    it('should default timeframe to day for token-ohlcv', () => {
+      const result = coingeckoProvider.mapParams!(
+        { network: 'eth', address: '0xabc' },
+        'token-ohlcv',
+      )
+      expect(result.timeframe).toBe('day')
+    })
+
+    it('should not override explicit timeframe', () => {
+      const result = coingeckoProvider.mapParams!(
+        { network: 'eth', address: '0xabc', timeframe: 'hour' },
+        'token-ohlcv',
+      )
+      expect(result.timeframe).toBe('hour')
     })
   })
 })

@@ -2,7 +2,31 @@ import type { Provider, ActionDefinition, ProviderTier } from './types.js'
 import { flattenJsonApiResponse } from './normalize.js'
 
 const GECKOTERMINAL_ACTIONS = new Set([
-  'token-price', 'pool', 'token-pools', 'trending-pools',
+  'token-price', 'pool', 'token-pools', 'trending-pools', 'token-ohlcv',
+])
+
+/** Map CoinGecko platform IDs (from AIXBT project tokens[].chain) to GeckoTerminal network IDs */
+const CHAIN_TO_NETWORK: Record<string, string> = {
+  'ethereum': 'eth',
+  'binance-smart-chain': 'bsc',
+  'polygon-pos': 'polygon_pos',
+  'solana': 'solana',
+  'base': 'base',
+  'arbitrum-one': 'arbitrum',
+  'avalanche': 'avax',
+  'optimistic-ethereum': 'optimism',
+  'fantom': 'ftm',
+  'cronos': 'cro',
+  'moonbeam': 'glmr',
+  'moonriver': 'movr',
+  'gnosis': 'xdai',
+  'the-open-network': 'ton',
+  'unichain': 'unichain',
+}
+
+/** Actions that use the `network` param and need chain mapping */
+const NETWORK_PARAM_ACTIONS = new Set([
+  'token-price', 'pool', 'token-pools', 'token-ohlcv',
 ])
 
 const actions: Record<string, ActionDefinition> = {
@@ -145,6 +169,26 @@ const actions: Record<string, ActionDefinition> = {
     ],
     minTier: 'free',
   },
+  'token-ohlcv': {
+    method: 'GET',
+    path: '/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
+    pathByTier: {
+      demo: '/onchain/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
+      pro: '/onchain/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
+    },
+    description: 'Get on-chain OHLCV candlestick data for a token by contract address',
+    hint: 'You have a token contract address and need historical price candles (OHLCV) from DEX trading data',
+    params: [
+      { name: 'network', required: true, description: 'Network ID (e.g., "eth", "solana", "base") — also accepts CoinGecko chain names (e.g., "ethereum")', inPath: true },
+      { name: 'address', required: true, description: 'Token contract address', inPath: true },
+      { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")', inPath: true },
+      { name: 'aggregate', required: false, description: 'Number of intervals to aggregate (e.g., 1 for daily, 4 for 4-hour)' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time' },
+      { name: 'limit', required: false, description: 'Number of candles to return' },
+      { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
+    ],
+    minTier: 'free',
+  },
 }
 
 export const coingeckoProvider: Provider = {
@@ -170,6 +214,25 @@ export const coingeckoProvider: Provider = {
     if (tier === 'free') return {}
     if (tier === 'demo') return { 'x-cg-demo-api-key': apiKey }
     return { 'x-cg-pro-api-key': apiKey }
+  },
+  mapParams: (params, actionName) => {
+    let result = params
+
+    // Map CoinGecko chain names to GeckoTerminal network IDs
+    if (NETWORK_PARAM_ACTIONS.has(actionName)) {
+      const network = result.network
+      if (typeof network === 'string' && CHAIN_TO_NETWORK[network]) {
+        result = { ...result, network: CHAIN_TO_NETWORK[network] }
+      }
+    }
+
+    // Default timeframe for token-ohlcv
+    if (actionName === 'token-ohlcv' && !result.timeframe) {
+      result = result === params ? { ...result, timeframe: 'day' } : result
+      result.timeframe = 'day'
+    }
+
+    return result
   },
   normalize: (body: unknown, actionName: string): unknown => {
     if (GECKOTERMINAL_ACTIONS.has(actionName)) {

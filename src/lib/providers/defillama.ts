@@ -1,6 +1,24 @@
 import type { Provider, ActionDefinition } from './types.js'
 import { CliError } from '../errors.js'
 
+/** Map CoinGecko platform IDs to DeFiLlama chain names */
+const CHAIN_TO_LLAMA: Record<string, string> = {
+  'ethereum': 'Ethereum',
+  'binance-smart-chain': 'BSC',
+  'polygon-pos': 'Polygon',
+  'solana': 'Solana',
+  'base': 'Base',
+  'arbitrum-one': 'Arbitrum',
+  'avalanche': 'Avalanche',
+  'optimistic-ethereum': 'Optimism',
+  'fantom': 'Fantom',
+  'cronos': 'Cronos',
+  'gnosis': 'Gnosis',
+  'moonbeam': 'Moonbeam',
+  'moonriver': 'Moonriver',
+  'the-open-network': 'TON',
+}
+
 const actions: Record<string, ActionDefinition> = {
   protocols: {
     method: 'GET',
@@ -82,6 +100,13 @@ export const defillamaProvider: Provider = {
       free: 60,
       pro: 120,
     },
+  },
+  mapParams: (params) => {
+    const chain = params.chain
+    if (typeof chain !== 'string') return params
+    const mapped = CHAIN_TO_LLAMA[chain]
+    if (!mapped) return params
+    return { ...params, chain: mapped }
   },
   normalize: (body: unknown, actionName: string): unknown => {
     if (typeof body === 'object' && body !== null) {

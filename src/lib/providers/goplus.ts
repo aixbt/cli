@@ -1,6 +1,22 @@
 import type { Provider, ActionDefinition } from './types.js'
 import { CliError } from '../errors.js'
 
+/** Map CoinGecko platform IDs to EIP-155 numeric chain IDs */
+const CHAIN_TO_CHAIN_ID: Record<string, string> = {
+  'ethereum': '1',
+  'binance-smart-chain': '56',
+  'polygon-pos': '137',
+  'arbitrum-one': '42161',
+  'base': '8453',
+  'optimistic-ethereum': '10',
+  'avalanche': '43114',
+  'fantom': '250',
+  'cronos': '25',
+  'gnosis': '100',
+  'moonbeam': '1284',
+  'moonriver': '1285',
+}
+
 const ADDRESS_KEYED_ACTIONS = new Set([
   'token-security',
   'solana-token-security',
@@ -113,6 +129,13 @@ export const goplusProvider: Provider = {
   },
   authHeader: 'Authorization',
   buildAuthValue: (apiKey: string) => `Bearer ${apiKey}`,
+  mapParams: (params) => {
+    const chainId = params.chain_id
+    if (typeof chainId !== 'string') return params
+    const mapped = CHAIN_TO_CHAIN_ID[chainId]
+    if (!mapped) return params
+    return { ...params, chain_id: mapped }
+  },
   normalize: (body: unknown, actionName: string): unknown => {
     if (typeof body !== 'object' || body === null) return body
     const envelope = body as Record<string, unknown>
