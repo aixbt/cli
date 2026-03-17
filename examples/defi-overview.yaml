@@ -1,0 +1,25 @@
+name: defi-overview
+version: "1.0"
+description: Overview of top DeFi protocols by TVL
+steps:
+  - id: protocols
+    action: protocols
+    source: defillama
+    transform:
+      sample:
+        count: 20
+      select:
+        - name
+        - tvl
+        - chain
+        - category
+  - id: chains
+    action: chains
+    source: defillama
+hints:
+  include:
+    - protocols
+    - chains
+analysis:
+  task: Summarize the DeFi landscape
+  instructions: Identify dominant chains, top protocols, and emerging categories
