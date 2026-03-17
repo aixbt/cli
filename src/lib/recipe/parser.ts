@@ -199,6 +199,13 @@ function validateStep(
       })
     }
 
+    if ('action' in step && step.action !== undefined) {
+      issues.push({
+        path: stepPath,
+        message: 'Transform step (with input) cannot have an action',
+      })
+    }
+
     if ('endpoint' in step && step.endpoint !== undefined) {
       issues.push({
         path: stepPath,
@@ -228,12 +235,30 @@ function validateStep(
     }
   }
 
-  // API or foreach step — must have endpoint
-  if (typeof step.endpoint !== 'string' || step.endpoint.trim() === '') {
+  // API or foreach step — must have action
+  const hasAction = typeof step.action === 'string' && step.action.trim() !== ''
+  const hasEndpoint = typeof step.endpoint === 'string' && step.endpoint.trim() !== ''
+
+  if (!hasAction && hasEndpoint) {
     issues.push({
-      path: `${stepPath}.endpoint`,
-      message: 'Step must have a non-empty endpoint string',
+      path: `${stepPath}.action`,
+      message: 'Step has "endpoint" but no "action". Use "action" instead of "endpoint" (e.g., action: projects)',
     })
+  } else if (!hasAction) {
+    issues.push({
+      path: `${stepPath}.action`,
+      message: 'Step must have a non-empty "action" string',
+    })
+  }
+
+  // Validate source if present
+  if ('source' in step && step.source !== undefined) {
+    if (typeof step.source !== 'string') {
+      issues.push({
+        path: `${stepPath}.source`,
+        message: 'source must be a string',
+      })
+    }
   }
 
   const transform = validateTransformBlock(step.transform, `${stepPath}.transform`, issues)
@@ -249,7 +274,9 @@ function validateStep(
     return {
       id: step.id,
       foreach: typeof step.foreach === 'string' ? step.foreach : '',
-      endpoint: typeof step.endpoint === 'string' ? step.endpoint : '',
+      action: typeof step.action === 'string' ? step.action : '',
+      source: typeof step.source === 'string' ? step.source : undefined,
+      endpoint: typeof step.endpoint === 'string' ? step.endpoint : undefined,
       params: typeof step.params === 'object' && step.params !== null
         ? (step.params as Record<string, unknown>)
         : undefined,
@@ -260,7 +287,9 @@ function validateStep(
   // Plain API step
   return {
     id: step.id,
-    endpoint: typeof step.endpoint === 'string' ? step.endpoint : '',
+    action: typeof step.action === 'string' ? step.action : '',
+    source: typeof step.source === 'string' ? step.source : undefined,
+    endpoint: typeof step.endpoint === 'string' ? step.endpoint : undefined,
     params: typeof step.params === 'object' && step.params !== null
       ? (step.params as Record<string, unknown>)
       : undefined,
