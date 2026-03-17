@@ -10,9 +10,6 @@ import { registerClustersCommand } from './commands/clusters.js'
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
 import { registerProviderCommand } from './commands/provider.js'
-import { registerDefillamaCommand } from './commands/defillama.js'
-import { registerCoingeckoCommand } from './commands/coingecko.js'
-import { registerGoplusCommand } from './commands/goplus.js'
 
 import type { OutputFormat } from './lib/output.js'
 import * as output from './lib/output.js'
@@ -106,9 +103,6 @@ export function createProgram(): Command {
   registerClustersCommand(program)
   registerRecipeCommand(program)
   registerProviderCommand(program)
-  registerDefillamaCommand(program)
-  registerCoingeckoCommand(program)
-  registerGoplusCommand(program)
 
   // `aixbt help all` — full reference of every command and option
   program.addHelpCommand(false)

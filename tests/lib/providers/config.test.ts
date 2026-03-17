@@ -167,6 +167,19 @@ describe('provider config', () => {
         expect(result!.tier).toBe('pro')
         expect(result!.source).toBe('config')
       })
+
+      it('should fallback to free tier when tier is missing from config', () => {
+        // Simulate manually edited config with missing tier
+        writeConfig({
+          providers: { defillama: { apiKey: 'dl-key' } as any },
+        })
+
+        const result = resolveProviderKey('defillama')
+        expect(result).not.toBeNull()
+        expect(result!.apiKey).toBe('dl-key')
+        expect(result!.tier).toBe('free')
+        expect(result!.source).toBe('config')
+      })
     })
 
     // -- Priority chain --

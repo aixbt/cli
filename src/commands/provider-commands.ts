@@ -5,17 +5,36 @@ import { resolveFormat } from '../lib/config.js'
 import { providerRequest } from '../lib/providers/client.js'
 import * as output from '../lib/output.js'
 
+const PROVIDER_DESCRIPTIONS: Record<string, string> = {
+  defillama:
+    'DeFi protocol analytics — TVL rankings, chain breakdowns, protocol deep-dives, ' +
+    'token emission schedules, and yield/APY data. 5 free actions (60 req/min), ' +
+    '2 pro actions (emissions, yields) require a DeFiLlama API key (120 req/min).',
+  coingecko:
+    'Market data and on-chain DEX analytics — prices, market rankings, OHLC candles, ' +
+    'coin details, categories, pool liquidity, and trending tokens. 4 free actions ' +
+    'via GeckoTerminal (30 req/min), 6 actions require a CoinGecko demo key or above.',
+  goplus:
+    'Token and contract security analysis — detect honeypots, rug pulls, malicious ' +
+    'permissions, phishing sites, and approval risks across EVM, Solana, and Sui. ' +
+    'All 8 actions are free (30 req/min, 120 with API key).',
+}
+
 /**
  * Register a CLI command group for a provider.
- * Creates one subcommand per action, plus an `actions` metadata subcommand.
+ * Creates one subcommand per action.
  */
 export function registerProviderCommands(program: Command, provider: Provider): void {
+  const description = PROVIDER_DESCRIPTIONS[provider.name] ?? `${provider.displayName} data provider`
   const group = program
     .command(provider.name)
-    .description(`${provider.displayName} data provider`)
+    .description(description)
+    .configureHelp({
+      visibleCommands: () => [],
+    })
 
   group.addHelpText('after', () => {
-    const lines: string[] = ['', `  ${output.fmt.boldWhite('Actions:')}`, '']
+    const lines: string[] = ['', `${output.fmt.boldWhite('Actions:')}`, '']
     for (const [name, action] of Object.entries(provider.actions)) {
       const tierBadge = action.minTier !== 'free' ? ` ${output.fmt.dim(`[${action.minTier}]`)}` : ''
       lines.push(`  ${output.fmt.brandBold(name)}${tierBadge}`)
@@ -23,9 +42,15 @@ export function registerProviderCommands(program: Command, provider: Provider): 
       if (action.hint) {
         lines.push(`    ${output.fmt.dim(`Use when: ${action.hint}`)}`)
       }
+      if (action.params.length > 0) {
+        const paramDescs = action.params.map(p => {
+          const req = p.required ? output.fmt.red('*') : ''
+          return `${p.name}${req}`
+        })
+        lines.push(`    ${output.fmt.dim('Params:')} ${paramDescs.join(', ')}`)
+      }
       lines.push('')
     }
-    lines.push(`  ${output.fmt.dim('Run')} aixbt ${provider.name} actions ${output.fmt.dim('for machine-readable metadata')}`)
     return lines.join('\n')
   })
 
@@ -33,9 +58,6 @@ export function registerProviderCommands(program: Command, provider: Provider): 
   for (const [actionName, action] of Object.entries(provider.actions)) {
     registerActionSubcommand(group, provider, actionName, action)
   }
-
-  // Register the `actions` metadata subcommand
-  registerActionsSubcommand(group, provider)
 }
 
 function registerActionSubcommand(
@@ -119,66 +141,6 @@ function registerActionSubcommand(
 
     renderHumanOutput(response.data, globalOpts.verbose as number | undefined)
   })
-}
-
-function registerActionsSubcommand(group: Command, provider: Provider): void {
-  group
-    .command('actions')
-    .description(`List available ${provider.displayName} actions with metadata`)
-    .action((_opts: unknown, cmd: Command) => {
-      const globalOpts = cmd.optsWithGlobals()
-      const fmt = resolveFormat(globalOpts.format as string | undefined)
-
-      const actionEntries = Object.entries(provider.actions).map(([name, action]) => ({
-        name,
-        description: action.description,
-        hint: action.hint,
-        minTier: action.minTier,
-        params: action.params.map(p => ({
-          name: p.name,
-          required: p.required,
-          description: p.description,
-          inPath: p.inPath ?? false,
-        })),
-      }))
-
-      if (output.isStructuredFormat(fmt)) {
-        output.outputStructured({
-          provider: provider.name,
-          displayName: provider.displayName,
-          actionCount: actionEntries.length,
-          actions: actionEntries,
-          rateLimits: provider.rateLimits,
-        }, fmt)
-        return
-      }
-
-      // Human output
-      console.log()
-      console.log(`  ${output.fmt.boldWhite(provider.displayName)} actions`)
-      console.log()
-
-      for (const entry of actionEntries) {
-        const tierBadge = entry.minTier !== 'free'
-          ? ` ${output.fmt.dim(`[${entry.minTier}]`)}`
-          : ''
-        console.log(`  ${output.fmt.brandBold(entry.name)}${tierBadge}`)
-        console.log(`    ${entry.description}`)
-        if (entry.hint) {
-          console.log(`    ${output.fmt.dim(`Use when: ${entry.hint}`)}`)
-        }
-        if (entry.params.length > 0) {
-          const paramDescs = entry.params.map(p => {
-            const req = p.required ? output.fmt.red('*') : ''
-            return `${p.name}${req}`
-          })
-          console.log(`    ${output.fmt.dim('Params:')} ${paramDescs.join(', ')}`)
-        }
-        console.log()
-      }
-
-      console.log(`  ${output.fmt.dim(`${actionEntries.length} actions available`)}`)
-    })
 }
 
 /**

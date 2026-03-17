@@ -52,7 +52,7 @@ export function resolveProviderKey(
   if (providerConfig) {
     return {
       apiKey: providerConfig.apiKey,
-      tier: providerConfig.tier,
+      tier: providerConfig.tier ?? 'free',
       source: 'config',
     }
   }

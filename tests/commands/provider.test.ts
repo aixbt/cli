@@ -260,7 +260,7 @@ describe('provider commands', () => {
 
       const coingecko = parsed.find((r: Record<string, unknown>) => r.name === 'coingecko')
       expect(coingecko.configured).toBe(false)
-      expect(coingecko.tier).toBeNull()
+      expect(coingecko.tier).toBe('free')
     })
 
     it('should render table output in human mode', async () => {

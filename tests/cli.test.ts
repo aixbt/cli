@@ -18,9 +18,6 @@ describe('CLI', () => {
     expect(commandNames).toContain('clusters')
     expect(commandNames).toContain('recipe')
     expect(commandNames).toContain('provider')
-    expect(commandNames).toContain('defillama')
-    expect(commandNames).toContain('coingecko')
-    expect(commandNames).toContain('goplus')
     expect(commandNames).toContain('help')
   })
 
@@ -331,7 +328,7 @@ describe('CLI', () => {
   describe('command count', () => {
     it('should have exactly 12 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(12)
+      expect(program.commands).toHaveLength(9)
     })
   })
 

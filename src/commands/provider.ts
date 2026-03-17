@@ -5,6 +5,7 @@ import { getProviderNames, getProvider } from '../lib/providers/registry.js'
 import { resolveProviderKey, saveProviderKey, removeProviderKey } from '../lib/providers/config.js'
 import { providerRequest } from '../lib/providers/client.js'
 import { CliError } from '../lib/errors.js'
+import { registerProviderCommands } from './provider-commands.js'
 import * as output from '../lib/output.js'
 
 function getExternalProviderNames(): string[] {
@@ -51,18 +52,11 @@ const FREE_PROBE_ACTIONS: Record<string, string> = {
 export function registerProviderCommand(program: Command): void {
   const providerCmd = program
     .command('provider')
-    .description('Manage external data provider API keys')
+    .description('External data providers — DeFiLlama, CoinGecko, GoPlus')
     .enablePositionalOptions()
 
   providerCmd.addHelpText('after', () => {
-    const names = getExternalProviderNames()
     const lines: string[] = ['']
-    lines.push(`  ${output.fmt.boldWhite('Supported providers:')}`)
-    for (const name of names) {
-      const provider = getProvider(name)
-      lines.push(`    ${output.fmt.brandBold(name)}  ${output.fmt.dim(provider.displayName)}`)
-    }
-    lines.push('')
     lines.push(`  ${output.fmt.dim('Environment variables:')}`)
     lines.push(`    COINGECKO_API_KEY, DEFILLAMA_API_KEY, GOPLUS_ACCESS_TOKEN`)
     lines.push('')
@@ -142,8 +136,8 @@ export function registerProviderCommand(program: Command): void {
           name: p.name,
           displayName: p.displayName,
           configured: !!resolved,
-          tier: resolved?.tier ?? null,
-          source: resolved?.source ?? null,
+          tier: resolved?.tier ?? 'free',
+          source: resolved?.source ?? 'default',
           actionCount: Object.keys(p.actions).length,
         }
       })
@@ -259,4 +253,10 @@ export function registerProviderCommand(program: Command): void {
         output.keyValue('Probe action', probeAction, 18)
       }
     })
+
+  // -- data commands (one subcommand group per provider) --
+
+  for (const name of getExternalProviderNames()) {
+    registerProviderCommands(providerCmd, getProvider(name))
+  }
 }

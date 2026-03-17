@@ -105,16 +105,6 @@ describe('registerProviderCommands', () => {
     expect(subNames).toContain('list-things')
   })
 
-  it('should create an actions metadata subcommand', () => {
-    const program = new Command()
-    registerProviderCommands(program, mockProvider)
-
-    const group = program.commands.find(c => c.name() === 'test')!
-    const actionsCmd = group.commands.find(c => c.name() === 'actions')
-    expect(actionsCmd).toBeDefined()
-    expect(actionsCmd!.description()).toContain('Test Provider')
-  })
-
   it('should make path params positional arguments', () => {
     const program = new Command()
     registerProviderCommands(program, mockProvider)
@@ -145,21 +135,10 @@ describe('registerProviderCommands', () => {
 
     const group = program.commands.find(c => c.name() === 'test')!
     for (const sub of group.commands) {
-      if (sub.name() === 'actions') continue
       const pkOpt = sub.options.find(o => o.long === '--provider-key')
       expect(pkOpt).toBeDefined()
       expect(pkOpt!.description).toContain('Test Provider')
     }
-  })
-
-  it('should not add --provider-key to the actions metadata subcommand', () => {
-    const program = new Command()
-    registerProviderCommands(program, mockProvider)
-
-    const group = program.commands.find(c => c.name() === 'test')!
-    const actionsCmd = group.commands.find(c => c.name() === 'actions')!
-    const pkOpt = actionsCmd.options.find(o => o.long === '--provider-key')
-    expect(pkOpt).toBeUndefined()
   })
 
   it('should call providerRequest when an action subcommand is invoked', async () => {
@@ -254,56 +233,6 @@ describe('registerProviderCommands', () => {
     expect(jsonOutput).toBeDefined()
     const parsed = JSON.parse(jsonOutput!)
     expect(parsed.data).toEqual(responseData)
-  })
-
-  it('should output action metadata in JSON mode via the actions subcommand', async () => {
-    const program = new Command()
-    program.option('-f, --format <mode>', 'Output format')
-    program.option('-v, --verbose', 'Verbose', (_: string, prev: number) => prev + 1, 0)
-    registerProviderCommands(program, mockProvider)
-
-    await program.parseAsync(
-      ['node', 'test', '-f', 'json', 'test', 'actions'],
-      { from: 'node' },
-    )
-
-    const jsonOutput = logs.find(l => l.includes('"provider"'))
-    expect(jsonOutput).toBeDefined()
-    const parsed = JSON.parse(jsonOutput!)
-    expect(parsed.provider).toBe('test')
-    expect(parsed.displayName).toBe('Test Provider')
-    expect(parsed.actionCount).toBe(2)
-    expect(parsed.actions).toHaveLength(2)
-
-    const getThingAction = parsed.actions.find((a: Record<string, unknown>) => a.name === 'get-thing')
-    expect(getThingAction).toBeDefined()
-    expect(getThingAction.description).toBe('Get a thing')
-    expect(getThingAction.hint).toBe('When you need a thing')
-    expect(getThingAction.params).toHaveLength(2)
-    expect(getThingAction.params[0].name).toBe('id')
-    expect(getThingAction.params[0].inPath).toBe(true)
-    expect(getThingAction.params[1].name).toBe('format')
-    expect(getThingAction.params[1].inPath).toBe(false)
-  })
-
-  it('should output action metadata in human mode via the actions subcommand', async () => {
-    const program = new Command()
-    program.option('-f, --format <mode>', 'Output format')
-    program.option('-v, --verbose', 'Verbose', (_: string, prev: number) => prev + 1, 0)
-    registerProviderCommands(program, mockProvider)
-
-    await program.parseAsync(
-      ['node', 'test', 'test', 'actions'],
-      { from: 'node' },
-    )
-
-    const allOutput = logs.join('\n')
-    expect(allOutput).toContain('Test Provider')
-    expect(allOutput).toContain('get-thing')
-    expect(allOutput).toContain('list-things')
-    expect(allOutput).toContain('Get a thing')
-    expect(allOutput).toContain('List things')
-    expect(allOutput).toContain('2 actions available')
   })
 
   describe('with a provider that has required non-path params', () => {
