@@ -13,6 +13,8 @@ import { resolveValue, resolveEndpoint, flattenParams } from './template.js'
 import { executeForeach } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
 import { buildAwaitingAgentOutput, buildCompleteOutput } from './output.js'
+import { getProvider } from '../providers/registry.js'
+import { providerRequest } from '../providers/client.js'
 
 // Re-export public API for backward compatibility
 export { resolveValue, resolveEndpoint, resolveRelativeTime } from './template.js'
@@ -187,48 +189,31 @@ async function executeStep(
     }
   }
 
-  const { path } = resolveEndpoint(
-    isAgentStep(step) ? '' : step.endpoint,
-    ctx,
-  )
-
-  const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
-
-  // Determine if pagination is needed
-  const resolvedLimit = resolvedParams.limit !== undefined
-    ? Number(resolvedParams.limit)
-    : undefined
-  const shouldPaginate = resolvedLimit !== undefined
-    && Number.isFinite(resolvedLimit)
-    && resolvedLimit > MAX_PAGE_LIMIT
-
   let resultData: unknown
   let resultRateLimit: RateLimitInfo | null = null
   let rateLimitPaused = false
   let waitedMs = 0
 
-  if (shouldPaginate) {
-    const paginationResult = await paginateApiStep({
-      path,
-      baseParams: resolvedParams,
-      targetLimit: resolvedLimit,
-      stepId: step.id,
-      clientOptions,
-      currentRateLimit: ctx.currentRateLimit,
-    })
+  // External provider dispatch
+  if (isApiStep(step) && step.source && step.source !== 'aixbt') {
+    const provider = getProvider(step.source)
+    const resolvedParams: Record<string, string | number | boolean | undefined> = {}
+    if (step.params) {
+      const flat = flattenParams(step.params, ctx)
+      for (const [k, v] of Object.entries(flat)) {
+        resolvedParams[k] = v
+      }
+    }
 
-    resultData = paginationResult.data
-    resultRateLimit = paginationResult.rateLimit
-    rateLimitPaused = paginationResult.rateLimitPaused
-    waitedMs = paginationResult.waitedMs
-  } else {
     try {
-      const response = await get(path, resolvedParams, clientOptions)
+      const response = await providerRequest({
+        provider,
+        actionName: step.action,
+        params: resolvedParams,
+      })
       resultData = response.data
-      resultRateLimit = response.rateLimit
     } catch (err) {
       if (err instanceof CliError) {
-        // Re-throw to preserve subclass types (PaymentRequiredError, RateLimitError)
         err.message = `Step "${step.id}" failed: ${err.message}`
         throw err
       }
@@ -236,6 +221,52 @@ async function executeStep(
         `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
         'STEP_EXECUTION_FAILED',
       )
+    }
+  } else {
+    // AIXBT path — use existing resolveEndpoint() + get()
+    const endpointStr = !isAgentStep(step) ? (step.endpoint ?? step.action) : ''
+    const { path } = resolveEndpoint(endpointStr, ctx)
+
+    const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
+
+    // Determine if pagination is needed
+    const resolvedLimit = resolvedParams.limit !== undefined
+      ? Number(resolvedParams.limit)
+      : undefined
+    const shouldPaginate = resolvedLimit !== undefined
+      && Number.isFinite(resolvedLimit)
+      && resolvedLimit > MAX_PAGE_LIMIT
+
+    if (shouldPaginate) {
+      const paginationResult = await paginateApiStep({
+        path,
+        baseParams: resolvedParams,
+        targetLimit: resolvedLimit,
+        stepId: step.id,
+        clientOptions,
+        currentRateLimit: ctx.currentRateLimit,
+      })
+
+      resultData = paginationResult.data
+      resultRateLimit = paginationResult.rateLimit
+      rateLimitPaused = paginationResult.rateLimitPaused
+      waitedMs = paginationResult.waitedMs
+    } else {
+      try {
+        const response = await get(path, resolvedParams, clientOptions)
+        resultData = response.data
+        resultRateLimit = response.rateLimit
+      } catch (err) {
+        if (err instanceof CliError) {
+          // Re-throw to preserve subclass types (PaymentRequiredError, RateLimitError)
+          err.message = `Step "${step.id}" failed: ${err.message}`
+          throw err
+        }
+        throw new CliError(
+          `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
+          'STEP_EXECUTION_FAILED',
+        )
+      }
     }
   }
 
