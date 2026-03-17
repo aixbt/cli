@@ -1,7 +1,7 @@
 import type {
   ExecutionContext, RecipeStep, StepResult,
   RecipeAwaitingAgent, RecipeComplete, Recipe,
-  RateLimitInfo, TransformBlock,
+  RateLimitInfo,
 } from '../../types.js'
 import { isAgentStep, isApiStep, isForeachStep, isTransformStep } from '../../types.js'
 import { applyTransforms } from '../transforms.js'
