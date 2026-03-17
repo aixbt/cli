@@ -5,6 +5,9 @@ import type {
 import { resolveEndpoint, flattenParams } from './template.js'
 import { applyTransforms } from '../transforms.js'
 import { get, sleep } from '../api-client.js'
+import { getProvider } from '../providers/registry.js'
+import { providerRequest } from '../providers/client.js'
+import { getTracker, deriveProviderConcurrency } from '../providers/rate-limit.js'
 
 // -- Rate limit helpers --
 
@@ -77,7 +80,21 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
     }
   }
 
-  let concurrency = deriveConcurrency(currentRateLimit)
+  const isExternalProvider = step.source !== undefined && step.source !== 'aixbt'
+
+  let concurrency: number
+  if (isExternalProvider) {
+    const provider = getProvider(step.source!)
+    const rateLimit = provider.rateLimits.perMinute[
+      // Use the lowest tier as a safe default for concurrency derivation
+      Object.keys(provider.rateLimits.perMinute)[0] as keyof typeof provider.rateLimits.perMinute
+    ]
+    const tracker = rateLimit ? getTracker(step.source!, rateLimit) : null
+    concurrency = tracker ? deriveProviderConcurrency(tracker) : 3
+  } else {
+    concurrency = deriveConcurrency(currentRateLimit)
+  }
+
   let latestRateLimit = currentRateLimit
   const successItems: unknown[] = []
   const failures: ForeachFailure[] = []
@@ -85,13 +102,43 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
 
   let offset = 0
   while (offset < items.length) {
-    await waitIfRateLimited(latestRateLimit, rateLimitTracker)
+    // waitIfRateLimited is AIXBT-specific; external providers handle rate limiting internally
+    if (!isExternalProvider) {
+      await waitIfRateLimited(latestRateLimit, rateLimitTracker)
+    }
 
     const batch = items.slice(offset, offset + concurrency)
     offset += batch.length
 
     const batchPromises = batch.map(async (item) => {
-      const { path } = resolveEndpoint(step.endpoint, ctx, item)
+      // External provider path
+      if (isExternalProvider) {
+        const provider = getProvider(step.source!)
+        const resolvedParams: Record<string, string | number | boolean | undefined> = {}
+        if (step.params) {
+          const flat = flattenParams(step.params, ctx, item)
+          for (const [k, v] of Object.entries(flat)) {
+            resolvedParams[k] = v
+          }
+        }
+
+        try {
+          const response = await providerRequest({
+            provider,
+            actionName: step.action,
+            params: resolvedParams,
+          })
+          return { success: true as const, data: response.data, rateLimit: null as RateLimitInfo | null }
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err)
+          const status = (err as { status?: number }).status
+          return { success: false as const, item, error, status }
+        }
+      }
+
+      // AIXBT path — use existing resolveEndpoint() + get()
+      const endpointStr = step.endpoint ?? step.action
+      const { path } = resolveEndpoint(endpointStr, ctx, item)
       const resolvedParams = flattenParams(step.params, ctx, item)
 
       try {
@@ -128,7 +175,9 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
     }
 
     // Recalculate concurrency based on latest rate limit info
-    concurrency = deriveConcurrency(latestRateLimit)
+    if (!isExternalProvider) {
+      concurrency = deriveConcurrency(latestRateLimit)
+    }
   }
 
   const completedAt = new Date()
