@@ -316,9 +316,10 @@ export function validateProviderActions(
       continue
     }
 
-    // Validate action
+    // Validate action — skip for raw paths (legacy "GET /v2/..." or "/v2/..." fallback)
     const provider = getProvider(source)
-    if (!provider.actions[action]) {
+    const isRawPath = action.startsWith('/') || action.includes(' /')
+    if (!isRawPath && !provider.actions[action]) {
       const available = Object.keys(provider.actions).join(', ')
       issues.push({
         path: `steps.${step.id}.action`,

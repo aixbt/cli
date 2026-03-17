@@ -15,6 +15,7 @@ import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
 import { buildAwaitingAgentOutput, buildCompleteOutput } from './output.js'
 import { getProvider } from '../providers/registry.js'
 import { providerRequest } from '../providers/client.js'
+import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 
 // Re-export public API for backward compatibility
 export { resolveValue, resolveEndpoint, resolveRelativeTime } from './template.js'
@@ -224,7 +225,19 @@ async function executeStep(
     }
   } else {
     // AIXBT path — use existing resolveEndpoint() + get()
-    const endpointStr = !isAgentStep(step) ? (step.endpoint ?? step.action) : ''
+    let endpointStr: string
+    if (isAgentStep(step)) {
+      endpointStr = ''
+    } else if (step.endpoint) {
+      // Legacy: step has explicit endpoint
+      endpointStr = step.endpoint
+    } else if (AIXBT_ACTION_PATHS[step.action]) {
+      // Action name maps to a known AIXBT endpoint path
+      endpointStr = AIXBT_ACTION_PATHS[step.action]
+    } else {
+      // Fallback: use action as raw path
+      endpointStr = step.action
+    }
     const { path } = resolveEndpoint(endpointStr, ctx)
 
     const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}

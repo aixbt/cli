@@ -8,6 +8,7 @@ import { get, sleep } from '../api-client.js'
 import { getProvider } from '../providers/registry.js'
 import { providerRequest } from '../providers/client.js'
 import { getTracker, deriveProviderConcurrency } from '../providers/rate-limit.js'
+import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 
 // -- Rate limit helpers --
 
@@ -142,7 +143,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
       }
 
       // AIXBT path — use existing resolveEndpoint() + get()
-      const endpointStr = step.endpoint ?? step.action
+      const endpointStr = step.endpoint ?? AIXBT_ACTION_PATHS[step.action] ?? step.action
       const { path } = resolveEndpoint(endpointStr, ctx, item)
       const resolvedParams = flattenParams(step.params, ctx, item)
 

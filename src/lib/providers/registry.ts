@@ -29,3 +29,7 @@ export function getAllProviders(): Provider[] {
 export function getProviderNames(): string[] {
   return [...providers.keys()]
 }
+
+// Register built-in providers
+import { aixbtProvider } from './aixbt.js'
+registerProvider(aixbtProvider)
