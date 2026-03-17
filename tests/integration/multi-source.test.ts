@@ -653,4 +653,184 @@ describe('multi-source integration tests', () => {
       expect(signalsUrl).toContain('projectIds=proj-x%2Cproj-y')
     })
   })
+
+  // =========================================================================
+  // 6. Fallback: steps degrade gracefully when provider key is missing
+  // =========================================================================
+
+  describe('step fallback on missing provider key/tier', () => {
+    // CoinGecko ohlc requires demo tier; with no key configured, effective tier is free
+    const COINGECKO_SINGLE_RECIPE = `
+name: coingecko-fallback-test
+version: "1.0"
+description: Test fallback for CoinGecko step requiring demo tier
+steps:
+  - id: projects
+    action: projects
+  - id: price_history
+    action: ohlc
+    source: coingecko
+    params:
+      id: "bitcoin"
+      days: "30"
+    fallback: "Pull 30-day OHLC price data from CoinGecko for bitcoin"
+`
+
+    const COINGECKO_NO_FALLBACK_RECIPE = `
+name: coingecko-no-fallback-test
+version: "1.0"
+description: Test step without fallback for CoinGecko step
+steps:
+  - id: projects
+    action: projects
+  - id: price_history
+    action: ohlc
+    source: coingecko
+    params:
+      id: "bitcoin"
+      days: "30"
+`
+
+    const COINGECKO_FOREACH_RECIPE = `
+name: coingecko-foreach-fallback-test
+version: "1.0"
+description: Test fallback for foreach CoinGecko step
+steps:
+  - id: projects
+    action: projects
+  - id: price_history
+    foreach: "projects.data"
+    action: ohlc
+    source: coingecko
+    params:
+      id: "{item.cgId}"
+      days: "30"
+    fallback: "Pull 30-day OHLC price data from CoinGecko for each project"
+`
+
+    const PROJECTS = [
+      { id: 'proj-1', name: 'Bitcoin', cgId: 'bitcoin' },
+      { id: 'proj-2', name: 'Ethereum', cgId: 'ethereum' },
+    ]
+
+    it('should return fallback data when provider tier is insufficient (single step)', async () => {
+      routeByUrl([
+        {
+          match: 'https://api.aixbt.tech',
+          respond: apiSuccess(PROJECTS),
+        },
+      ])
+
+      const result = await executeRecipe({
+        yaml: COINGECKO_SINGLE_RECIPE,
+        params: {},
+        clientOptions: { apiKey: TEST_API_KEY },
+      })
+
+      expect(result.status).toBe('complete')
+      const complete = result as RecipeComplete
+
+      // AIXBT step should still work
+      expect(complete.data.projects).toEqual(PROJECTS)
+
+      // CoinGecko step should have fallback data, not throw
+      const priceHistory = complete.data.price_history as { _fallback: boolean; message: string }
+      expect(priceHistory._fallback).toBe(true)
+      expect(priceHistory.message).toContain('skipped')
+      expect(priceHistory.message).toContain('coingecko')
+      expect(priceHistory.message).toContain('Pull 30-day OHLC price data from CoinGecko for bitcoin')
+
+      // Should NOT have made any CoinGecko API calls
+      const cgCalls = (mockFetch.mock.calls as [string, unknown][])
+        .filter(([url]) => url.includes('coingecko'))
+      expect(cgCalls).toHaveLength(0)
+    })
+
+    it('should return fallback data without message when no fallback field is defined', async () => {
+      routeByUrl([
+        {
+          match: 'https://api.aixbt.tech',
+          respond: apiSuccess(PROJECTS),
+        },
+      ])
+
+      const result = await executeRecipe({
+        yaml: COINGECKO_NO_FALLBACK_RECIPE,
+        params: {},
+        clientOptions: { apiKey: TEST_API_KEY },
+      })
+
+      expect(result.status).toBe('complete')
+      const complete = result as RecipeComplete
+
+      const priceHistory = complete.data.price_history as { _fallback: boolean; message: string }
+      expect(priceHistory._fallback).toBe(true)
+      expect(priceHistory.message).toContain('skipped')
+    })
+
+    it('should return fallback for foreach step before iterating (no API calls made)', async () => {
+      routeByUrl([
+        {
+          match: 'https://api.aixbt.tech',
+          respond: apiSuccess(PROJECTS),
+        },
+      ])
+
+      const result = await executeRecipe({
+        yaml: COINGECKO_FOREACH_RECIPE,
+        params: {},
+        clientOptions: { apiKey: TEST_API_KEY },
+      })
+
+      expect(result.status).toBe('complete')
+      const complete = result as RecipeComplete
+
+      // AIXBT step should still work
+      expect(complete.data.projects).toEqual(PROJECTS)
+
+      // Foreach CoinGecko step should have fallback data
+      const priceHistory = complete.data.price_history as { _fallback: boolean; message: string }
+      expect(priceHistory._fallback).toBe(true)
+      expect(priceHistory.message).toContain('Pull 30-day OHLC price data from CoinGecko for each project')
+
+      // Should NOT have made any CoinGecko API calls
+      const cgCalls = (mockFetch.mock.calls as [string, unknown][])
+        .filter(([url]) => url.includes('coingecko') || url.includes('geckoterminal'))
+      expect(cgCalls).toHaveLength(0)
+    })
+
+    it('should execute normally when provider key meets tier requirement', async () => {
+      // DeFiLlama is free tier — should always work without a key
+      const DEFILLAMA_STEP_RECIPE = `
+name: defillama-with-fallback
+version: "1.0"
+description: DeFiLlama step with fallback (should not trigger since free tier)
+steps:
+  - id: tvl
+    action: tvl
+    source: defillama
+    fallback: "Get total TVL from DeFiLlama"
+`
+      const TVL_DATA = [{ date: 1710000000, tvl: 90_000_000_000 }]
+
+      routeByUrl([
+        {
+          match: 'https://api.llama.fi',
+          respond: jsonResponse(200, TVL_DATA),
+        },
+      ])
+
+      const result = await executeRecipe({
+        yaml: DEFILLAMA_STEP_RECIPE,
+        params: {},
+        clientOptions: { apiKey: TEST_API_KEY },
+      })
+
+      expect(result.status).toBe('complete')
+      const complete = result as RecipeComplete
+
+      // Should have actual data, not fallback
+      expect(complete.data.tvl).toEqual(TVL_DATA)
+    })
+  })
 })

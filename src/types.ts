@@ -99,6 +99,8 @@ export interface ApiStep {
   source?: string
   params?: Record<string, unknown>
   transform?: TransformBlock
+  /** Message shown to agent when step is skipped due to missing provider key/tier */
+  fallback?: string
   type?: never
   foreach?: never
   input?: never
@@ -111,6 +113,8 @@ export interface ForeachStep {
   source?: string
   params?: Record<string, unknown>
   transform?: TransformBlock
+  /** Message shown to agent when step is skipped due to missing provider key/tier */
+  fallback?: string
   type?: never
   input?: never
 }

@@ -24,6 +24,37 @@ import type { ProviderTier } from '../providers/types.js'
 export { resolveValue, resolveActionPath, resolveRelativeTime } from './template.js'
 export { applyTransforms } from '../transforms.js'
 
+// -- Fallback helpers --
+
+const FALLBACK_ERROR_CODES = new Set(['TIER_INSUFFICIENT', 'MISSING_PROVIDER_KEY'])
+
+function isProviderUnavailableError(err: unknown): err is CliError {
+  return err instanceof CliError && FALLBACK_ERROR_CODES.has(err.code)
+}
+
+function buildFallbackResult(
+  stepId: string,
+  fallback: string,
+  source: string,
+  startedAt: Date,
+): StepResult {
+  const completedAt = new Date()
+  const message =
+    `Step "${stepId}" was skipped — no ${source} API key configured. ` +
+    `Use your available tools to resolve: ${fallback}`
+
+  return {
+    stepId,
+    data: { _fallback: true, message },
+    rateLimit: null,
+    timing: {
+      startedAt: startedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
+      durationMs: completedAt.getTime() - startedAt.getTime(),
+    },
+  }
+}
+
 // -- Param validation --
 
 function validateRequiredParams(
@@ -63,8 +94,9 @@ function emitTierWarnings(recipe: Recipe): void {
     const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
 
     if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
+      const suffix = step.fallback ? ' (has fallback, will degrade gracefully)' : ''
       console.error(
-        `warning: step "${step.id}" uses ${source}:${step.action} (requires ${action.minTier} tier, current: ${effectiveTier})`,
+        `warning: step "${step.id}" uses ${source}:${step.action} (requires ${action.minTier} tier, current: ${effectiveTier})${suffix}`,
       )
     }
   }
@@ -169,6 +201,29 @@ async function executeStep(
   const startedAt = new Date()
 
   if (isForeachStep(step)) {
+    // Check provider availability before iterating — avoid N failed calls
+    if (step.source && step.source !== 'aixbt') {
+      try {
+        const provider = getProvider(step.source)
+        const action = provider.actions[step.action]
+        if (action && action.minTier !== 'free') {
+          const resolved = resolveProviderKey(step.source)
+          const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
+          if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
+            if (step.fallback) {
+              const resolvedFallback = resolveValue(step.fallback, ctx) as string
+              console.error(`warning: step "${step.id}" skipped (TIER_INSUFFICIENT), using fallback`)
+              return buildFallbackResult(step.id, resolvedFallback, step.source, startedAt)
+            }
+            console.error(`warning: step "${step.id}" skipped (TIER_INSUFFICIENT), no fallback defined`)
+            return buildFallbackResult(step.id, '', step.source, startedAt)
+          }
+        }
+      } catch {
+        // Provider not found — let executeForeach handle it
+      }
+    }
+
     const sourceData = resolveValue(`{${step.foreach}}`, ctx)
     if (sourceData === undefined || sourceData === null) {
       throw new CliError(
@@ -226,6 +281,15 @@ async function executeStep(
     try {
       resultData = await dispatchProviderStep(step.source, step.action, step.params, ctx)
     } catch (err) {
+      if (isProviderUnavailableError(err)) {
+        if (step.fallback) {
+          const resolved = resolveValue(step.fallback, ctx) as string
+          console.error(`warning: step "${step.id}" skipped (${err.code}), using fallback`)
+          return buildFallbackResult(step.id, resolved, step.source, startedAt)
+        }
+        console.error(`warning: step "${step.id}" skipped (${err.code}), no fallback defined`)
+        return buildFallbackResult(step.id, '', step.source, startedAt)
+      }
       if (err instanceof CliError) {
         err.message = `Step "${step.id}" failed: ${err.message}`
         throw err

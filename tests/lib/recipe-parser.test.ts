@@ -1169,6 +1169,76 @@ steps:
     })
   })
 
+  // -- Fallback field --
+
+  describe('fallback field', () => {
+    it('should parse fallback on API step', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: price
+    action: ohlc
+    source: coingecko
+    params:
+      id: "bitcoin"
+      days: "30"
+    fallback: "Pull 30-day OHLC price data from CoinGecko for bitcoin"
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.fallback).toBe('Pull 30-day OHLC price data from CoinGecko for bitcoin')
+    })
+
+    it('should parse fallback on foreach step', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: projects
+    action: projects
+  - id: prices
+    foreach: "projects.data"
+    action: ohlc
+    source: coingecko
+    params:
+      id: "{item.cgId}"
+      days: "30"
+    fallback: "Pull 30-day price data for each project"
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[1] as ForeachStep
+      expect(step.fallback).toBe('Pull 30-day price data for each project')
+    })
+
+    it('should omit fallback when not provided', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: price
+    action: ohlc
+    source: coingecko
+    params:
+      id: "bitcoin"
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.fallback).toBeUndefined()
+    })
+
+    it('should ignore non-string fallback values', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: price
+    action: ohlc
+    source: coingecko
+    fallback: 42
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[0] as ApiStep
+      expect(step.fallback).toBeUndefined()
+    })
+  })
+
   // -- YAML syntax and structural errors --
 
   describe('YAML syntax errors', () => {

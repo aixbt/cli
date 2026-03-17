@@ -280,6 +280,7 @@ function validateStep(
         ? (step.params as Record<string, unknown>)
         : undefined,
       ...(transform ? { transform } : {}),
+      ...(typeof step.fallback === 'string' ? { fallback: step.fallback } : {}),
     }
   }
 
@@ -292,6 +293,7 @@ function validateStep(
       ? (step.params as Record<string, unknown>)
       : undefined,
     ...(transform ? { transform } : {}),
+    ...(typeof step.fallback === 'string' ? { fallback: step.fallback } : {}),
   }
 }
 
