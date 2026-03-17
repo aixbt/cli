@@ -171,7 +171,7 @@ describe('provider config', () => {
       it('should fallback to free tier when tier is missing from config', () => {
         // Simulate manually edited config with missing tier
         writeConfig({
-          providers: { defillama: { apiKey: 'dl-key' } as any },
+          providers: { defillama: { apiKey: 'dl-key' } as unknown as Record<string, { apiKey: string; tier: string }>[string] },
         })
 
         const result = resolveProviderKey('defillama')

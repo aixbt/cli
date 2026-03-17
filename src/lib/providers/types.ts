@@ -11,10 +11,15 @@ export interface ActionParam {
   inPath?: boolean
 }
 
+export interface ResolvedAction {
+  action: string
+  params: Record<string, string | number | boolean | undefined>
+}
+
 export interface ActionDefinition {
   method: 'GET'
-  /** URL path template with {param} placeholders */
-  path: string
+  /** URL path template with {param} placeholders. Omit for meta-actions using `resolve`. */
+  path?: string
   description: string
   /** Agent-oriented hint shown after "Use when:" in help output */
   hint: string
@@ -22,6 +27,15 @@ export interface ActionDefinition {
   minTier: ProviderTier
   /** Tier-specific path overrides (e.g., CoinGecko GeckoTerminal -> CoinGecko routing) */
   pathByTier?: Partial<Record<ProviderTier, string>>
+  /**
+   * Dynamic resolver for meta-actions that route to other actions based on
+   * available params and user tier. Return the target action + mapped params,
+   * or null if no suitable path exists (triggers step fallback).
+   */
+  resolve?: (
+    params: Record<string, string | number | boolean | undefined>,
+    effectiveTier: ProviderTier,
+  ) => ResolvedAction | null
 }
 
 export interface ProviderRateLimits {

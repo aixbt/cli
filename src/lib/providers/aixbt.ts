@@ -112,7 +112,7 @@ export const aixbtProvider: Provider = {
     perMinute: {},
   },
   authHeader: 'X-API-Key',
-  normalize: (body: unknown, _actionName: string): unknown => {
+  normalize: (body: unknown): unknown => {
     if (typeof body === 'object' && body !== null && 'data' in body) {
       return (body as Record<string, unknown>).data
     }

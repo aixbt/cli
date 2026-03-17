@@ -1,5 +1,10 @@
 import type { Provider, ActionDefinition, ProviderTier } from './types.js'
+import { TIER_RANK } from './types.js'
 import { flattenJsonApiResponse } from './normalize.js'
+
+function hasValue(v: unknown): v is string | number {
+  return v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'null'
+}
 
 const GECKOTERMINAL_ACTIONS = new Set([
   'token-price', 'pool', 'token-pools', 'trending-pools', 'token-ohlcv',
@@ -188,6 +193,47 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
     minTier: 'free',
+  },
+  'price-history': {
+    method: 'GET',
+    description: 'Get price history — prefers on-chain DEX data (free), falls back to CoinGecko OHLC (demo)',
+    hint: 'You need historical price candles and have a token address and/or CoinGecko ID',
+    params: [
+      { name: 'network', required: false, description: 'Network ID — from tokens[].chain (CoinGecko chain names accepted)' },
+      { name: 'address', required: false, description: 'Token contract address — from tokens[].address' },
+      { name: 'geckoId', required: false, description: 'CoinGecko coin ID — from coingeckoData.apiId' },
+      { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day") — on-chain path only' },
+      { name: 'limit', required: false, description: 'Number of candles / days of data (default: 30)' },
+      { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
+    ],
+    minTier: 'free',
+    resolve: (params, tier) => {
+      if (hasValue(params.network) && hasValue(params.address)) {
+        return {
+          action: 'token-ohlcv',
+          params: {
+            network: params.network,
+            address: params.address,
+            timeframe: params.timeframe ?? 'day',
+            limit: params.limit,
+            currency: params.currency,
+          },
+        }
+      }
+
+      if (hasValue(params.geckoId) && TIER_RANK[tier] >= TIER_RANK['demo']) {
+        return {
+          action: 'ohlc',
+          params: {
+            id: params.geckoId,
+            vs_currency: params.currency ?? 'usd',
+            days: params.limit ?? 30,
+          },
+        }
+      }
+
+      return null
+    },
   },
 }
 

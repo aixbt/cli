@@ -68,11 +68,12 @@ describe('goplusProvider', () => {
       'approval-security',
       'phishing-site',
       'supported-chains',
+      'security-check',
     ]
 
-    it('should define all 8 actions', () => {
+    it('should define all 9 actions', () => {
       const actionNames = Object.keys(goplusProvider.actions)
-      expect(actionNames).toHaveLength(8)
+      expect(actionNames).toHaveLength(9)
       for (const name of expectedActions) {
         expect(goplusProvider.actions).toHaveProperty(name)
       }
