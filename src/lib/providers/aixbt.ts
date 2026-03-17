@@ -52,6 +52,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'id', required: true, description: 'Project ID', inPath: true },
       { name: 'start', required: false, description: 'Start date (ISO 8601 or relative like -7d)' },
       { name: 'end', required: false, description: 'End date (ISO 8601 or relative like -1d)' },
+      { name: 'includeClusters', required: false, description: 'Include per-hour cluster breakdown (default: true, set to "false" for scores only)' },
     ],
     minTier: 'free',
   },
