@@ -1,4 +1,5 @@
 import type { SampleTransform, TransformBlock } from '../types.js'
+import { isErrorMarker } from './recipe/foreach.js'
 
 // -- Helpers --
 
@@ -229,6 +230,9 @@ export function applySample(items: unknown[], config: SampleTransform): unknown[
 export function applyTransforms(data: unknown, transform: TransformBlock): unknown {
   const isArray = Array.isArray(data)
   let items: unknown[] = isArray ? data : [data]
+
+  // Filter out error markers before applying transforms
+  items = items.filter((item) => !isErrorMarker(item))
 
   // Sample runs first to preserve access to weight fields
   if (transform.sample) {

@@ -5,6 +5,12 @@ import type {
 import { resolveEndpoint, flattenParams } from './template.js'
 import { applyTransforms } from '../transforms.js'
 import { get, sleep } from '../api-client.js'
+import { CliError } from '../errors.js'
+import { getProvider } from '../providers/registry.js'
+import { dispatchProviderStep } from '../providers/client.js'
+import { resolveProviderKey } from '../providers/config.js'
+import { getTracker, deriveProviderConcurrency } from '../providers/rate-limit.js'
+import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 
 // -- Rate limit helpers --
 
@@ -47,6 +53,12 @@ export async function waitIfRateLimited(
   }
 }
 
+// -- Error marker helper --
+
+export function isErrorMarker(item: unknown): item is { _error: true; item: unknown; error: string; status?: number } {
+  return typeof item === 'object' && item !== null && '_error' in item && (item as Record<string, unknown>)._error === true
+}
+
 // -- Foreach execution --
 
 export interface ForeachOptions {
@@ -77,21 +89,50 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
     }
   }
 
-  let concurrency = deriveConcurrency(currentRateLimit)
+  const isExternalProvider = step.source !== undefined && step.source !== 'aixbt'
+
+  let concurrency: number
+  if (isExternalProvider) {
+    const provider = getProvider(step.source!)
+    const resolvedKey = resolveProviderKey(provider.name)
+    const tier = resolvedKey?.tier ?? 'free'
+    const rateLimit = provider.rateLimits.perMinute[tier] ?? null
+    const tracker = rateLimit ? getTracker(step.source!, rateLimit) : null
+    concurrency = tracker ? deriveProviderConcurrency(tracker) : 3
+  } else {
+    concurrency = deriveConcurrency(currentRateLimit)
+  }
+
   let latestRateLimit = currentRateLimit
-  const successItems: unknown[] = []
-  const failures: ForeachFailure[] = []
+  const results: unknown[] = []
   const rateLimitTracker: RateLimitTracker = { paused: false, waitedMs: 0 }
 
   let offset = 0
   while (offset < items.length) {
-    await waitIfRateLimited(latestRateLimit, rateLimitTracker)
+    // waitIfRateLimited is AIXBT-specific; external providers handle rate limiting internally
+    if (!isExternalProvider) {
+      await waitIfRateLimited(latestRateLimit, rateLimitTracker)
+    }
 
     const batch = items.slice(offset, offset + concurrency)
     offset += batch.length
 
     const batchPromises = batch.map(async (item) => {
-      const { path } = resolveEndpoint(step.endpoint, ctx, item)
+      // External provider path
+      if (isExternalProvider) {
+        try {
+          const data = await dispatchProviderStep(step.source!, step.action, step.params, ctx, item)
+          return { success: true as const, data, rateLimit: null as RateLimitInfo | null }
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err)
+          const status = (err as { status?: number }).status
+          return { success: false as const, item, error, status }
+        }
+      }
+
+      // AIXBT path — use existing resolveEndpoint() + get()
+      const endpointStr = step.endpoint ?? AIXBT_ACTION_PATHS[step.action] ?? step.action
+      const { path } = resolveEndpoint(endpointStr, ctx, item)
       const resolvedParams = flattenParams(step.params, ctx, item)
 
       try {
@@ -114,12 +155,13 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
           data = applyTransforms(data, step.transform)
         }
 
-        successItems.push(data)
+        results.push(data)
         if (result.rateLimit) {
           latestRateLimit = result.rateLimit
         }
       } else {
-        failures.push({
+        results.push({
+          _error: true,
           item: result.item,
           error: result.error,
           status: result.status,
@@ -128,14 +170,28 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
     }
 
     // Recalculate concurrency based on latest rate limit info
-    concurrency = deriveConcurrency(latestRateLimit)
+    if (!isExternalProvider) {
+      concurrency = deriveConcurrency(latestRateLimit)
+    }
+  }
+
+  const failures = results.filter(isErrorMarker)
+  if (failures.length > 0) {
+    const firstError = (failures[0] as { error: string }).error
+    if (failures.length === items.length) {
+      throw new CliError(
+        `Foreach step "${step.id}": all ${items.length} items failed. First error: ${firstError}`,
+        'FOREACH_ALL_FAILED',
+      )
+    }
+    console.error(`warning: foreach step "${step.id}": ${failures.length}/${items.length} items failed`)
   }
 
   const completedAt = new Date()
 
   return {
     stepId: step.id,
-    data: successItems,
+    data: results,
     rateLimit: latestRateLimit,
     timing: {
       startedAt: startedAt.toISOString(),
@@ -143,7 +199,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
       durationMs: completedAt.getTime() - startedAt.getTime(),
       ...(rateLimitTracker.paused ? { rateLimitPaused: true, waitedMs: rateLimitTracker.waitedMs } : {}),
     },
-    items: successItems,
-    failures,
+    items: results.filter((item) => !isErrorMarker(item)),
+    failures: failures as ForeachFailure[],
   }
 }

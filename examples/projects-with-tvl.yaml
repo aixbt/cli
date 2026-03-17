@@ -1,0 +1,25 @@
+name: projects-with-tvl
+version: "1.0"
+description: Enrich AIXBT projects with DeFiLlama TVL data
+steps:
+  - id: projects
+    action: projects
+    params:
+      limit: 10
+      hasToken: "true"
+  - id: tvl
+    foreach: "projects.data"
+    action: protocol
+    source: defillama
+    params:
+      protocol: "{item.name}"
+    transform:
+      select:
+        - name
+        - tvl
+        - chainTvls
+hints:
+  combine:
+    - projects
+    - tvl
+  key: name

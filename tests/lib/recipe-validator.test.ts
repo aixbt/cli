@@ -37,10 +37,10 @@ function makeRecipe(
 
 function apiStep(
   id: string,
-  endpoint: string,
+  action: string,
   params?: Record<string, unknown>,
 ): ApiStep {
-  return { id, endpoint, params }
+  return { id, action, endpoint: action, params }
 }
 
 function agentStep(id: string, context: string[]): AgentStep {
@@ -57,10 +57,10 @@ function agentStep(id: string, context: string[]): AgentStep {
 function foreachStep(
   id: string,
   foreach: string,
-  endpoint: string,
+  action: string,
   params?: Record<string, unknown>,
 ): ForeachStep {
-  return { id, foreach, endpoint, params }
+  return { id, foreach, action, endpoint: action, params }
 }
 
 function transformStep(

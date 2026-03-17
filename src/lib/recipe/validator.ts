@@ -1,6 +1,7 @@
 import { RecipeValidationError } from '../errors.js'
 import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../../types.js'
 import { isAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../../types.js'
+import { getProviderNames, getProvider } from '../providers/registry.js'
 
 export function extractTemplateRefs(str: string): string[] {
   const refs: string[] = []
@@ -60,7 +61,9 @@ export function extractStepReferences(step: RecipeStep): Set<string> {
     if (step.params) {
       allRefs.push(...extractAllTemplateRefs(step.params))
     }
-    allRefs.push(...extractTemplateRefs(step.endpoint))
+    if (step.endpoint) {
+      allRefs.push(...extractTemplateRefs(step.endpoint))
+    }
   }
 
   for (const ref of allRefs) {
@@ -256,35 +259,77 @@ function validateVariableReferences(
     // Check param template references
     checkTemplateReferences(step.params, step.id, allStepIds, paramNames, issues)
 
-    // Check endpoint template references
-    const endpointRefs = extractTemplateRefs(step.endpoint)
-    for (const ref of endpointRefs) {
-      const dotIndex = ref.indexOf('.')
-      const prefix = dotIndex === -1 ? ref : ref.slice(0, dotIndex)
+    // Check endpoint template references (only for steps that still have endpoint)
+    if (step.endpoint) {
+      const endpointRefs = extractTemplateRefs(step.endpoint)
+      for (const ref of endpointRefs) {
+        const dotIndex = ref.indexOf('.')
+        const prefix = dotIndex === -1 ? ref : ref.slice(0, dotIndex)
 
-      if (prefix === 'item') continue
+        if (prefix === 'item') continue
 
-      if (prefix === 'params') {
-        if (dotIndex !== -1) {
-          const paramName = ref.slice(dotIndex + 1)
-          if (!paramNames.has(paramName)) {
-            issues.push({
-              path: `steps.${step.id}.endpoint`,
-              message: `References undefined param "${paramName}"`,
-            })
+        if (prefix === 'params') {
+          if (dotIndex !== -1) {
+            const paramName = ref.slice(dotIndex + 1)
+            if (!paramNames.has(paramName)) {
+              issues.push({
+                path: `steps.${step.id}.endpoint`,
+                message: `References undefined param "${paramName}"`,
+              })
+            }
           }
+          continue
         }
-        continue
-      }
 
-      if (!allStepIds.has(prefix)) {
-        issues.push({
-          path: `steps.${step.id}.endpoint`,
-          message: `References unknown step "${prefix}"`,
-        })
+        if (!allStepIds.has(prefix)) {
+          issues.push({
+            path: `steps.${step.id}.endpoint`,
+            message: `References unknown step "${prefix}"`,
+          })
+        }
       }
     }
   }
+}
+
+export function validateProviderActions(
+  recipe: Recipe,
+): ValidationIssue[] {
+  const knownProviders = getProviderNames()
+  // If no providers registered yet, skip validation
+  if (knownProviders.length === 0) return []
+
+  const issues: ValidationIssue[] = []
+
+  for (const step of recipe.steps) {
+    if (isAgentStep(step) || isTransformStep(step)) continue
+
+    const source = step.source ?? 'aixbt'
+    const action = step.action
+    if (!action) continue
+
+    // Validate source
+    if (!knownProviders.includes(source)) {
+      issues.push({
+        path: `steps.${step.id}.source`,
+        message: `Unknown provider "${source}". Available providers: ${knownProviders.join(', ')}`,
+      })
+      continue
+    }
+
+    // Validate action — skip for raw paths (legacy "GET /v2/..." or "/v2/..." fallback)
+    const provider = getProvider(source)
+    const isRawPath = action.startsWith('/') || action.includes(' /')
+    if (!isRawPath && !provider.actions[action]) {
+      const available = Object.keys(provider.actions).join(', ')
+      issues.push({
+        path: `steps.${step.id}.action`,
+        message: `Unknown action "${action}" for provider "${source}". Available: ${available}`,
+      })
+    }
+  }
+
+  return issues
 }
 
 export function validateRecipeCollectIssues(
@@ -295,6 +340,7 @@ export function validateRecipeCollectIssues(
 
   validateSegmentBoundaries(recipe, segments, issues)
   validateVariableReferences(recipe, segments, issues)
+  issues.push(...validateProviderActions(recipe))
 
   return issues
 }

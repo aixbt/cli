@@ -9,7 +9,12 @@ import { registerSignalsCommand } from './commands/signals.js'
 import { registerClustersCommand } from './commands/clusters.js'
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
+import { registerProviderCommand } from './commands/provider.js'
+import { registerDefillamaCommand } from './commands/defillama.js'
+import { registerCoingeckoCommand } from './commands/coingecko.js'
+import { registerGoplusCommand } from './commands/goplus.js'
 
+import type { OutputFormat } from './lib/output.js'
 import * as output from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
 import { resolveFormat, resolveConfig } from './lib/config.js'
@@ -100,15 +105,21 @@ export function createProgram(): Command {
   registerSignalsCommand(program)
   registerClustersCommand(program)
   registerRecipeCommand(program)
+  registerProviderCommand(program)
+  registerDefillamaCommand(program)
+  registerCoingeckoCommand(program)
+  registerGoplusCommand(program)
 
   // `aixbt help all` — full reference of every command and option
   program.addHelpCommand(false)
   program
     .command('help [command]')
     .description('display help for command ("all" for full reference)')
-    .action((cmdName: string | undefined) => {
+    .action((cmdName: string | undefined, _opts: unknown, cmd: Command) => {
       if (cmdName === 'all') {
-        printFullReference(program)
+        const globalOpts = cmd.optsWithGlobals()
+        const fmt = resolveFormat(globalOpts.format as string | undefined)
+        printFullReference(program, fmt)
         return
       }
       if (cmdName) {
@@ -123,7 +134,12 @@ export function createProgram(): Command {
   return program
 }
 
-function printFullReference(program: Command): void {
+function printFullReference(program: Command, fmt?: OutputFormat): void {
+  if (fmt && output.isStructuredFormat(fmt)) {
+    output.outputStructured(buildStructuredReference(program), fmt)
+    return
+  }
+
   const lines: string[] = []
   lines.push(output.banner(pkg.version))
   lines.push('')
@@ -166,6 +182,45 @@ function printFullReference(program: Command): void {
   }
 
   process.stdout.write(output.colorizeHelp(lines.join('\n') + '\n'))
+}
+
+function buildStructuredReference(program: Command): Record<string, unknown> {
+  function serializeCommand(cmd: Command): Record<string, unknown> {
+    const opts = cmd.options.filter(o => !o.hidden).map(o => ({
+      flags: o.flags,
+      description: o.description || '',
+    }))
+
+    const subcommands = cmd.commands
+      .filter(c => c.name() !== 'help')
+      .map(c => serializeCommand(c))
+
+    const result: Record<string, unknown> = {
+      name: cmd.name(),
+      description: cmd.description() || '',
+    }
+
+    if (opts.length > 0) result.options = opts
+    if (subcommands.length > 0) result.subcommands = subcommands
+
+    return result
+  }
+
+  const globalOpts = program.options.filter(o => !o.hidden).map(o => ({
+    flags: o.flags,
+    description: o.description || '',
+  }))
+
+  const commands = program.commands
+    .filter(c => c.name() !== 'help')
+    .map(c => serializeCommand(c))
+
+  return {
+    name: 'aixbt',
+    version: pkg.version,
+    globalOptions: globalOpts,
+    commands,
+  }
 }
 
 function expandVerboseFlags(argv: string[]): string[] {

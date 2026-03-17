@@ -13,6 +13,12 @@ import { resolveValue, resolveEndpoint, flattenParams } from './template.js'
 import { executeForeach } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
 import { buildAwaitingAgentOutput, buildCompleteOutput } from './output.js'
+import { dispatchProviderStep } from '../providers/client.js'
+import { getProvider } from '../providers/registry.js'
+import { resolveProviderKey } from '../providers/config.js'
+import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
+import { TIER_RANK } from '../providers/types.js'
+import type { ProviderTier } from '../providers/types.js'
 
 // Re-export public API for backward compatibility
 export { resolveValue, resolveEndpoint, resolveRelativeTime } from './template.js'
@@ -38,6 +44,29 @@ function validateRequiredParams(
       `Missing required parameter${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
       'MISSING_PARAMS',
     )
+  }
+}
+
+function emitTierWarnings(recipe: Recipe): void {
+  for (const step of recipe.steps) {
+    if (!isApiStep(step) && !isForeachStep(step)) continue
+    const source = step.source
+    if (!source || source === 'aixbt') continue
+
+    let provider
+    try { provider = getProvider(source) } catch { continue }
+
+    const action = provider.actions[step.action]
+    if (!action || action.minTier === 'free') continue
+
+    const resolved = resolveProviderKey(source)
+    const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
+
+    if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
+      console.error(
+        `warning: step "${step.id}" uses ${source}:${step.action} (requires ${action.minTier} tier, current: ${effectiveTier})`,
+      )
+    }
   }
 }
 
@@ -187,48 +216,17 @@ async function executeStep(
     }
   }
 
-  const { path } = resolveEndpoint(
-    isAgentStep(step) ? '' : step.endpoint,
-    ctx,
-  )
-
-  const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
-
-  // Determine if pagination is needed
-  const resolvedLimit = resolvedParams.limit !== undefined
-    ? Number(resolvedParams.limit)
-    : undefined
-  const shouldPaginate = resolvedLimit !== undefined
-    && Number.isFinite(resolvedLimit)
-    && resolvedLimit > MAX_PAGE_LIMIT
-
   let resultData: unknown
   let resultRateLimit: RateLimitInfo | null = null
   let rateLimitPaused = false
   let waitedMs = 0
 
-  if (shouldPaginate) {
-    const paginationResult = await paginateApiStep({
-      path,
-      baseParams: resolvedParams,
-      targetLimit: resolvedLimit,
-      stepId: step.id,
-      clientOptions,
-      currentRateLimit: ctx.currentRateLimit,
-    })
-
-    resultData = paginationResult.data
-    resultRateLimit = paginationResult.rateLimit
-    rateLimitPaused = paginationResult.rateLimitPaused
-    waitedMs = paginationResult.waitedMs
-  } else {
+  // External provider dispatch
+  if (isApiStep(step) && step.source && step.source !== 'aixbt') {
     try {
-      const response = await get(path, resolvedParams, clientOptions)
-      resultData = response.data
-      resultRateLimit = response.rateLimit
+      resultData = await dispatchProviderStep(step.source, step.action, step.params, ctx)
     } catch (err) {
       if (err instanceof CliError) {
-        // Re-throw to preserve subclass types (PaymentRequiredError, RateLimitError)
         err.message = `Step "${step.id}" failed: ${err.message}`
         throw err
       }
@@ -236,6 +234,64 @@ async function executeStep(
         `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
         'STEP_EXECUTION_FAILED',
       )
+    }
+  } else {
+    // AIXBT path — use existing resolveEndpoint() + get()
+    let endpointStr: string
+    if (isAgentStep(step)) {
+      endpointStr = ''
+    } else if (step.endpoint) {
+      // Legacy: step has explicit endpoint
+      endpointStr = step.endpoint
+    } else if (AIXBT_ACTION_PATHS[step.action]) {
+      // Action name maps to a known AIXBT endpoint path
+      endpointStr = AIXBT_ACTION_PATHS[step.action]
+    } else {
+      // Fallback: use action as raw path
+      endpointStr = step.action
+    }
+    const { path } = resolveEndpoint(endpointStr, ctx)
+
+    const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
+
+    // Determine if pagination is needed
+    const resolvedLimit = resolvedParams.limit !== undefined
+      ? Number(resolvedParams.limit)
+      : undefined
+    const shouldPaginate = resolvedLimit !== undefined
+      && Number.isFinite(resolvedLimit)
+      && resolvedLimit > MAX_PAGE_LIMIT
+
+    if (shouldPaginate) {
+      const paginationResult = await paginateApiStep({
+        path,
+        baseParams: resolvedParams,
+        targetLimit: resolvedLimit,
+        stepId: step.id,
+        clientOptions,
+        currentRateLimit: ctx.currentRateLimit,
+      })
+
+      resultData = paginationResult.data
+      resultRateLimit = paginationResult.rateLimit
+      rateLimitPaused = paginationResult.rateLimitPaused
+      waitedMs = paginationResult.waitedMs
+    } else {
+      try {
+        const response = await get(path, resolvedParams, clientOptions)
+        resultData = response.data
+        resultRateLimit = response.rateLimit
+      } catch (err) {
+        if (err instanceof CliError) {
+          // Re-throw to preserve subclass types (PaymentRequiredError, RateLimitError)
+          err.message = `Step "${step.id}" failed: ${err.message}`
+          throw err
+        }
+        throw new CliError(
+          `Step "${step.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
+          'STEP_EXECUTION_FAILED',
+        )
+      }
     }
   }
 
@@ -273,6 +329,7 @@ export async function executeRecipe(options: {
   const recipe = parseRecipe(options.yaml)
   validateRecipe(recipe)
   validateRequiredParams(recipe, options.params)
+  emitTierWarnings(recipe)
   const segments = buildSegments(recipe)
 
   const params = applyDefaults(recipe, options.params)

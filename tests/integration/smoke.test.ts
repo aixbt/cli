@@ -253,7 +253,7 @@ version: "1.0"
 description: A recipe for smoke testing
 steps:
   - id: fetch_projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'valid-recipe.yaml')
       writeFileSync(filePath, yamlContent, 'utf-8')
@@ -277,7 +277,7 @@ steps:
 version: "1.0"
 steps:
   - id: fetch
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'invalid-recipe.yaml')
       writeFileSync(filePath, yamlContent, 'utf-8')
@@ -328,7 +328,7 @@ version: "1.0"
 description: Run smoke test
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'run-recipe.yaml')
       writeFileSync(filePath, yamlContent, 'utf-8')
@@ -508,7 +508,7 @@ version: "1.0"
 description: Testing JSON output
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'json-test.yaml')
       writeFileSync(filePath, yamlContent, 'utf-8')
@@ -537,7 +537,7 @@ steps:
 version: "1.0"
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'invalid-json-test.yaml')
       writeFileSync(filePath, yamlContent, 'utf-8')

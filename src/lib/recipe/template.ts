@@ -1,6 +1,7 @@
 import type { ExecutionContext } from '../../types.js'
 import { TEMPLATE_REGEX } from '../../types.js'
 import { getNestedValue } from '../transforms.js'
+import { isErrorMarker } from './foreach.js'
 
 export const RELATIVE_TIME_REGEX = /^-(\d+)(h|d|m)$/
 
@@ -58,7 +59,9 @@ export function resolveExpression(
     if (!Array.isArray(stepResult.data)) {
       return undefined
     }
-    return stepResult.data.map((item: unknown) => getNestedValue(item, field))
+    return stepResult.data
+      .filter((item: unknown) => !isErrorMarker(item))
+      .map((item: unknown) => getNestedValue(item, field))
   }
 
   // step_id.data.nested.path

@@ -13,11 +13,15 @@ describe('CLI', () => {
     expect(commandNames).toContain('login')
     expect(commandNames).toContain('logout')
     expect(commandNames).toContain('whoami')
-    expect(commandNames).toContain('config')
     expect(commandNames).toContain('projects')
     expect(commandNames).toContain('signals')
     expect(commandNames).toContain('clusters')
     expect(commandNames).toContain('recipe')
+    expect(commandNames).toContain('provider')
+    expect(commandNames).toContain('defillama')
+    expect(commandNames).toContain('coingecko')
+    expect(commandNames).toContain('goplus')
+    expect(commandNames).toContain('help')
   })
 
   describe('banner', () => {
@@ -39,7 +43,7 @@ describe('CLI', () => {
       const program = createProgram()
       const formatOpt = program.options.find((o) => o.long === '--format')
       expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toBe('Output format: human, json, toon')
+      expect(formatOpt!.description).toBe('Output format')
     })
 
     it('should have --delayed option registered', () => {
@@ -325,9 +329,9 @@ describe('CLI', () => {
   })
 
   describe('command count', () => {
-    it('should have exactly 8 registered commands', () => {
+    it('should have exactly 12 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(8)
+      expect(program.commands).toHaveLength(12)
     })
   })
 
