@@ -49,6 +49,22 @@ export async function providerRequest(
 
   const effectiveTier: ProviderTier = resolvedKey?.tier ?? 'free'
 
+  // Meta-action: resolve to a concrete action and recurse
+  if (action.resolve) {
+    const resolution = action.resolve(params, effectiveTier)
+    if (!resolution) {
+      throw new CliError(
+        `No suitable provider path for "${provider.name}:${actionName}" with current params and "${effectiveTier}" tier`,
+        'ACTION_UNRESOLVABLE',
+      )
+    }
+    return providerRequest({
+      ...options,
+      actionName: resolution.action,
+      params: resolution.params,
+    })
+  }
+
   if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
     throw new CliError(
       `Action "${provider.name}:${actionName}" requires "${action.minTier}" tier, but current tier is "${effectiveTier}". ` +
@@ -74,6 +90,13 @@ export async function providerRequest(
   }
 
   const mappedParams = provider.mapParams ? provider.mapParams(params, actionName) : params
+
+  if (!action.path) {
+    throw new CliError(
+      `Action "${provider.name}:${actionName}" has no path and no resolve function`,
+      'INVALID_ACTION',
+    )
+  }
 
   const actionPath = action.pathByTier?.[effectiveTier] ?? action.path
   const resolvedPath = resolveActionPath(actionPath, mappedParams)

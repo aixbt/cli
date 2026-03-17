@@ -450,7 +450,8 @@ function filterProjectFields(p: ProjectData, verbosity: number): Record<string, 
   // v2: signals without activity
   if (verbosity >= 2) {
     result.signals = p.signals?.map(s => {
-      const { activity: _, ...rest } = s
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { activity: _activity, ...rest } = s
       return rest
     })
   }

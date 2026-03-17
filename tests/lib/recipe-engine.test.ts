@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { resolveValue, resolveActionPath, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe/engine.js'
 import type { ExecutionContext, StepResult } from '../../src/types.js'
-import { CliError, PaymentRequiredError, RateLimitError } from '../../src/lib/errors.js'
+import { CliError, PaymentRequiredError } from '../../src/lib/errors.js'
 import * as apiClient from '../../src/lib/api-client.js'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
