@@ -1,5 +1,9 @@
 import type { Provider } from './types.js'
 import { CliError } from '../errors.js'
+import { aixbtProvider } from './aixbt.js'
+import { defillamaProvider } from './defillama.js'
+import { coingeckoProvider } from './coingecko.js'
+import { goplusProvider } from './goplus.js'
 
 const providers = new Map<string, Provider>()
 
@@ -31,11 +35,6 @@ export function getProviderNames(): string[] {
 }
 
 // Register built-in providers
-import { aixbtProvider } from './aixbt.js'
-import { defillamaProvider } from './defillama.js'
-import { coingeckoProvider } from './coingecko.js'
-import { goplusProvider } from './goplus.js'
-
 registerProvider(aixbtProvider)
 registerProvider(defillamaProvider)
 registerProvider(coingeckoProvider)

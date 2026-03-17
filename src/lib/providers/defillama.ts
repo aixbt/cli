@@ -1,4 +1,5 @@
 import type { Provider, ActionDefinition } from './types.js'
+import { CliError } from '../errors.js'
 
 const actions: Record<string, ActionDefinition> = {
   protocols: {
@@ -82,14 +83,17 @@ export const defillamaProvider: Provider = {
       pro: 120,
     },
   },
-  normalize: (body: unknown): unknown => {
+  normalize: (body: unknown, _actionName: string): unknown => {
     if (typeof body === 'object' && body !== null) {
       const obj = body as Record<string, unknown>
       if (typeof obj.body === 'string') {
         try {
           return JSON.parse(obj.body)
         } catch {
-          return obj.body
+          throw new CliError(
+            `defillama: Failed to parse Pro API response body`,
+            'PROVIDER_RESPONSE_PARSE_ERROR',
+          )
         }
       }
     }

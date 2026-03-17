@@ -119,7 +119,16 @@ export async function providerRequest(
     actionName,
   )
 
-  const normalized = provider.normalize(body, actionName)
+  let normalized: unknown
+  try {
+    normalized = provider.normalize(body, actionName)
+  } catch (err) {
+    if (err instanceof CliError) throw err
+    throw new CliError(
+      `${provider.name}:${actionName} - Response normalization failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      'NORMALIZE_ERROR',
+    )
+  }
 
   return {
     data: normalized,
