@@ -32,4 +32,11 @@ export function getProviderNames(): string[] {
 
 // Register built-in providers
 import { aixbtProvider } from './aixbt.js'
+import { defillamaProvider } from './defillama.js'
+import { coingeckoProvider } from './coingecko.js'
+import { goplusProvider } from './goplus.js'
+
 registerProvider(aixbtProvider)
+registerProvider(defillamaProvider)
+registerProvider(coingeckoProvider)
+registerProvider(goplusProvider)
