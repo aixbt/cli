@@ -183,12 +183,12 @@ export function registerRecipeCommand(program: Command): void {
           return { id: step.id, type: 'agent' as const, task: step.task }
         }
         if (isForeachStep(step)) {
-          return { id: step.id, type: 'foreach' as const, endpoint: step.endpoint }
+          return { id: step.id, type: 'foreach' as const, action: step.action, source: step.source }
         }
         if (isTransformStep(step)) {
           return { id: step.id, type: 'transform' as const, input: step.input }
         }
-        return { id: step.id, type: 'api' as const, endpoint: step.endpoint }
+        return { id: step.id, type: 'api' as const, action: step.action, source: step.source }
       })
 
       if (output.isStructuredFormat(outputFormat)) {

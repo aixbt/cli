@@ -95,7 +95,9 @@ export type RecipeStep = ApiStep | ForeachStep | AgentStep | TransformStep
 
 export interface ApiStep {
   id: string
-  endpoint: string
+  action: string
+  source?: string
+  endpoint?: string
   params?: Record<string, unknown>
   transform?: TransformBlock
   type?: never
@@ -106,7 +108,9 @@ export interface ApiStep {
 export interface ForeachStep {
   id: string
   foreach: string
-  endpoint: string
+  action: string
+  source?: string
+  endpoint?: string
   params?: Record<string, unknown>
   transform?: TransformBlock
   type?: never
