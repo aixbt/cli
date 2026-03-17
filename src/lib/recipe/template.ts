@@ -58,7 +58,9 @@ export function resolveExpression(
     if (!Array.isArray(stepResult.data)) {
       return undefined
     }
-    return stepResult.data.map((item: unknown) => getNestedValue(item, field))
+    return stepResult.data
+      .filter((item: unknown) => !(item && typeof item === 'object' && (item as Record<string, unknown>)._error))
+      .map((item: unknown) => getNestedValue(item, field))
   }
 
   // step_id.data.nested.path
