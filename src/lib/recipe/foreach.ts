@@ -50,6 +50,12 @@ export async function waitIfRateLimited(
   }
 }
 
+// -- Error marker helper --
+
+function isErrorMarker(item: unknown): item is { _error: true; item: unknown; error: string; status?: number } {
+  return typeof item === 'object' && item !== null && '_error' in item && (item as Record<string, unknown>)._error === true
+}
+
 // -- Foreach execution --
 
 export interface ForeachOptions {
@@ -96,8 +102,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
   }
 
   let latestRateLimit = currentRateLimit
-  const successItems: unknown[] = []
-  const failures: ForeachFailure[] = []
+  const results: unknown[] = []
   const rateLimitTracker: RateLimitTracker = { paused: false, waitedMs: 0 }
 
   let offset = 0
@@ -161,12 +166,13 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
           data = applyTransforms(data, step.transform)
         }
 
-        successItems.push(data)
+        results.push(data)
         if (result.rateLimit) {
           latestRateLimit = result.rateLimit
         }
       } else {
-        failures.push({
+        results.push({
+          _error: true,
           item: result.item,
           error: result.error,
           status: result.status,
@@ -184,7 +190,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
 
   return {
     stepId: step.id,
-    data: successItems,
+    data: results,
     rateLimit: latestRateLimit,
     timing: {
       startedAt: startedAt.toISOString(),
@@ -192,7 +198,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
       durationMs: completedAt.getTime() - startedAt.getTime(),
       ...(rateLimitTracker.paused ? { rateLimitPaused: true, waitedMs: rateLimitTracker.waitedMs } : {}),
     },
-    items: successItems,
-    failures,
+    items: results.filter((item) => !isErrorMarker(item)),
+    failures: results.filter(isErrorMarker) as ForeachFailure[],
   }
 }
