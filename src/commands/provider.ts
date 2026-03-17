@@ -42,6 +42,7 @@ export function registerProviderCommand(program: Command): void {
   const providerCmd = program
     .command('provider')
     .description('Manage external data provider API keys')
+    .enablePositionalOptions()
 
   providerCmd.addHelpText('after', () => {
     const names = getExternalProviderNames()
