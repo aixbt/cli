@@ -5,9 +5,9 @@ export function flattenJsonApiResource(resource: unknown): Record<string, unknow
   const res = resource as Record<string, unknown>
   const attributes = (res.attributes ?? {}) as Record<string, unknown>
   return {
+    ...attributes,
     id: res.id,
     type: res.type,
-    ...attributes,
   }
 }
 

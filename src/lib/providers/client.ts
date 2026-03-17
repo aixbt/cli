@@ -187,7 +187,18 @@ async function executeProviderRequest(
       )
     }
     const retryAfter = res.headers.get('retry-after')
-    const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 60_000
+    let waitMs = 60_000
+    if (retryAfter) {
+      const seconds = parseInt(retryAfter, 10)
+      if (!Number.isNaN(seconds) && seconds > 0) {
+        waitMs = seconds * 1000
+      } else {
+        const date = Date.parse(retryAfter)
+        if (!Number.isNaN(date)) {
+          waitMs = Math.max(0, date - Date.now())
+        }
+      }
+    }
     await sleep(waitMs)
     return executeProviderRequest(method, url, headers, tracker, providerName, actionName, attempt + 1)
   }

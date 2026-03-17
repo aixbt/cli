@@ -306,6 +306,7 @@ export function validateProviderActions(
 
     const source = step.source ?? 'aixbt'
     const action = step.action
+    if (!action) continue
 
     // Validate source
     if (!knownProviders.includes(source)) {
