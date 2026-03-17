@@ -2,7 +2,7 @@ import type {
   ExecutionContext, ForeachStep, ForeachResult,
   ForeachFailure, RateLimitInfo,
 } from '../../types.js'
-import { resolveEndpoint, flattenParams } from './template.js'
+import { resolveActionPath, flattenParams } from './template.js'
 import { applyTransforms } from '../transforms.js'
 import { get, sleep } from '../api-client.js'
 import { CliError } from '../errors.js'
@@ -130,9 +130,9 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
         }
       }
 
-      // AIXBT path — use existing resolveEndpoint() + get()
-      const endpointStr = step.endpoint ?? AIXBT_ACTION_PATHS[step.action] ?? step.action
-      const { path } = resolveEndpoint(endpointStr, ctx, item)
+      // AIXBT path — use existing resolveActionPath() + get()
+      const actionPath = AIXBT_ACTION_PATHS[step.action] ?? step.action
+      const { path } = resolveActionPath(actionPath, ctx, item)
       const resolvedParams = flattenParams(step.params, ctx, item)
 
       try {

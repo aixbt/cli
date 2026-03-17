@@ -61,9 +61,8 @@ export function extractStepReferences(step: RecipeStep): Set<string> {
     if (step.params) {
       allRefs.push(...extractAllTemplateRefs(step.params))
     }
-    if (step.endpoint) {
-      allRefs.push(...extractTemplateRefs(step.endpoint))
-    }
+    // Action paths may contain template refs (e.g., /v2/projects/{projects.id})
+    allRefs.push(...extractTemplateRefs(step.action))
   }
 
   for (const ref of allRefs) {
@@ -259,10 +258,10 @@ function validateVariableReferences(
     // Check param template references
     checkTemplateReferences(step.params, step.id, allStepIds, paramNames, issues)
 
-    // Check endpoint template references (only for steps that still have endpoint)
-    if (step.endpoint) {
-      const endpointRefs = extractTemplateRefs(step.endpoint)
-      for (const ref of endpointRefs) {
+    // Check action template references (e.g., action: /v2/projects/{{projects.id}})
+    if (step.action) {
+      const actionRefs = extractTemplateRefs(step.action)
+      for (const ref of actionRefs) {
         const dotIndex = ref.indexOf('.')
         const prefix = dotIndex === -1 ? ref : ref.slice(0, dotIndex)
 
@@ -273,7 +272,7 @@ function validateVariableReferences(
             const paramName = ref.slice(dotIndex + 1)
             if (!paramNames.has(paramName)) {
               issues.push({
-                path: `steps.${step.id}.endpoint`,
+                path: `steps.${step.id}.action`,
                 message: `References undefined param "${paramName}"`,
               })
             }
@@ -283,7 +282,7 @@ function validateVariableReferences(
 
         if (!allStepIds.has(prefix)) {
           issues.push({
-            path: `steps.${step.id}.endpoint`,
+            path: `steps.${step.id}.action`,
             message: `References unknown step "${prefix}"`,
           })
         }

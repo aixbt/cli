@@ -40,7 +40,7 @@ function apiStep(
   action: string,
   params?: Record<string, unknown>,
 ): ApiStep {
-  return { id, action, endpoint: action, params }
+  return { id, action, params }
 }
 
 function agentStep(id: string, context: string[]): AgentStep {
@@ -60,7 +60,7 @@ function foreachStep(
   action: string,
   params?: Record<string, unknown>,
 ): ForeachStep {
-  return { id, foreach, action, endpoint: action, params }
+  return { id, foreach, action, params }
 }
 
 function transformStep(
@@ -129,7 +129,7 @@ describe('extractAllTemplateRefs', () => {
 // -- extractStepReferences --
 
 describe('extractStepReferences', () => {
-  it('should extract step reference from API step endpoint', () => {
+  it('should extract step reference from API step action path', () => {
     const refs = extractStepReferences(apiStep('s2', 'GET /v2/projects/{s1.data}'))
     expect(refs.has('s1')).toBe(true)
   })
@@ -161,7 +161,7 @@ describe('extractStepReferences', () => {
     expect(refs.has('step1')).toBe(true)
   })
 
-  it('should not extract references from agent step (no endpoint/params)', () => {
+  it('should not extract references from agent step (no action/params)', () => {
     const refs = extractStepReferences(agentStep('a1', ['s1', 's2']))
     // Agent steps have context but extractStepReferences does not check context
     expect(refs.size).toBe(0)
@@ -450,14 +450,14 @@ describe('validateRecipe variable references', () => {
     expect(() => validateRecipe(recipe)).not.toThrow()
   })
 
-  it('should check template refs in endpoint', () => {
+  it('should check template refs in action', () => {
     const recipe = makeRecipe(
       [apiStep('s1', 'GET /v2/projects/{params.missing}')],
     )
     expect(() => validateRecipe(recipe)).toThrow(RecipeValidationError)
     const issues = validateRecipeCollectIssues(recipe)
     expect(issues.some((i) =>
-      i.path.includes('endpoint') && i.message.includes('undefined param'),
+      i.path.includes('action') && i.message.includes('undefined param'),
     )).toBe(true)
   })
 
@@ -483,19 +483,19 @@ describe('validateRecipe variable references', () => {
     expect(issues.filter((i) => i.message.includes('params'))).toHaveLength(0)
   })
 
-  it('should reject endpoint referencing unknown step', () => {
+  it('should reject action referencing unknown step', () => {
     const recipe = makeRecipe(
       [apiStep('s1', 'GET /v2/projects/{ghost.data}')],
     )
     expect(() => validateRecipe(recipe)).toThrow(RecipeValidationError)
     const issues = validateRecipeCollectIssues(recipe)
     expect(issues.some((i) =>
-      i.path.includes('endpoint') && i.message.includes('unknown step') && i.message.includes('"ghost"'),
+      i.path.includes('action') && i.message.includes('unknown step') && i.message.includes('"ghost"'),
     )).toBe(true)
   })
 
   it('should skip variable reference checking for agent steps', () => {
-    // Agent steps have context arrays but no endpoint/params to check for template refs
+    // Agent steps have context arrays but no action/params to check for template refs
     const recipe = makeRecipe([
       apiStep('s1', 'GET /v2/projects'),
       agentStep('a1', ['s1']),
@@ -581,7 +581,7 @@ describe('multiple issue collection', () => {
       ],
     )
     const issues = validateRecipeCollectIssues(recipe)
-    // Should have at least 2 issues (one for endpoint param, one for params param)
+    // Should have at least 2 issues (one for action param, one for params param)
     expect(issues.length).toBeGreaterThanOrEqual(2)
     expect(issues.some((i) => i.message.includes('"missing1"'))).toBe(true)
     expect(issues.some((i) => i.message.includes('"missing2"'))).toBe(true)

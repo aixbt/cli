@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { resolveValue, resolveEndpoint, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe/engine.js'
+import { resolveValue, resolveActionPath, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe/engine.js'
 import type { ExecutionContext, StepResult } from '../../src/types.js'
 import { CliError, PaymentRequiredError, RateLimitError } from '../../src/lib/errors.js'
 import * as apiClient from '../../src/lib/api-client.js'
@@ -317,43 +317,43 @@ describe('resolveValue', () => {
   })
 })
 
-// -- resolveEndpoint --
+// -- resolveActionPath --
 
-describe('resolveEndpoint', () => {
+describe('resolveActionPath', () => {
   it('should parse GET method and path', () => {
     const ctx = makeCtx()
-    const result = resolveEndpoint('GET /v2/projects', ctx)
+    const result = resolveActionPath('GET /v2/projects', ctx)
     expect(result).toEqual({ method: 'GET', path: '/v2/projects' })
   })
 
   it('should parse POST method and path', () => {
     const ctx = makeCtx()
-    const result = resolveEndpoint('POST /v2/something', ctx)
+    const result = resolveActionPath('POST /v2/something', ctx)
     expect(result).toEqual({ method: 'POST', path: '/v2/something' })
   })
 
   it('should default to GET when no method is specified', () => {
     const ctx = makeCtx()
-    const result = resolveEndpoint('/v2/projects', ctx)
+    const result = resolveActionPath('/v2/projects', ctx)
     expect(result).toEqual({ method: 'GET', path: '/v2/projects' })
   })
 
   it('should uppercase the method', () => {
     const ctx = makeCtx()
-    const result = resolveEndpoint('post /v2/data', ctx)
+    const result = resolveActionPath('post /v2/data', ctx)
     expect(result).toEqual({ method: 'POST', path: '/v2/data' })
   })
 
   it('should resolve templates in the path', () => {
     const ctx = makeCtx()
     const foreachItem = { id: 'proj-42' }
-    const result = resolveEndpoint('GET /v2/projects/{item.id}/momentum', ctx, foreachItem)
+    const result = resolveActionPath('GET /v2/projects/{item.id}/momentum', ctx, foreachItem)
     expect(result).toEqual({ method: 'GET', path: '/v2/projects/proj-42/momentum' })
   })
 
   it('should resolve param templates in the path', () => {
     const ctx = makeCtx({ params: { slug: 'my-project' } })
-    const result = resolveEndpoint('GET /v2/projects/{params.slug}', ctx)
+    const result = resolveActionPath('GET /v2/projects/{params.slug}', ctx)
     expect(result).toEqual({ method: 'GET', path: '/v2/projects/my-project' })
   })
 })
@@ -1352,7 +1352,7 @@ describe('executeRecipe', () => {
   // -- API call verification --
 
   describe('API call behavior', () => {
-    it('should call get with the correct endpoint path', async () => {
+    it('should call get with the correct action path', async () => {
       mockGet.mockResolvedValueOnce(mockApiResponse([]))
 
       await executeRecipe({

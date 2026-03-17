@@ -9,7 +9,7 @@ import { parseRecipe } from './parser.js'
 import { validateRecipe, buildSegments } from './validator.js'
 import { get, type ApiClientOptions } from '../api-client.js'
 import { CliError } from '../errors.js'
-import { resolveValue, resolveEndpoint, flattenParams } from './template.js'
+import { resolveValue, resolveActionPath, flattenParams } from './template.js'
 import { executeForeach } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
 import { buildAwaitingAgentOutput, buildCompleteOutput } from './output.js'
@@ -21,7 +21,7 @@ import { TIER_RANK } from '../providers/types.js'
 import type { ProviderTier } from '../providers/types.js'
 
 // Re-export public API for backward compatibility
-export { resolveValue, resolveEndpoint, resolveRelativeTime } from './template.js'
+export { resolveValue, resolveActionPath, resolveRelativeTime } from './template.js'
 export { applyTransforms } from '../transforms.js'
 
 // -- Param validation --
@@ -236,21 +236,16 @@ async function executeStep(
       )
     }
   } else {
-    // AIXBT path — use existing resolveEndpoint() + get()
-    let endpointStr: string
+    // AIXBT path — use existing resolveActionPath() + get()
+    let actionPath: string
     if (isAgentStep(step)) {
-      endpointStr = ''
-    } else if (step.endpoint) {
-      // Legacy: step has explicit endpoint
-      endpointStr = step.endpoint
+      actionPath = ''
     } else if (AIXBT_ACTION_PATHS[step.action]) {
-      // Action name maps to a known AIXBT endpoint path
-      endpointStr = AIXBT_ACTION_PATHS[step.action]
+      actionPath = AIXBT_ACTION_PATHS[step.action]
     } else {
-      // Fallback: use action as raw path
-      endpointStr = step.action
+      actionPath = step.action
     }
-    const { path } = resolveEndpoint(endpointStr, ctx)
+    const { path } = resolveActionPath(actionPath, ctx)
 
     const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
 

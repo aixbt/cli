@@ -126,22 +126,22 @@ export function resolveValue(
   return value
 }
 
-export function resolveEndpoint(
-  endpoint: string,
+export function resolveActionPath(
+  actionPath: string,
   ctx: ExecutionContext,
   foreachItem?: unknown,
 ): { method: string; path: string } {
-  const spaceIndex = endpoint.indexOf(' ')
+  const spaceIndex = actionPath.indexOf(' ')
 
   let method: string
   let path: string
 
   if (spaceIndex === -1) {
     method = 'GET'
-    path = endpoint
+    path = actionPath
   } else {
-    method = endpoint.slice(0, spaceIndex).toUpperCase()
-    path = endpoint.slice(spaceIndex + 1)
+    method = actionPath.slice(0, spaceIndex).toUpperCase()
+    path = actionPath.slice(spaceIndex + 1)
   }
 
   // Resolve templates in the path

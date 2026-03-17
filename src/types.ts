@@ -97,7 +97,6 @@ export interface ApiStep {
   id: string
   action: string
   source?: string
-  endpoint?: string
   params?: Record<string, unknown>
   transform?: TransformBlock
   type?: never
@@ -110,7 +109,6 @@ export interface ForeachStep {
   foreach: string
   action: string
   source?: string
-  endpoint?: string
   params?: Record<string, unknown>
   transform?: TransformBlock
   type?: never
@@ -124,7 +122,6 @@ export interface AgentStep {
   task: string
   instructions: string
   returns: Record<string, string>
-  endpoint?: never
   foreach?: never
   input?: never
   transform?: never
@@ -134,7 +131,6 @@ export interface TransformStep {
   id: string
   input: string
   transform: TransformBlock
-  endpoint?: never
   foreach?: never
   type?: never
 }

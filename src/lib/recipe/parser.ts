@@ -209,7 +209,7 @@ function validateStep(
     if ('endpoint' in step && step.endpoint !== undefined) {
       issues.push({
         path: stepPath,
-        message: 'Transform step (with input) cannot have an endpoint',
+        message: 'Transform step (with input) cannot have an endpoint. Use "action" instead',
       })
     }
 
@@ -276,7 +276,6 @@ function validateStep(
       foreach: typeof step.foreach === 'string' ? step.foreach : '',
       action: typeof step.action === 'string' ? step.action : '',
       source: typeof step.source === 'string' ? step.source : undefined,
-      endpoint: typeof step.endpoint === 'string' ? step.endpoint : undefined,
       params: typeof step.params === 'object' && step.params !== null
         ? (step.params as Record<string, unknown>)
         : undefined,
@@ -289,7 +288,6 @@ function validateStep(
     id: step.id,
     action: typeof step.action === 'string' ? step.action : '',
     source: typeof step.source === 'string' ? step.source : undefined,
-    endpoint: typeof step.endpoint === 'string' ? step.endpoint : undefined,
     params: typeof step.params === 'object' && step.params !== null
       ? (step.params as Record<string, unknown>)
       : undefined,
