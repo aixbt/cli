@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 
 import type { KeyType } from '../types.js'
 import type { OutputFormat } from './output.js'
+import type { ProviderKeyConfig } from './providers/types.js'
 
 // -- Types --
 
@@ -15,6 +16,7 @@ export interface AixbtConfig {
   scopes?: string[]
   format?: string
   limit?: number
+  providers?: Record<string, ProviderKeyConfig>
 }
 
 // -- Config path management --
