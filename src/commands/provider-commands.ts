@@ -1,5 +1,5 @@
 import type { Command } from 'commander'
-import type { Provider, ActionDefinition, ActionParam } from '../lib/providers/types.js'
+import type { Provider, ActionDefinition } from '../lib/providers/types.js'
 import type { TableColumn, CardItem } from '../lib/output.js'
 import { resolveFormat } from '../lib/config.js'
 import { providerRequest } from '../lib/providers/client.js'

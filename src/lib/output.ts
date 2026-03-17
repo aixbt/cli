@@ -396,6 +396,7 @@ function distributeWidths(
  */
 function buildCharMap(styled: string): number[] {
   const map: number[] = []
+  // eslint-disable-next-line no-control-regex
   const re = /\x1b\[[0-9;]*m/g
   for (let i = 0; i < styled.length;) {
     re.lastIndex = i
