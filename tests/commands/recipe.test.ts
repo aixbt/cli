@@ -37,13 +37,13 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
 
 const INVALID_RECIPE_YAML_NO_NAME = `
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
 
 const INVALID_RECIPE_YAML_NO_STEPS = `
@@ -62,7 +62,7 @@ params:
     description: Blockchain to query
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       chain: "{params.chain}"
 `
@@ -394,7 +394,7 @@ version: "1.0"
 description: Recipe with analysis
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 analysis:
   instructions: "Analyze the data"
   task: "Summarize trends"
@@ -476,7 +476,7 @@ version: "1.0"
 description: A registry recipe
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       // First fetch: registry lookup returns recipe detail
       mockFetch.mockResolvedValueOnce(
@@ -565,9 +565,9 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: step2
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
 `
 
     const MIXED_STEPS_RECIPE_YAML = `
@@ -581,7 +581,7 @@ params:
     description: Blockchain to query
 steps:
   - id: fetch_projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: analyze
     type: agent
     context:
@@ -592,7 +592,7 @@ steps:
       summary: string
   - id: details
     foreach: "fetch_projects.data"
-    endpoint: "GET /v2/projects/{item.id}"
+    action: "GET /v2/projects/{item.id}"
 analysis:
   instructions: Summarize findings
 `
@@ -628,8 +628,8 @@ analysis:
       expect(parsed.params).toEqual({})
       expect(parsed.stepCount).toBe(2)
       expect(parsed.steps).toHaveLength(2)
-      expect(parsed.steps[0]).toEqual({ id: 'step1', type: 'api', endpoint: 'GET /v2/projects' })
-      expect(parsed.steps[1]).toEqual({ id: 'step2', type: 'api', endpoint: 'GET /v2/signals' })
+      expect(parsed.steps[0]).toEqual({ id: 'step1', type: 'api', action: 'GET /v2/projects', source: undefined })
+      expect(parsed.steps[1]).toEqual({ id: 'step2', type: 'api', action: 'GET /v2/signals', source: undefined })
       expect(parsed.hasAnalysis).toBe(false)
       expect(parsed.yaml).toBe(SIMPLE_RECIPE_YAML)
     })
@@ -685,18 +685,18 @@ analysis:
       expect(parsed.hasAnalysis).toBe(true)
 
       // API step
-      expect(parsed.steps[0]).toEqual({ id: 'fetch_projects', type: 'api', endpoint: 'GET /v2/projects' })
+      expect(parsed.steps[0]).toEqual({ id: 'fetch_projects', type: 'api', action: 'GET /v2/projects', source: undefined })
 
       // Agent step
       expect(parsed.steps[1].id).toBe('analyze')
       expect(parsed.steps[1].type).toBe('agent')
       expect(parsed.steps[1].task).toBe('Analyze the project data')
-      expect(parsed.steps[1].endpoint).toBeUndefined()
+      expect(parsed.steps[1].action).toBeUndefined()
 
       // Foreach step
       expect(parsed.steps[2].id).toBe('details')
       expect(parsed.steps[2].type).toBe('foreach')
-      expect(parsed.steps[2].endpoint).toBe('GET /v2/projects/{item.id}')
+      expect(parsed.steps[2].action).toBe('GET /v2/projects/{item.id}')
       expect(parsed.steps[2].task).toBeUndefined()
 
       // Params
@@ -734,7 +734,7 @@ version: "1.0"
 description: A cloneable recipe
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
 
     it('should clone a recipe and output JSON result with correct file content', async () => {

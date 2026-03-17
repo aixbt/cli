@@ -23,10 +23,10 @@ version: "1.0"
 description: Full cross-cutting test
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: details
     foreach: "projects.data"
-    endpoint: "GET /v2/projects/{item.id}"
+    action: "GET /v2/projects/{item.id}"
   - id: analyze
     type: agent
     context:
@@ -38,7 +38,7 @@ steps:
       summary: string
       insights: "string[]"
   - id: follow_up
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     params:
       projectId: "{analyze.data.projectId}"
 hints:
@@ -57,9 +57,9 @@ version: "1.0"
 description: Recipe that triggers x402
 steps:
   - id: free_data
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: premium_data
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     params:
       projectIds: "{free_data.data[*].id}"
 `
@@ -70,7 +70,7 @@ version: "2.0"
 description: Registry recipe with agent step
 steps:
   - id: scan
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       momentum: rising
   - id: evaluate
@@ -83,7 +83,7 @@ steps:
       picks: "string[]"
       rationale: string
   - id: enrichment
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     params:
       projectIds: "{evaluate.data.picks}"
 `

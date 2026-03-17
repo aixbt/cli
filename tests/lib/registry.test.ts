@@ -23,7 +23,7 @@ const MOCK_RECIPE_LIST = [
 const MOCK_RECIPE_DETAIL = {
   name: 'defi-analysis',
   updatedAt: '2026-03-01T00:00:00Z',
-  yaml: 'name: defi-analysis\nversion: "1.0"\nsteps:\n  - id: projects\n    endpoint: "GET /v2/projects"\n',
+  yaml: 'name: defi-analysis\nversion: "1.0"\nsteps:\n  - id: projects\n    action: "GET /v2/projects"\n',
 }
 
 describe('registry', () => {

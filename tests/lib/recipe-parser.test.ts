@@ -34,7 +34,7 @@ describe('parseRecipe', () => {
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.name).toBe('test-recipe')
@@ -47,7 +47,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.version).toBe('1.0')
@@ -59,7 +59,7 @@ name: test-recipe
 version: 2
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.version).toBe('2')
@@ -71,7 +71,7 @@ name: test-recipe
 version: "3.5.1"
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.version).toBe('3.5.1')
@@ -82,7 +82,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.description).toBe('')
@@ -94,7 +94,7 @@ name: test-recipe
 description: "A test recipe for validation"
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.description).toBe('A test recipe for validation')
@@ -106,7 +106,7 @@ name: test-recipe
 tier: pro
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.tier).toBe('pro')
@@ -117,7 +117,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.tier).toBeUndefined()
@@ -128,7 +128,7 @@ steps:
 name: "  spaced-name  "
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.name).toBe('spaced-name')
@@ -150,12 +150,12 @@ params:
     default: 10
 steps:
   - id: fetch-projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       limit: "{{limit}}"
   - id: fetch-details
     foreach: "fetch-projects.data"
-    endpoint: "GET /v2/projects/{{item.id}}"
+    action: "GET /v2/projects/{{item.id}}"
   - id: analyze
     type: agent
     context:
@@ -204,7 +204,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       limit: 10
       sort: "name"
@@ -219,16 +219,16 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: step2
     foreach: "step1.data"
-    endpoint: "GET /v2/projects/{{item.id}}"
+    action: "GET /v2/projects/{{item.id}}"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.steps).toHaveLength(2)
       const foreachStep = recipe.steps[1] as ForeachStep
       expect(foreachStep.foreach).toBe('step1.data')
-      expect(foreachStep.endpoint).toBe('GET /v2/projects/{{item.id}}')
+      expect(foreachStep.action).toBe('GET /v2/projects/{{item.id}}')
     })
 
     it('should parse an agent step correctly', () => {
@@ -261,7 +261,7 @@ steps:
       const yaml = `
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -274,7 +274,7 @@ steps:
 name: ""
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -287,7 +287,7 @@ steps:
 name: "   "
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -335,7 +335,7 @@ steps: "not an array"
       const yaml = `
 name: test-recipe
 steps:
-  - endpoint: "GET /v2/projects"
+  - action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -348,7 +348,7 @@ steps:
 name: test-recipe
 steps:
   - id: ""
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -361,9 +361,9 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: step1
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -383,7 +383,7 @@ steps:
       )
     })
 
-    it('should throw when API step is missing endpoint', () => {
+    it('should throw when API step is missing action', () => {
       const yaml = `
 name: test-recipe
 steps:
@@ -391,7 +391,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Step must have a non-empty endpoint string'),
+        expect.stringContaining('Step must have a non-empty "action" string'),
       )
     })
 
@@ -496,7 +496,7 @@ steps:
       expect(err.issues.length).toBeGreaterThanOrEqual(4)
     })
 
-    it('should throw when foreach step is missing endpoint', () => {
+    it('should throw when foreach step is missing action', () => {
       const yaml = `
 name: test-recipe
 steps:
@@ -505,7 +505,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Step must have a non-empty endpoint string'),
+        expect.stringContaining('Step must have a non-empty "action" string'),
       )
     })
 
@@ -515,7 +515,7 @@ name: test-recipe
 steps:
   - id: step1
     foreach: 123
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -535,17 +535,17 @@ steps:
   - id: step2
 `
       const err = expectValidationError(yaml)
-      // Both steps missing endpoint
-      const endpointIssues = err.issues.filter((i) =>
-        i.message.includes('endpoint'),
+      // Both steps missing action
+      const actionIssues = err.issues.filter((i) =>
+        i.message.includes('action'),
       )
-      expect(endpointIssues).toHaveLength(2)
+      expect(actionIssues).toHaveLength(2)
     })
 
     it('should collect issues from both top-level and step validation', () => {
       const yaml = `
 steps:
-  - endpoint: "GET /v2/projects"
+  - action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       // Missing name + step missing id
@@ -574,7 +574,7 @@ params:
     default: false
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.params).toBeDefined()
@@ -595,7 +595,7 @@ params:
     type: object
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -609,7 +609,7 @@ name: test-recipe
 params: "not an object"
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -625,7 +625,7 @@ params:
   - limit
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -640,7 +640,7 @@ params:
   token: "string"
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -653,7 +653,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.params).toBeUndefined()
@@ -668,7 +668,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 hints:
   combine:
     - step1
@@ -689,7 +689,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 hints:
   combine: "step1"
 `
@@ -704,7 +704,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 hints:
   combine:
     - 123
@@ -720,7 +720,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 hints:
   key: 123
 `
@@ -735,7 +735,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 hints:
   include: "name"
 `
@@ -750,7 +750,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 hints: "not an object"
 `
       const err = expectValidationError(yaml)
@@ -764,7 +764,7 @@ hints: "not an object"
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.hints).toBeUndefined()
@@ -779,7 +779,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 analysis:
   instructions: "Summarize the data"
   task: "Generate summary"
@@ -797,7 +797,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 analysis:
   instructions: "Summarize"
 `
@@ -813,7 +813,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 analysis:
   instructions: 123
 `
@@ -828,7 +828,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 analysis: "not an object"
 `
       const err = expectValidationError(yaml)
@@ -842,7 +842,7 @@ analysis: "not an object"
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.analysis).toBeUndefined()
@@ -857,7 +857,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     params:
       limit: 50
     transform:
@@ -874,7 +874,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample:
         count: 80
@@ -893,7 +893,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample:
         tokenBudget: 2000
@@ -913,7 +913,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       select: [id, name, score]
       sample:
@@ -933,7 +933,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample:
         tokenBudget: 50000
@@ -951,10 +951,10 @@ steps:
 name: test-recipe
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: details
     foreach: "projects.data"
-    endpoint: "GET /v2/projects/{{item.id}}"
+    action: "GET /v2/projects/{{item.id}}"
     transform:
       select: [id, name]
 `
@@ -969,7 +969,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     params:
       limit: 50
   - id: filtered
@@ -991,7 +991,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
   - id: filtered
     input: signals
 `
@@ -1001,21 +1001,21 @@ steps:
       )
     })
 
-    it('should throw when transform step has an endpoint', () => {
+    it('should throw when transform step has an action', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
   - id: filtered
     input: signals
-    endpoint: "GET /v2/other"
+    action: "GET /v2/other"
     transform:
       select: [id]
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Transform step (with input) cannot have an endpoint'),
+        expect.stringContaining('Transform step (with input) cannot have an action'),
       )
     })
 
@@ -1024,7 +1024,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
   - id: filtered
     input: signals
     foreach: "signals.data"
@@ -1042,7 +1042,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       select: "not-an-array"
 `
@@ -1057,7 +1057,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample: {}
 `
@@ -1072,7 +1072,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample:
         count: -1
@@ -1088,7 +1088,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample:
         count: 10
@@ -1105,7 +1105,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample:
         count: 10
@@ -1123,7 +1123,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     transform:
       sample:
         count: 10
@@ -1140,14 +1140,14 @@ steps:
 name: test-recipe
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       limit: 10
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.steps).toHaveLength(1)
       const step = recipe.steps[0] as ApiStep
-      expect(step.endpoint).toBe('GET /v2/projects')
+      expect(step.action).toBe('GET /v2/projects')
       expect(step.transform).toBeUndefined()
     })
 
@@ -1156,10 +1156,10 @@ steps:
 name: test-recipe
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: details
     foreach: "projects.data"
-    endpoint: "GET /v2/projects/{{item.id}}"
+    action: "GET /v2/projects/{{item.id}}"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.steps).toHaveLength(2)
@@ -1177,7 +1177,7 @@ steps:
 name: test
 steps:
   - id: step1
-    endpoint: [invalid yaml {{
+    action: [invalid yaml {{
 `
       expect(() => parseRecipe(yaml)).toThrow(RecipeValidationError)
     })
@@ -1219,7 +1219,7 @@ name: test-recipe
 version: true
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -1237,7 +1237,7 @@ name: test-recipe
 description: 123
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -1255,7 +1255,7 @@ name: test-recipe
 tier: 123
 steps:
   - id: step1
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -1270,7 +1270,7 @@ steps:
     it('should have an issues array with path and message', () => {
       const yaml = `
 steps:
-  - endpoint: "GET /v2/projects"
+  - action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(err.issues).toBeInstanceOf(Array)
@@ -1286,7 +1286,7 @@ steps:
     it('should report issue count in the error message', () => {
       const yaml = `
 steps:
-  - endpoint: "GET /v2/projects"
+  - action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(err.message).toContain('issue')
@@ -1304,8 +1304,8 @@ steps:
 
 describe('step type guards', () => {
   const steps = {
-    api: { id: 'api1', endpoint: 'GET /v2/projects' } as ApiStep,
-    foreach: { id: 'foreach1', foreach: 'api1.data', endpoint: 'GET /v2/projects/{{item.id}}' } as ForeachStep,
+    api: { id: 'api1', action: 'GET /v2/projects' } as ApiStep,
+    foreach: { id: 'foreach1', foreach: 'api1.data', action: 'GET /v2/projects/{{item.id}}' } as ForeachStep,
     agent: { id: 'agent1', type: 'agent', context: ['api1'], task: 'Analyze', instructions: 'Analysis step', returns: { summary: 'string' } } as AgentStep,
     transform: { id: 'transform1', input: 'api1', transform: { select: ['id', 'name'] } } as TransformStep,
   }

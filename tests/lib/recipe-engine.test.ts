@@ -432,7 +432,7 @@ version: "1.0"
 description: Simple test
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
 
 const TWO_STEP_RECIPE = `
@@ -441,9 +441,9 @@ version: "1.0"
 description: Two steps
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
 `
 
 const RECIPE_WITH_VARIABLE_REFS = `
@@ -452,9 +452,9 @@ version: "1.0"
 description: Steps with variable references
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     params:
       projectIds: "{projects.data[*].id}"
 `
@@ -465,7 +465,7 @@ version: "1.0"
 description: Recipe with agent step
 steps:
   - id: surging
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       momentum: rising
   - id: analyze
@@ -476,7 +476,7 @@ steps:
     returns:
       projectIds: "string[]"
   - id: deep
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
 `
 
 const RECIPE_WITH_DEFAULTS = `
@@ -492,7 +492,7 @@ params:
     default: 10
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       chain: "{params.chain}"
       limit: "{params.count}"
@@ -504,9 +504,9 @@ version: "1.0"
 description: Recipe with agent step at the end
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
   - id: analyze
     type: agent
     context: [projects, signals]
@@ -522,7 +522,7 @@ version: "1.0"
 description: Recipe with two agent steps
 steps:
   - id: surging
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: filter
     type: agent
     context: [surging]
@@ -531,7 +531,7 @@ steps:
     returns:
       projectIds: "string[]"
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
     params:
       projectIds: "{filter.data.projectIds}"
   - id: analyze
@@ -542,7 +542,7 @@ steps:
     returns:
       summary: "string"
   - id: enrichment
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
 
 const RECIPE_WITH_HINTS_AND_ANALYSIS = `
@@ -557,9 +557,9 @@ analysis:
   instructions: "Summarize the data"
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: signals
-    endpoint: "GET /v2/signals"
+    action: "GET /v2/signals"
 `
 
 function mockApiResponse(data: unknown) {
@@ -1388,7 +1388,7 @@ params:
     type: string
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     params:
       chain: "{params.chain}"
       limit: "20"
@@ -1419,10 +1419,10 @@ version: "1.0"
 description: Foreach test recipe
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: momentum
     foreach: projects.data
-    endpoint: "GET /v2/projects/{item.id}/momentum"
+    action: "GET /v2/projects/{item.id}/momentum"
 `
 
     const FOREACH_PARAMS_RECIPE = `
@@ -1431,10 +1431,10 @@ version: "1.0"
 description: Foreach with params test
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: details
     foreach: projects.data
-    endpoint: "GET /v2/projects/{item.id}"
+    action: "GET /v2/projects/{item.id}"
     params:
       chain: "{item.chain}"
 `
@@ -1514,10 +1514,11 @@ steps:
       const data = (result as { data: Record<string, unknown> }).data
       const foreachData = data.momentum as unknown[]
 
-      // 2 successes in the data array
-      expect(foreachData).toHaveLength(2)
+      // 3 items in data: 2 successes + 1 error marker (inline)
+      expect(foreachData).toHaveLength(3)
       expect(foreachData[0]).toEqual({ ok: true })
-      expect(foreachData[1]).toEqual({ ok: true })
+      expect(foreachData[1]).toEqual(expect.objectContaining({ _error: true, error: 'API error for item 2' }))
+      expect(foreachData[2]).toEqual({ ok: true })
     })
 
     it('should resolve params per-item using item templating', async () => {
@@ -1632,10 +1633,15 @@ steps:
 
       expect(result.status).toBe('complete')
 
-      // The data for the foreach step should be empty (no successes)
+      // The data for the foreach step should contain the error marker
       const data = (result as { data: Record<string, unknown> }).data
       const momentumData = data.momentum as unknown[]
-      expect(momentumData).toEqual([])
+      expect(momentumData).toHaveLength(1)
+      expect(momentumData[0]).toEqual(expect.objectContaining({
+        _error: true,
+        error: 'Not Found',
+        item: { id: 'fail-item', name: 'Failing' },
+      }))
     })
 
     it('should throw FOREACH_SOURCE_NOT_ARRAY when source is not an array', async () => {
@@ -1683,7 +1689,7 @@ params:
     required: true
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       mockGet.mockResolvedValueOnce(mockApiResponse([]))
 
@@ -1707,7 +1713,7 @@ params:
     required: true
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       try {
         await executeRecipe({
@@ -1735,7 +1741,7 @@ params:
     default: base
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       mockGet.mockResolvedValueOnce(mockApiResponse([]))
 
@@ -1762,7 +1768,7 @@ params:
     required: true
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       try {
         await executeRecipe({
@@ -1789,7 +1795,7 @@ params:
     type: string
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
 `
       mockGet.mockResolvedValueOnce(mockApiResponse([]))
 
@@ -1812,7 +1818,7 @@ version: "1.0"
 description: Transform step with select
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: projected
     input: projects
     transform:
@@ -1825,7 +1831,7 @@ version: "1.0"
 description: Transform step with sample
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: sampled
     input: projects
     transform:
@@ -1839,7 +1845,7 @@ version: "1.0"
 description: Chained transform steps
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: sampled
     input: projects
     transform:
@@ -1950,10 +1956,10 @@ version: "1.0"
 description: Foreach with per-iteration select
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: details
     foreach: projects.data
-    endpoint: "GET /v2/projects/{item.id}"
+    action: "GET /v2/projects/{item.id}"
     transform:
       select: [id, status]
 `
@@ -1964,10 +1970,10 @@ version: "1.0"
 description: Foreach with per-iteration sample
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
   - id: signals
     foreach: projects.data
-    endpoint: "GET /v2/projects/{item.id}/signals"
+    action: "GET /v2/projects/{item.id}/signals"
     transform:
       sample:
         count: 2
@@ -2039,7 +2045,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 150
 `
@@ -2079,7 +2085,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 50
 `
@@ -2106,7 +2112,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
 `
       mockGet.mockResolvedValueOnce(mockApiResponse(makeItems(10)))
 
@@ -2127,7 +2133,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 150
 `
@@ -2159,7 +2165,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 100
     transform:
@@ -2199,7 +2205,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 100
 `
@@ -2231,7 +2237,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
 `
       mockGet.mockRejectedValueOnce(new PaymentRequiredError({ detail: 'pay up' }))
 
@@ -2253,7 +2259,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
 `
       mockGet.mockRejectedValueOnce(new TypeError('fetch failed'))
 
@@ -2277,7 +2283,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 100
 `
@@ -2331,7 +2337,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 80
 `
@@ -2371,7 +2377,7 @@ version: "1.0"
 description: API step with select transform
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     transform:
       select: [id, name]
 `
@@ -2382,7 +2388,7 @@ version: "1.0"
 description: API step with sample transform
 steps:
   - id: projects
-    endpoint: "GET /v2/projects"
+    action: "GET /v2/projects"
     transform:
       sample:
         count: 2
@@ -2448,7 +2454,7 @@ version: "1.0"
 description: Paginate, sample, and project signals
 steps:
   - id: signals
-    endpoint: /v2/signals
+    action: /v2/signals
     params:
       limit: 100
       since: -24h
