@@ -16,6 +16,7 @@ export interface AixbtConfig {
   scopes?: string[]
   format?: string
   limit?: number
+  agent?: string
   providers?: Record<string, ProviderKeyConfig>
 }
 

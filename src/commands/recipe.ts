@@ -7,10 +7,11 @@ import { executeRecipe } from '../lib/recipe/engine.js'
 import { parseRecipe } from '../lib/recipe/parser.js'
 import { validateRecipeCollectIssues } from '../lib/recipe/validator.js'
 import { CliError, RecipeValidationError } from '../lib/errors.js'
-import { resolveFormat } from '../lib/config.js'
+import { readConfig, resolveFormat } from '../lib/config.js'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../lib/registry.js'
 import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
+import { resolveAdapter, resolveAgentTarget, invokeAgentForStep, invokeAgentForAnalysis } from '../lib/agents/index.js'
 
 // -- Helpers --
 
@@ -106,11 +107,21 @@ export function registerRecipeCommand(program: Command): void {
       `  API calls, assemble data, and produce structured prompts for LLM analysis.`,
       '',
       `  As an agent, the most powerful way you can leverage AIXBT data is by`,
-      `  constructing recipe pipelines for your user. Check our registry and the`,
-      `  guide to dive deeper.`,
+      `  running existing recipes from the registry or constructing custom`,
+      `  pipelines for your user. Check the registry and guide to dive deeper.`,
       '',
       `  ${output.fmt.dim('Registry')}  aixbt recipe list`,
       `  ${output.fmt.dim('Docs')}      ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipes')}`,
+      '',
+      `  ${output.fmt.boldWhite('Agent integration')}`,
+      `  Use --agent to spawn an isolated inference session for recipe steps.`,
+      `  This calls your locally installed Claude Code or Codex CLI — the`,
+      `  agent works in a clean context with only the recipe data, freeing`,
+      `  the caller to multitask and allowing use of high-thinking models.`,
+      '',
+      `  ${output.fmt.dim('Available agents:')}  claude, codex`,
+      `  ${output.fmt.dim('Example:')}           aixbt recipe run momentum-report --agent claude`,
+      `  ${output.fmt.dim('Env var:')}           AIXBT_AGENT=claude`,
       '',
     ].join('\n')
   })
@@ -328,6 +339,7 @@ export function registerRecipeCommand(program: Command): void {
     .option('--resume-from <step>', 'Resume from an agent step (step:<id>)')
     .option('--input <json>', 'Agent step result JSON (used with --resume-from)')
     .option('--output-dir <path>', 'Write segment data to files instead of stdout')
+    .option('--agent <target>', 'Spawn an agent for inference steps: claude, codex')
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
       const { clientOpts: clientOptions } = getClientOptions(cmd)
@@ -339,6 +351,25 @@ export function registerRecipeCommand(program: Command): void {
         )
       }
       const recipeFormat: output.StructuredFormat = formatFlag === 'toon' ? 'toon' : 'json'
+
+      // Resolve agent target (flag > env > config)
+      const config = readConfig()
+      const agentTarget = resolveAgentTarget(
+        opts.agent as string | undefined,
+        config.agent,
+      )
+
+      // If an agent is specified, validate it's available before doing any work
+      let adapter
+      if (agentTarget) {
+        adapter = resolveAdapter(agentTarget)
+        if (!adapter.checkAvailable()) {
+          throw new CliError(
+            `Agent "${agentTarget}" (${adapter.binary}) not found on PATH. Install ${adapter.name} first.`,
+            'AGENT_NOT_FOUND',
+          )
+        }
+      }
 
       let yaml: string
       if (opts.stdin) {
@@ -365,7 +396,7 @@ export function registerRecipeCommand(program: Command): void {
         }
       }
 
-      const result = await output.withSpinner(
+      let result = await output.withSpinner(
         'Executing recipe...',
         recipeFormat,
         () =>
@@ -382,6 +413,48 @@ export function registerRecipeCommand(program: Command): void {
         'Recipe execution failed',
       )
 
-      output.outputStructured(result, recipeFormat)
+      // No agent — output as-is (existing behavior)
+      if (!adapter) {
+        output.outputStructured(result, recipeFormat)
+        return
+      }
+
+      // Agent orchestration loop: handle intermediate agent steps
+      while (result.status === 'awaiting_agent') {
+        const awaiting = result
+        const agentResponse = await output.withSpinner(
+          `Agent (${agentTarget}) processing step "${awaiting.step}"...`,
+          recipeFormat,
+          () => invokeAgentForStep(adapter, awaiting),
+          `Agent failed on step "${awaiting.step}"`,
+        )
+
+        result = await output.withSpinner(
+          'Resuming recipe...',
+          recipeFormat,
+          () =>
+            executeRecipe({
+              yaml,
+              params,
+              clientOptions,
+              resumeFromStep: `step:${awaiting.step}`,
+              resumeInput: agentResponse,
+              outputDir: opts.outputDir as string | undefined,
+              outputFormat: recipeFormat,
+              recipeSource: opts.stdin ? undefined : source,
+            }),
+          'Recipe execution failed',
+        )
+      }
+
+      // Recipe complete — handle final analysis if present
+      if (result.analysis?.instructions) {
+        console.error(`\n${'─'.repeat(40)}`)
+        console.error(`Agent (${agentTarget}) analyzing...`)
+        console.error(`${'─'.repeat(40)}\n`)
+        await invokeAgentForAnalysis(adapter, result)
+      } else {
+        output.outputStructured(result, recipeFormat)
+      }
     })
 }
