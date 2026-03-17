@@ -138,7 +138,7 @@ describe('recipe commands', () => {
       // Param count shown for recipes with params
       expect(allOutput).toContain('2 params')
       // Footer count
-      expect(allOutput).toContain('2 recipes')
+      expect(allOutput).toContain('2 official')
       // Footer hint for recipe info
       expect(allOutput).toContain('recipe info')
     })
@@ -172,7 +172,7 @@ describe('recipe commands', () => {
       await program.parseAsync(['node', 'aixbt', 'recipe', 'list'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('No recipes available')
+      expect(allOutput).toContain('No recipes found')
     })
 
     it('should not send X-API-Key header (unauthenticated endpoint)', async () => {
@@ -861,10 +861,9 @@ steps:
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('should default output path to ./<name>.yaml', async () => {
+    it('should default output path to recipes dir', async () => {
       // Use a unique recipe name to avoid collisions with real files
       const recipeName = `test-default-${Date.now()}`
-      const expectedPath = `./${recipeName}.yaml`
 
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
@@ -888,11 +887,11 @@ steps:
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.path).toBe(expectedPath)
+      expect(parsed.path).toContain(`recipes/${recipeName}.yaml`)
 
       // Clean up the file that was created in cwd
       try {
-        rmSync(expectedPath, { force: true })
+        rmSync(parsed.path, { force: true })
       } catch {
         // ignore cleanup errors
       }

@@ -1,13 +1,15 @@
 import { spawn } from 'node:child_process'
-import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs'
+import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import type { AgentAdapter } from './types.js'
 import type { RecipeAwaitingAgent, RecipeComplete } from '../../types.js'
 import { CliError } from '../errors.js'
+import { getConfigDir } from '../config.js'
 
 function writeTempFile(prefix: string, data: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'aixbt-'))
+  const tmpBase = join(getConfigDir(), 'tmp')
+  mkdirSync(tmpBase, { recursive: true, mode: 0o700 })
+  const dir = mkdtempSync(join(tmpBase, 'aixbt-'))
   const file = join(dir, `${prefix}.json`)
   writeFileSync(file, data, { mode: 0o600 })
   return file

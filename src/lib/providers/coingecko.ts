@@ -7,7 +7,7 @@ function hasValue(v: unknown): v is string | number {
 }
 
 const GECKOTERMINAL_ACTIONS = new Set([
-  'token-price', 'pool', 'token-pools', 'trending-pools', 'token-ohlcv',
+  'token-price', 'pool', 'token-pools', 'trending-pools', 'token-ohlcv', 'pool-ohlcv',
 ])
 
 /** Map CoinGecko platform IDs (from AIXBT project tokens[].chain) to GeckoTerminal network IDs */
@@ -31,7 +31,7 @@ const CHAIN_TO_NETWORK: Record<string, string> = {
 
 /** Actions that use the `network` param and need chain mapping */
 const NETWORK_PARAM_ACTIONS = new Set([
-  'token-price', 'pool', 'token-pools', 'token-ohlcv',
+  'token-price', 'pool', 'token-pools', 'token-ohlcv', 'pool-ohlcv',
 ])
 
 const actions: Record<string, ActionDefinition> = {
@@ -194,6 +194,25 @@ const actions: Record<string, ActionDefinition> = {
     ],
     minTier: 'free',
   },
+  'pool-ohlcv': {
+    method: 'GET',
+    path: '/networks/{network}/pools/{address}/ohlcv/{timeframe}',
+    pathByTier: {
+      demo: '/onchain/networks/{network}/pools/{address}/ohlcv/{timeframe}',
+      pro: '/onchain/networks/{network}/pools/{address}/ohlcv/{timeframe}',
+    },
+    description: 'Get on-chain OHLCV candlestick data for a specific DEX pool',
+    hint: 'You have a pool address and need historical price candles (OHLCV) from DEX trading data',
+    params: [
+      { name: 'network', required: true, description: 'Network ID (e.g., "eth", "solana", "base")', inPath: true },
+      { name: 'address', required: true, description: 'Pool contract address', inPath: true },
+      { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")', inPath: true },
+      { name: 'aggregate', required: false, description: 'Number of intervals to aggregate' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time' },
+      { name: 'limit', required: false, description: 'Number of candles to return' },
+    ],
+    minTier: 'free',
+  },
   'price-history': {
     method: 'GET',
     description: 'Get price history — prefers on-chain DEX data (free), falls back to CoinGecko OHLC (demo)',
@@ -272,8 +291,8 @@ export const coingeckoProvider: Provider = {
       }
     }
 
-    // Default timeframe for token-ohlcv
-    if (actionName === 'token-ohlcv' && !result.timeframe) {
+    // Default timeframe for OHLCV actions
+    if ((actionName === 'token-ohlcv' || actionName === 'pool-ohlcv') && !result.timeframe) {
       result = result === params ? { ...result, timeframe: 'day' } : result
       result.timeframe = 'day'
     }
