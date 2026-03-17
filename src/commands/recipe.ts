@@ -234,11 +234,13 @@ export function registerRecipeCommand(program: Command): void {
         if (isAgentStep(step)) {
           output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(step.task)}`, 20)
         } else if (isForeachStep(step)) {
-          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} ${output.fmt.dim(step.endpoint)}`, 20)
+          const label = step.source ? `${step.action} (${step.source})` : step.action
+          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} ${output.fmt.dim(label)}`, 20)
         } else if (isTransformStep(step)) {
           output.keyValue(step.id, `${output.fmt.cyan('transform')} ${output.fmt.dim(step.input)}`, 20)
         } else {
-          output.keyValue(step.id, `${output.fmt.cyan('api')} ${output.fmt.dim(step.endpoint)}`, 20)
+          const label = step.source ? `${step.action} (${step.source})` : step.action
+          output.keyValue(step.id, `${output.fmt.cyan('api')} ${output.fmt.dim(label)}`, 20)
         }
       }
 
