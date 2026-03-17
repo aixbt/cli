@@ -1617,7 +1617,7 @@ steps:
       expect(momentumData).toEqual([{ m: 1 }, { m: 2 }, { m: 3 }])
     })
 
-    it('should include failure details with error message and failed item', async () => {
+    it('should throw FOREACH_ALL_FAILED when all items fail', async () => {
       const projectsData = [
         { id: 'fail-item', name: 'Failing' },
       ]
@@ -1625,23 +1625,16 @@ steps:
       mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
       mockGet.mockRejectedValueOnce(new Error('Not Found'))
 
-      const result = await executeRecipe({
+      const err = await executeRecipe({
         yaml: FOREACH_RECIPE,
         params: {},
         clientOptions: {},
-      })
+      }).catch((e: unknown) => e)
 
-      expect(result.status).toBe('complete')
-
-      // The data for the foreach step should contain the error marker
-      const data = (result as { data: Record<string, unknown> }).data
-      const momentumData = data.momentum as unknown[]
-      expect(momentumData).toHaveLength(1)
-      expect(momentumData[0]).toEqual(expect.objectContaining({
-        _error: true,
-        error: 'Not Found',
-        item: { id: 'fail-item', name: 'Failing' },
-      }))
+      expect(err).toBeInstanceOf(CliError)
+      expect((err as CliError).code).toBe('FOREACH_ALL_FAILED')
+      expect((err as CliError).message).toContain('momentum')
+      expect((err as CliError).message).toContain('Not Found')
     })
 
     it('should throw FOREACH_SOURCE_NOT_ARRAY when source is not an array', async () => {

@@ -1,9 +1,13 @@
+import type { ExecutionContext } from '../../types.js'
+import { TIER_RANK } from './types.js'
 import type { Provider, ProviderTier } from './types.js'
 import type { ProviderRateTracker } from './rate-limit.js'
 import { resolveProviderKey } from './config.js'
+import { getProvider } from './registry.js'
 import { getTracker, recordRequest } from './rate-limit.js'
 import { CliError, ApiError, NetworkError, RateLimitError } from '../errors.js'
 import { sleep } from '../api-client.js'
+import { flattenParams } from '../recipe/template.js'
 
 const MAX_RETRIES = 3
 const USER_AGENT = '@aixbt/cli'
@@ -45,8 +49,7 @@ export async function providerRequest(
 
   const effectiveTier: ProviderTier = resolvedKey?.tier ?? 'free'
 
-  const tierOrder: ProviderTier[] = ['free', 'demo', 'pro']
-  if (tierOrder.indexOf(effectiveTier) < tierOrder.indexOf(action.minTier)) {
+  if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
     throw new CliError(
       `Action "${provider.name}:${actionName}" requires "${action.minTier}" tier, but current tier is "${effectiveTier}". ` +
       `Run: aixbt provider add ${provider.name} --api-key <key> --tier ${action.minTier}`,
@@ -74,20 +77,11 @@ export async function providerRequest(
   const resolvedPath = resolveActionPath(actionPath, params)
   const url = new URL(resolvedPath, baseUrl)
 
-  for (const paramDef of action.params) {
-    if (paramDef.inPath) continue
-    const value = params[paramDef.name]
-    if (value !== undefined && value !== '') {
-      url.searchParams.set(paramDef.name, String(value))
-    }
-  }
-
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '' && !url.searchParams.has(key)) {
-      const isPathParam = action.params.some(p => p.inPath && p.name === key)
-      if (!isPathParam) {
-        url.searchParams.set(key, String(value))
-      }
+    if (value === undefined || value === '') continue
+    const isPathParam = action.params.some(p => p.inPath && p.name === key)
+    if (!isPathParam) {
+      url.searchParams.set(key, String(value))
     }
   }
 
@@ -136,6 +130,23 @@ export async function providerRequest(
     provider: provider.name,
     action: actionName,
   }
+}
+
+/**
+ * Dispatch a recipe step to an external provider.
+ * Shared by executeStep (single) and executeForeach (per-item).
+ */
+export async function dispatchProviderStep(
+  source: string,
+  actionName: string,
+  stepParams: Record<string, unknown> | undefined,
+  ctx: ExecutionContext,
+  foreachItem?: unknown,
+): Promise<unknown> {
+  const provider = getProvider(source)
+  const params = stepParams ? flattenParams(stepParams, ctx, foreachItem) : {}
+  const response = await providerRequest({ provider, actionName, params })
+  return response.data
 }
 
 function resolveActionPath(
@@ -215,10 +226,11 @@ async function executeProviderRequest(
   try {
     const body = await res.json()
     return { body, status: res.status }
-  } catch {
+  } catch (err) {
+    const detail = err instanceof Error ? `: ${err.message}` : ''
     throw new ApiError(
       res.status,
-      `${providerName}:${actionName} - Invalid JSON in response`,
+      `${providerName}:${actionName} - Invalid JSON in response${detail}`,
       'INVALID_RESPONSE',
     )
   }

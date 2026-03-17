@@ -117,7 +117,7 @@ export const goplusProvider: Provider = {
     if (typeof body !== 'object' || body === null) return body
     const envelope = body as Record<string, unknown>
 
-    // GoPlus error: code !== 1 is a hard failure (validation correction #12)
+    // GoPlus error: code !== 1 is a hard failure
     if (envelope.code !== undefined && envelope.code !== 1) {
       const message = typeof envelope.message === 'string' ? envelope.message : 'GoPlus API error'
       throw new CliError(`goplus:${actionName} - ${message}`, 'PROVIDER_API_ERROR')

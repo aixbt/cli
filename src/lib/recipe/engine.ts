@@ -13,9 +13,12 @@ import { resolveValue, resolveEndpoint, flattenParams } from './template.js'
 import { executeForeach } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
 import { buildAwaitingAgentOutput, buildCompleteOutput } from './output.js'
+import { dispatchProviderStep } from '../providers/client.js'
 import { getProvider } from '../providers/registry.js'
-import { providerRequest } from '../providers/client.js'
+import { resolveProviderKey } from '../providers/config.js'
 import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
+import { TIER_RANK } from '../providers/types.js'
+import type { ProviderTier } from '../providers/types.js'
 
 // Re-export public API for backward compatibility
 export { resolveValue, resolveEndpoint, resolveRelativeTime } from './template.js'
@@ -41,6 +44,29 @@ function validateRequiredParams(
       `Missing required parameter${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
       'MISSING_PARAMS',
     )
+  }
+}
+
+function emitTierWarnings(recipe: Recipe): void {
+  for (const step of recipe.steps) {
+    if (!isApiStep(step) && !isForeachStep(step)) continue
+    const source = step.source
+    if (!source || source === 'aixbt') continue
+
+    let provider
+    try { provider = getProvider(source) } catch { continue }
+
+    const action = provider.actions[step.action]
+    if (!action || action.minTier === 'free') continue
+
+    const resolved = resolveProviderKey(source)
+    const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
+
+    if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
+      console.error(
+        `warning: step "${step.id}" uses ${source}:${step.action} (requires ${action.minTier} tier, current: ${effectiveTier})`,
+      )
+    }
   }
 }
 
@@ -197,22 +223,8 @@ async function executeStep(
 
   // External provider dispatch
   if (isApiStep(step) && step.source && step.source !== 'aixbt') {
-    const provider = getProvider(step.source)
-    const resolvedParams: Record<string, string | number | boolean | undefined> = {}
-    if (step.params) {
-      const flat = flattenParams(step.params, ctx)
-      for (const [k, v] of Object.entries(flat)) {
-        resolvedParams[k] = v
-      }
-    }
-
     try {
-      const response = await providerRequest({
-        provider,
-        actionName: step.action,
-        params: resolvedParams,
-      })
-      resultData = response.data
+      resultData = await dispatchProviderStep(step.source, step.action, step.params, ctx)
     } catch (err) {
       if (err instanceof CliError) {
         err.message = `Step "${step.id}" failed: ${err.message}`
@@ -317,6 +329,7 @@ export async function executeRecipe(options: {
   const recipe = parseRecipe(options.yaml)
   validateRecipe(recipe)
   validateRequiredParams(recipe, options.params)
+  emitTierWarnings(recipe)
   const segments = buildSegments(recipe)
 
   const params = applyDefaults(recipe, options.params)

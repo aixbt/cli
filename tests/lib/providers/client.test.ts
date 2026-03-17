@@ -487,7 +487,7 @@ describe('providerRequest', () => {
         providerRequest({ provider, actionName: 'get-data', params: {} }),
       ).rejects.toThrow(NetworkError)
 
-      await mockFetch.mockRejectedValueOnce(new Error('Connection refused'))
+      mockFetch.mockRejectedValueOnce(new Error('Connection refused'))
       await expect(
         providerRequest({ provider, actionName: 'get-data', params: {} }),
       ).rejects.toThrow(/Connection refused/)

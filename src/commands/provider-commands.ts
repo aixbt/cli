@@ -1,6 +1,6 @@
 import type { Command } from 'commander'
 import type { Provider, ActionDefinition, ActionParam } from '../lib/providers/types.js'
-import type { OutputFormat, TableColumn, CardItem } from '../lib/output.js'
+import type { TableColumn, CardItem } from '../lib/output.js'
 import { resolveFormat } from '../lib/config.js'
 import { providerRequest } from '../lib/providers/client.js'
 import * as output from '../lib/output.js'
@@ -117,7 +117,7 @@ function registerActionSubcommand(
       return
     }
 
-    renderHumanOutput(response.data, fmt, globalOpts.verbose as number | undefined)
+    renderHumanOutput(response.data, globalOpts.verbose as number | undefined)
   })
 }
 
@@ -186,7 +186,6 @@ function registerActionsSubcommand(group: Command, provider: Provider): void {
  */
 function renderHumanOutput(
   data: unknown,
-  _fmt: OutputFormat,
   verbose?: number,
 ): void {
   if (data === null || data === undefined) {

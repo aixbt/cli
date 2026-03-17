@@ -11,6 +11,16 @@ function getExternalProviderNames(): string[] {
   return getProviderNames().filter(n => n !== 'aixbt')
 }
 
+function validateExternalProviderName(name: string): void {
+  const validNames = getExternalProviderNames()
+  if (!validNames.includes(name)) {
+    throw new CliError(
+      `Unknown provider "${name}". Supported: ${validNames.join(', ')}`,
+      'UNKNOWN_PROVIDER',
+    )
+  }
+}
+
 // -- Tier inference --
 
 function inferTier(providerName: string, apiKey: string): ProviderTier {
@@ -71,14 +81,7 @@ export function registerProviderCommand(program: Command): void {
       const globalOpts = cmd.optsWithGlobals()
       const fmt = resolveFormat(globalOpts.format as string | undefined)
 
-      // Validate provider name
-      const validNames = getExternalProviderNames()
-      if (!validNames.includes(name)) {
-        throw new CliError(
-          `Unknown provider "${name}". Supported: ${validNames.join(', ')}`,
-          'UNKNOWN_PROVIDER',
-        )
-      }
+      validateExternalProviderName(name)
 
       const apiKey = opts.apiKey as string
       const tierFlag = opts.tier as ProviderTier | undefined
@@ -185,13 +188,7 @@ export function registerProviderCommand(program: Command): void {
       const globalOpts = cmd.optsWithGlobals()
       const fmt = resolveFormat(globalOpts.format as string | undefined)
 
-      const validNames = getExternalProviderNames()
-      if (!validNames.includes(name)) {
-        throw new CliError(
-          `Unknown provider "${name}". Supported: ${validNames.join(', ')}`,
-          'UNKNOWN_PROVIDER',
-        )
-      }
+      validateExternalProviderName(name)
 
       const removed = removeProviderKey(name)
 
@@ -216,13 +213,7 @@ export function registerProviderCommand(program: Command): void {
       const globalOpts = cmd.optsWithGlobals()
       const fmt = resolveFormat(globalOpts.format as string | undefined)
 
-      const validNames = getExternalProviderNames()
-      if (!validNames.includes(name)) {
-        throw new CliError(
-          `Unknown provider "${name}". Supported: ${validNames.join(', ')}`,
-          'UNKNOWN_PROVIDER',
-        )
-      }
+      validateExternalProviderName(name)
 
       const provider = getProvider(name)
       const resolved = resolveProviderKey(name)

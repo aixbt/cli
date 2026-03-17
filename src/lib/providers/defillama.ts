@@ -83,15 +83,16 @@ export const defillamaProvider: Provider = {
       pro: 120,
     },
   },
-  normalize: (body: unknown, _actionName: string): unknown => {
+  normalize: (body: unknown, actionName: string): unknown => {
     if (typeof body === 'object' && body !== null) {
       const obj = body as Record<string, unknown>
       if (typeof obj.body === 'string') {
         try {
           return JSON.parse(obj.body)
-        } catch {
+        } catch (err) {
+          const detail = err instanceof Error ? `: ${err.message}` : ''
           throw new CliError(
-            `defillama: Failed to parse Pro API response body`,
+            `defillama:${actionName} - Failed to parse Pro API response body${detail}`,
             'PROVIDER_RESPONSE_PARSE_ERROR',
           )
         }

@@ -1,5 +1,8 @@
 export type ProviderTier = 'free' | 'demo' | 'pro'
 
+/** Exhaustive tier ordering — adding a tier to ProviderTier without updating this causes a compile error */
+export const TIER_RANK: Record<ProviderTier, number> = { free: 0, demo: 1, pro: 2 }
+
 export interface ActionParam {
   name: string
   required: boolean
@@ -36,7 +39,7 @@ export interface Provider {
   actions: Record<string, ActionDefinition>
   baseUrl: ProviderBaseUrlConfig
   rateLimits: ProviderRateLimits
-  /** Header name for API key authentication (e.g., 'x-cg-pro-api-key') */
+  /** Header name for API key authentication (e.g., 'X-API-Key', 'Authorization') */
   authHeader?: string
   /**
    * Build the auth header value from the raw API key.

@@ -1,6 +1,7 @@
 import type { ExecutionContext } from '../../types.js'
 import { TEMPLATE_REGEX } from '../../types.js'
 import { getNestedValue } from '../transforms.js'
+import { isErrorMarker } from './foreach.js'
 
 export const RELATIVE_TIME_REGEX = /^-(\d+)(h|d|m)$/
 
@@ -59,7 +60,7 @@ export function resolveExpression(
       return undefined
     }
     return stepResult.data
-      .filter((item: unknown) => !(item && typeof item === 'object' && (item as Record<string, unknown>)._error))
+      .filter((item: unknown) => !isErrorMarker(item))
       .map((item: unknown) => getNestedValue(item, field))
   }
 
