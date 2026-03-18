@@ -8,6 +8,10 @@ export interface InvokeOpts {
   systemPrompt?: string
   /** Path to a temp JSON schema file for structured returns. */
   jsonSchemaFile?: string
+  /** Request streaming output (stream-json) for incremental rendering. */
+  streaming?: boolean
+  /** Allowed tools for the agent session. */
+  allowedTools?: string[]
 }
 
 /** Result of building an agent invocation command. */
@@ -17,12 +21,17 @@ export interface AgentInvocation {
   env?: Record<string, string>
 }
 
+/** Stream event format emitted by an agent's --json/streaming mode. */
+export type StreamFormat = 'claude' | 'codex'
+
 /** Adapter interface for agent integrations. */
 export interface AgentAdapter {
   /** Display name (e.g. "Claude Code"). */
   name: string
   /** Binary name on PATH (e.g. "claude"). */
   binary: string
+  /** Stream event format for parsing JSONL output. */
+  streamFormat: StreamFormat
   /** Check if the agent binary is available. */
   checkAvailable(): boolean
   /** Build the command invocation for a given set of options. */

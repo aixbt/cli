@@ -13,7 +13,7 @@ import { readConfig, resolveFormat, getRecipesDir } from '../lib/config.js'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../lib/registry.js'
 import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
-import { resolveAdapter, resolveAgentTarget, invokeAgentForStep, invokeAgentForAnalysis } from '../lib/agents/index.js'
+import { resolveAdapter, resolveAgentTarget, invokeAgentForStep, invokeAgentForAnalysis, captureAgentAnalysis } from '../lib/agents/index.js'
 
 // -- Helpers --
 
@@ -396,7 +396,7 @@ export function registerRecipeCommand(program: Command): void {
 
       const steps = parsed.steps.map((step) => {
         if (isAgentStep(step)) {
-          return { id: step.id, type: 'agent' as const, task: step.task }
+          return { id: step.id, type: 'agent' as const, instructions: step.instructions }
         }
         if (isForeachStep(step)) {
           return { id: step.id, type: 'foreach' as const, action: step.action, source: step.source }
@@ -451,7 +451,8 @@ export function registerRecipeCommand(program: Command): void {
       output.info('Steps:')
       for (const step of parsed.steps) {
         if (isAgentStep(step)) {
-          output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(step.task)}`, 20)
+          const preview = step.instructions.split('\n')[0].slice(0, 80)
+          output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(preview)}`, 20)
         } else if (isForeachStep(step)) {
           const label = step.source ? `${step.action} (${step.source})` : step.action
           output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} ${output.fmt.dim(label)}`, 20)
@@ -467,7 +468,6 @@ export function registerRecipeCommand(program: Command): void {
         console.log()
         output.info('Analysis:')
         output.keyValue('Instructions', parsed.analysis.instructions, 20)
-        if (parsed.analysis.task) output.keyValue('Task', parsed.analysis.task, 20)
         if (parsed.analysis.output) output.keyValue('Output', parsed.analysis.output, 20)
       }
 
@@ -596,6 +596,7 @@ export function registerRecipeCommand(program: Command): void {
         opts.agent as string | undefined,
         config.agent,
       )
+      const agentAllowedTools = config.agentAllowedTools
 
       // If an agent is specified, validate it's available before doing any work
       let adapter
@@ -644,11 +645,19 @@ export function registerRecipeCommand(program: Command): void {
         }
       }
 
-      let result = await output.withSpinner(
-        'Executing recipe...',
-        recipeFormat,
-        () =>
-          executeRecipe({
+      let result: Awaited<ReturnType<typeof executeRecipe>>
+
+      const structured = formatFlag === 'json' || formatFlag === 'toon'
+      if (adapter && !structured) {
+        // Agent mode: AIXBT with trailing spinner → tick on success
+        const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
+        const aixbt = output.fmt.brand('AIXBT')
+        let fi = 0
+        const tick = setInterval(() => {
+          process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}`)
+        }, 80)
+        try {
+          result = await executeRecipe({
             yaml,
             params,
             clientOptions,
@@ -657,9 +666,44 @@ export function registerRecipeCommand(program: Command): void {
             outputDir: opts.outputDir as string | undefined,
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
-          }),
-        'Recipe execution failed',
-      )
+          })
+          clearInterval(tick)
+          process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
+        } catch (err) {
+          clearInterval(tick)
+          process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
+          throw err
+        }
+      } else if (adapter && structured) {
+        // Structured format with agent — quiet execution, no visual chrome
+        result = await executeRecipe({
+          yaml,
+          params,
+          clientOptions,
+          resumeFromStep: opts.resumeFrom as string | undefined,
+          resumeInput,
+          outputDir: opts.outputDir as string | undefined,
+          outputFormat: recipeFormat,
+          recipeSource: opts.stdin ? undefined : source,
+        })
+      } else {
+        result = await output.withSpinner(
+          'Executing recipe...',
+          recipeFormat,
+          () =>
+            executeRecipe({
+              yaml,
+              params,
+              clientOptions,
+              resumeFromStep: opts.resumeFrom as string | undefined,
+              resumeInput,
+              outputDir: opts.outputDir as string | undefined,
+              outputFormat: recipeFormat,
+              recipeSource: opts.stdin ? undefined : source,
+            }),
+          'Recipe execution failed',
+        )
+      }
 
       // No agent — output as-is (existing behavior)
       if (!adapter) {
@@ -673,7 +717,7 @@ export function registerRecipeCommand(program: Command): void {
         const agentResponse = await output.withSpinner(
           `Agent (${agentTarget}) processing step "${awaiting.step}"...`,
           recipeFormat,
-          () => invokeAgentForStep(adapter, awaiting),
+          () => invokeAgentForStep(adapter, awaiting, { allowedTools: agentAllowedTools }),
           `Agent failed on step "${awaiting.step}"`,
         )
 
@@ -695,12 +739,13 @@ export function registerRecipeCommand(program: Command): void {
         )
       }
 
-      // Recipe complete — handle final analysis if present
-      if (result.analysis?.instructions) {
-        console.error(`\n${'─'.repeat(40)}`)
-        console.error(`Agent (${agentTarget}) analyzing...`)
-        console.error(`${'─'.repeat(40)}\n`)
-        await invokeAgentForAnalysis(adapter, result)
+      // Recipe complete — handle final analysis
+      if (result.analysis && !structured) {
+        await invokeAgentForAnalysis(adapter, result, { allowedTools: agentAllowedTools })
+        console.error('')
+      } else if (result.analysis && structured) {
+        const analysisText = await captureAgentAnalysis(adapter, result, { allowedTools: agentAllowedTools })
+        output.outputStructured({ ...result, analysis_result: analysisText }, recipeFormat)
       } else {
         output.outputStructured(result, recipeFormat)
       }

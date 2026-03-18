@@ -52,7 +52,6 @@ export function buildAwaitingAgentOutput(
     recipe: ctx.recipe.name,
     version: ctx.recipe.version,
     step: agentStep.id,
-    task: agentStep.task,
     instructions: agentStep.instructions,
     returns: agentStep.returns,
     data,

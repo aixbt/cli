@@ -123,7 +123,6 @@ export interface AgentStep {
   id: string
   type: 'agent'
   context: string[]
-  task: string
   instructions: string
   returns: Record<string, string>
   foreach?: never
@@ -146,8 +145,7 @@ export interface RecipeHints {
 }
 
 export interface RecipeAnalysis {
-  instructions?: string
-  task?: string
+  instructions: string
   output?: string
 }
 
@@ -236,7 +234,6 @@ export interface RecipeAwaitingAgent {
   recipe: string
   version: string
   step: string
-  task: string
   instructions: string
   returns: Record<string, string>
   data: Record<string, unknown>

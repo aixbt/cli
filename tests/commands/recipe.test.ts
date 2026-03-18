@@ -397,7 +397,6 @@ steps:
     action: "GET /v2/projects"
 analysis:
   instructions: "Analyze the data"
-  task: "Summarize trends"
 `
       const recipeFile = join(tempDir, 'analysis.yaml')
       writeFileSync(recipeFile, recipeWithAnalysis)
@@ -419,7 +418,6 @@ analysis:
       expect(parsed.status).toBe('complete')
       expect(parsed.analysis).toBeDefined()
       expect(parsed.analysis.instructions).toBe('Analyze the data')
-      expect(parsed.analysis.task).toBe('Summarize trends')
     })
 
     it('should error when no source is provided without --json', async () => {
@@ -586,7 +584,6 @@ steps:
     type: agent
     context:
       - fetch_projects
-    task: Analyze the project data
     instructions: Use AI to analyze
     returns:
       summary: string
@@ -690,14 +687,13 @@ analysis:
       // Agent step
       expect(parsed.steps[1].id).toBe('analyze')
       expect(parsed.steps[1].type).toBe('agent')
-      expect(parsed.steps[1].task).toBe('Analyze the project data')
+      expect(parsed.steps[1].instructions).toBe('Use AI to analyze')
       expect(parsed.steps[1].action).toBeUndefined()
 
       // Foreach step
       expect(parsed.steps[2].id).toBe('details')
       expect(parsed.steps[2].type).toBe('foreach')
       expect(parsed.steps[2].action).toBe('GET /v2/projects/{item.id}')
-      expect(parsed.steps[2].task).toBeUndefined()
 
       // Params
       expect(parsed.params).toEqual({

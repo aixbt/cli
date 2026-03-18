@@ -471,7 +471,6 @@ steps:
   - id: analyze
     type: agent
     context: [surging]
-    task: inference
     instructions: "Analyze surging projects"
     returns:
       projectIds: "string[]"
@@ -510,7 +509,6 @@ steps:
   - id: analyze
     type: agent
     context: [projects, signals]
-    task: inference
     instructions: "Analyze data"
     returns:
       summary: "string"
@@ -526,7 +524,6 @@ steps:
   - id: filter
     type: agent
     context: [surging]
-    task: inference
     instructions: "Filter projects"
     returns:
       projectIds: "string[]"
@@ -537,7 +534,6 @@ steps:
   - id: analyze
     type: agent
     context: [signals]
-    task: synthesis
     instructions: "Analyze signals"
     returns:
       summary: "string"
@@ -553,7 +549,6 @@ hints:
   combine: [projects, signals]
   key: projectId
 analysis:
-  task: summarize
   instructions: "Summarize the data"
 steps:
   - id: projects
@@ -680,14 +675,13 @@ describe('executeRecipe', () => {
       const awaiting = result as {
         status: string
         step: string
-        task: string
         instructions: string
         returns: Record<string, string>
         data: Record<string, unknown>
         resumeCommand: string
       }
       expect(awaiting.step).toBe('analyze')
-      expect(awaiting.task).toBe('inference')
+      expect(awaiting.instructions).toBeDefined()
       expect(awaiting.instructions).toBe('Analyze surging projects')
       expect(awaiting.returns).toEqual({ projectIds: 'string[]' })
     })
@@ -802,14 +796,13 @@ describe('executeRecipe', () => {
       expect(result.status).toBe('complete')
       const complete = result as {
         hints?: { combine?: string[]; key?: string }
-        analysis?: { task?: string; instructions?: string }
+        analysis?: { instructions: string; output?: string }
       }
       expect(complete.hints).toEqual({
         combine: ['projects', 'signals'],
         key: 'projectId',
       })
       expect(complete.analysis).toEqual({
-        task: 'summarize',
         instructions: 'Summarize the data',
       })
     })
@@ -982,13 +975,12 @@ describe('executeRecipe', () => {
       const awaiting = result as {
         status: string
         step: string
-        task: string
         instructions: string
         returns: Record<string, string>
         data: Record<string, unknown>
       }
       expect(awaiting.step).toBe('analyze')
-      expect(awaiting.task).toBe('inference')
+      expect(awaiting.instructions).toBeDefined()
       expect(awaiting.instructions).toBe('Analyze data')
       expect(awaiting.returns).toEqual({ summary: 'string' })
     })
@@ -1046,11 +1038,11 @@ describe('executeRecipe', () => {
       expect(result.status).toBe('awaiting_agent')
       const awaiting = result as {
         step: string
-        task: string
+        instructions: string
         data: Record<string, unknown>
       }
       expect(awaiting.step).toBe('filter')
-      expect(awaiting.task).toBe('inference')
+      expect(awaiting.instructions).toBeDefined()
       expect(awaiting.data.surging).toEqual(surgingData)
     })
 
@@ -1069,11 +1061,11 @@ describe('executeRecipe', () => {
       expect(result.status).toBe('awaiting_agent')
       const awaiting = result as {
         step: string
-        task: string
+        instructions: string
         data: Record<string, unknown>
       }
       expect(awaiting.step).toBe('analyze')
-      expect(awaiting.task).toBe('synthesis')
+      expect(awaiting.instructions).toBe('Analyze signals')
       expect(awaiting.data.signals).toEqual(signalsData)
     })
 

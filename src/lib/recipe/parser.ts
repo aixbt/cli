@@ -161,10 +161,19 @@ function validateStep(
     if (!Array.isArray(step.context)) {
       issues.push({ path: `${stepPath}.context`, message: 'Agent step must have a context array' })
     }
-    if (typeof step.task !== 'string') {
-      issues.push({ path: `${stepPath}.task`, message: 'Agent step must have a task string' })
+
+    // Backward compat: merge task into instructions if present
+    let instructions = typeof step.instructions === 'string' ? step.instructions : ''
+    if (typeof step.task === 'string') {
+      if (instructions) {
+        instructions = `${instructions}\n\n${step.task}`
+      } else {
+        instructions = step.task
+      }
+      console.error(`warning: ${stepPath}: "task" is deprecated, use "instructions" instead`)
     }
-    if (typeof step.instructions !== 'string') {
+
+    if (!instructions) {
       issues.push({
         path: `${stepPath}.instructions`,
         message: 'Agent step must have an instructions string',
@@ -181,8 +190,7 @@ function validateStep(
       id: step.id,
       type: 'agent' as const,
       context: Array.isArray(step.context) ? (step.context as string[]) : [],
-      task: typeof step.task === 'string' ? step.task : '',
-      instructions: typeof step.instructions === 'string' ? step.instructions : '',
+      instructions,
       returns:
         typeof step.returns === 'object' && step.returns !== null && !Array.isArray(step.returns)
           ? (step.returns as Record<string, string>)
@@ -399,23 +407,36 @@ function validateAnalysisBlock(
   }
 
   const analysis = raw as Record<string, unknown>
-  const result: Recipe['analysis'] = {}
-  const stringFields = ['instructions', 'task', 'output'] as const
 
-  for (const field of stringFields) {
-    if (field in analysis) {
-      if (typeof analysis[field] !== 'string') {
-        issues.push({
-          path: `analysis.${field}`,
-          message: `${field} must be a string`,
-        })
-      } else {
-        result[field] = analysis[field] as string
-      }
+  // Backward compat: merge task into instructions if present
+  let instructions = typeof analysis.instructions === 'string' ? analysis.instructions : ''
+  if (typeof analysis.task === 'string') {
+    if (instructions) {
+      instructions = `${instructions}\n\n${analysis.task}`
+    } else {
+      instructions = analysis.task
     }
+    console.error('warning: analysis.task is deprecated, use "instructions" instead')
   }
 
-  return result
+  if (!instructions) {
+    issues.push({
+      path: 'analysis.instructions',
+      message: 'analysis must have an instructions string',
+    })
+  }
+
+  if ('output' in analysis && typeof analysis.output !== 'string') {
+    issues.push({
+      path: 'analysis.output',
+      message: 'output must be a string',
+    })
+  }
+
+  return {
+    instructions,
+    ...(typeof analysis.output === 'string' ? { output: analysis.output } : {}),
+  }
 }
 
 export function parseRecipe(yamlString: string): Recipe {
