@@ -74,6 +74,7 @@ describe('coingeckoProvider', () => {
       'token-pools',
       'trending-pools',
       'token-ohlcv',
+      'pool-ohlcv',
       'price-history',
     ]
 
@@ -92,11 +93,12 @@ describe('coingeckoProvider', () => {
       'token-pools',
       'trending-pools',
       'token-ohlcv',
+      'pool-ohlcv',
     ]
 
-    it('should define all 12 actions', () => {
+    it('should define all 13 actions', () => {
       const actionNames = Object.keys(coingeckoProvider.actions)
-      expect(actionNames).toHaveLength(12)
+      expect(actionNames).toHaveLength(13)
       for (const name of ALL_ACTION_NAMES) {
         expect(coingeckoProvider.actions).toHaveProperty(name)
       }

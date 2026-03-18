@@ -138,7 +138,7 @@ describe('recipe commands', () => {
       // Param count shown for recipes with params
       expect(allOutput).toContain('2 params')
       // Footer count
-      expect(allOutput).toContain('2 recipes')
+      expect(allOutput).toContain('2 official')
       // Footer hint for recipe info
       expect(allOutput).toContain('recipe info')
     })
@@ -172,7 +172,7 @@ describe('recipe commands', () => {
       await program.parseAsync(['node', 'aixbt', 'recipe', 'list'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('No recipes available')
+      expect(allOutput).toContain('No recipes found')
     })
 
     it('should not send X-API-Key header (unauthenticated endpoint)', async () => {
@@ -397,7 +397,6 @@ steps:
     action: "GET /v2/projects"
 analysis:
   instructions: "Analyze the data"
-  task: "Summarize trends"
 `
       const recipeFile = join(tempDir, 'analysis.yaml')
       writeFileSync(recipeFile, recipeWithAnalysis)
@@ -419,7 +418,6 @@ analysis:
       expect(parsed.status).toBe('complete')
       expect(parsed.analysis).toBeDefined()
       expect(parsed.analysis.instructions).toBe('Analyze the data')
-      expect(parsed.analysis.task).toBe('Summarize trends')
     })
 
     it('should error when no source is provided without --json', async () => {
@@ -586,7 +584,6 @@ steps:
     type: agent
     context:
       - fetch_projects
-    task: Analyze the project data
     instructions: Use AI to analyze
     returns:
       summary: string
@@ -690,14 +687,13 @@ analysis:
       // Agent step
       expect(parsed.steps[1].id).toBe('analyze')
       expect(parsed.steps[1].type).toBe('agent')
-      expect(parsed.steps[1].task).toBe('Analyze the project data')
+      expect(parsed.steps[1].instructions).toBe('Use AI to analyze')
       expect(parsed.steps[1].action).toBeUndefined()
 
       // Foreach step
       expect(parsed.steps[2].id).toBe('details')
       expect(parsed.steps[2].type).toBe('foreach')
       expect(parsed.steps[2].action).toBe('GET /v2/projects/{item.id}')
-      expect(parsed.steps[2].task).toBeUndefined()
 
       // Params
       expect(parsed.params).toEqual({
@@ -861,10 +857,9 @@ steps:
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('should default output path to ./<name>.yaml', async () => {
+    it('should default output path to recipes dir', async () => {
       // Use a unique recipe name to avoid collisions with real files
       const recipeName = `test-default-${Date.now()}`
-      const expectedPath = `./${recipeName}.yaml`
 
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
@@ -888,11 +883,11 @@ steps:
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.path).toBe(expectedPath)
+      expect(parsed.path).toContain(`recipes/${recipeName}.yaml`)
 
       // Clean up the file that was created in cwd
       try {
-        rmSync(expectedPath, { force: true })
+        rmSync(parsed.path, { force: true })
       } catch {
         // ignore cleanup errors
       }

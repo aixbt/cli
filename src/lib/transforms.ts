@@ -10,7 +10,15 @@ export function getNestedValue(obj: unknown, path: string): unknown {
     if (current === null || current === undefined || typeof current !== 'object') {
       return undefined
     }
-    current = (current as Record<string, unknown>)[part]
+    // Handle array indexing: "tokens[0]" → look up "tokens" then index 0
+    const bracketMatch = /^([^[]+)\[(\d+)\]$/.exec(part)
+    if (bracketMatch) {
+      current = (current as Record<string, unknown>)[bracketMatch[1]]
+      if (!Array.isArray(current)) return undefined
+      current = current[parseInt(bracketMatch[2], 10)]
+    } else {
+      current = (current as Record<string, unknown>)[part]
+    }
   }
   return current
 }

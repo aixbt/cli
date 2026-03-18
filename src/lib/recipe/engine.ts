@@ -6,7 +6,7 @@ import type {
 import { isAgentStep, isApiStep, isForeachStep, isTransformStep } from '../../types.js'
 import { applyTransforms } from '../transforms.js'
 import { parseRecipe } from './parser.js'
-import { validateRecipe, buildSegments } from './validator.js'
+import { validateRecipe, buildSegments, extractStepReferences } from './validator.js'
 import { get, type ApiClientOptions } from '../api-client.js'
 import { CliError } from '../errors.js'
 import { resolveValue, resolveActionPath, flattenParams } from './template.js'
@@ -188,6 +188,70 @@ function findResumeSegment(
   throw new CliError(
     `Step "${stepId}" not found in recipe`,
     'STEP_NOT_FOUND',
+  )
+}
+
+// -- Parallel execution helpers --
+
+/**
+ * Group segment steps into dependency layers for parallel execution.
+ * Steps in the same layer have no interdependencies and can run concurrently.
+ * Agent steps are always isolated in their own layer.
+ */
+function buildExecutionLayers(
+  steps: RecipeStep[],
+  alreadyCompleted: Set<string>,
+): RecipeStep[][] {
+  const layers: RecipeStep[][] = []
+  const completed = new Set(alreadyCompleted)
+  const pending = new Set(steps.map(s => s.id))
+  const stepMap = new Map(steps.map(s => [s.id, s]))
+  const orderedIds = steps.map(s => s.id)
+
+  while (pending.size > 0) {
+    const layer: RecipeStep[] = []
+
+    for (const id of orderedIds) {
+      if (!pending.has(id)) continue
+      const step = stepMap.get(id)!
+
+      // Agent steps must be alone in their layer
+      if (isAgentStep(step)) {
+        if (layer.length === 0) layer.push(step)
+        break
+      }
+
+      const deps = extractStepReferences(step)
+      if ([...deps].every(d => completed.has(d))) {
+        layer.push(step)
+      }
+    }
+
+    if (layer.length === 0) {
+      throw new CliError('Circular dependency detected in recipe steps', 'CIRCULAR_DEPENDENCY')
+    }
+
+    for (const step of layer) {
+      pending.delete(step.id)
+      completed.add(step.id)
+    }
+
+    layers.push(layer)
+  }
+
+  return layers
+}
+
+/**
+ * After parallel execution, pick the most conservative rate limit
+ * (lowest remainingPerMinute) so subsequent steps don't overshoot.
+ */
+function mergeRateLimits(limits: (RateLimitInfo | null)[]): RateLimitInfo | null {
+  const valid = limits.filter((l): l is RateLimitInfo => l !== null)
+  if (valid.length === 0) return null
+  if (valid.length === 1) return valid[0]
+  return valid.reduce((a, b) =>
+    a.remainingPerMinute <= b.remainingPerMinute ? a : b,
   )
 }
 
@@ -431,14 +495,29 @@ export async function executeRecipe(options: {
       ctx.agentInput = null
     }
 
-    for (const step of segment.steps) {
-      if (isAgentStep(step)) {
-        return buildAwaitingAgentOutput(ctx, step, options.params, options.recipeSource)
+    const layers = buildExecutionLayers(segment.steps, new Set(ctx.results.keys()))
+
+    for (const layer of layers) {
+      // Agent steps are always alone in their layer
+      if (layer.length === 1 && isAgentStep(layer[0])) {
+        return buildAwaitingAgentOutput(ctx, layer[0], options.params, options.recipeSource)
       }
 
-      const result = await executeStep(step, ctx, options.clientOptions)
-      ctx.results.set(step.id, result)
-      ctx.currentRateLimit = result.rateLimit
+      if (layer.length === 1) {
+        const step = layer[0]
+        const result = await executeStep(step, ctx, options.clientOptions)
+        ctx.results.set(step.id, result)
+        ctx.currentRateLimit = result.rateLimit
+      } else {
+        const results = await Promise.all(
+          layer.map(step => executeStep(step, ctx, options.clientOptions)),
+        )
+        // Store in recipe-declared order (layer preserves recipe order)
+        for (let j = 0; j < layer.length; j++) {
+          ctx.results.set(layer[j].id, results[j])
+        }
+        ctx.currentRateLimit = mergeRateLimits(results.map(r => r.rateLimit))
+      }
     }
   }
 

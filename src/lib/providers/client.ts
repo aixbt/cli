@@ -65,6 +65,37 @@ export async function providerRequest(
     })
   }
 
+  // Free-tier pool-based OHLCV: GeckoTerminal no longer offers token-level OHLCV
+  // on the free tier, so we look up the top pool and use pool-ohlcv instead.
+  if (actionName === 'token-ohlcv' && effectiveTier === 'free') {
+    const poolsResponse = await providerRequest({
+      ...options,
+      actionName: 'token-pools',
+      params: { network: params.network, address: params.address },
+    })
+    const pools = poolsResponse.data
+    if (Array.isArray(pools) && pools.length > 0) {
+      const topPool = pools[0] as Record<string, unknown>
+      const poolAddress = topPool.address as string
+      if (poolAddress) {
+        return providerRequest({
+          ...options,
+          actionName: 'pool-ohlcv',
+          params: {
+            network: params.network,
+            address: poolAddress,
+            timeframe: params.timeframe ?? 'day',
+            limit: params.limit,
+          },
+        })
+      }
+    }
+    throw new CliError(
+      `No DEX pools found for token on network "${params.network}"`,
+      'ACTION_UNRESOLVABLE',
+    )
+  }
+
   if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
     throw new CliError(
       `Action "${provider.name}:${actionName}" requires "${action.minTier}" tier, but current tier is "${effectiveTier}". ` +
