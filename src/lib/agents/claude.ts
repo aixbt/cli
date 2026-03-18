@@ -18,11 +18,15 @@ export const claudeAdapter: AgentAdapter = {
 
   buildInvocation(opts: InvokeOpts): AgentInvocation {
     const useJson = !!opts.jsonSchemaFile
-    const args: string[] = [
-      '-p',
-      opts.prompt,
-      '--output-format', useJson ? 'json' : 'text',
-    ]
+    let outputFormat = useJson ? 'json' : 'text'
+    const args: string[] = ['-p', opts.prompt]
+
+    if (opts.streaming && !useJson) {
+      outputFormat = 'stream-json'
+      args.push('--output-format', outputFormat, '--verbose', '--include-partial-messages')
+    } else {
+      args.push('--output-format', outputFormat)
+    }
 
     if (opts.systemPrompt) {
       args.push('--append-system-prompt', opts.systemPrompt)

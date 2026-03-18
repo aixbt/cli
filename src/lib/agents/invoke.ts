@@ -1,10 +1,15 @@
 import { spawn } from 'node:child_process'
 import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import chalk from 'chalk'
 import type { AgentAdapter } from './types.js'
 import type { RecipeAwaitingAgent, RecipeComplete } from '../../types.js'
 import { CliError } from '../errors.js'
 import { getConfigDir } from '../config.js'
+import { fmt } from '../output.js'
+
+const AGENT_LABEL_BG = '#e8723a'
+const OUTPUT_LABEL_BG = '#4a7af5'
 
 function writeTempFile(prefix: string, data: string): string {
   const tmpBase = join(getConfigDir(), 'tmp')
@@ -163,14 +168,159 @@ export async function invokeAgentForAnalysis(
     const invocation = adapter.buildInvocation({
       dataFile,
       prompt,
+      streaming: true,
       systemPrompt: result.analysis?.instructions
         ? 'You are analyzing AIXBT recipe output. Follow the analysis instructions precisely.'
         : undefined,
     })
 
-    // Stream output directly to the user's terminal
-    await spawnAgent(adapter, invocation.args, invocation.env, { inherit: true })
+    await streamAgentAnalysis(adapter, invocation.args, invocation.env)
   } finally {
     cleanupTempFile(dataFile)
   }
+}
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+function streamAgentAnalysis(
+  adapter: AgentAdapter,
+  args: string[],
+  env?: Record<string, string>,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(adapter.binary, args, {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, ...env },
+    })
+
+    let buffer = ''
+    let phase: 'waiting' | 'thinking' | 'output' = 'waiting'
+    let seenToolUse = false
+    let msgHasToolUse = false
+    let msgText = ''
+
+    // Spinner while waiting for first output
+    let frame = 0
+    const spinner = setInterval(() => {
+      if (phase === 'waiting') {
+        process.stderr.write(`\r${SPINNER_FRAMES[frame++ % SPINNER_FRAMES.length]} Thinking...`)
+      }
+    }, 80)
+
+    function showThinkingBullet(text: string) {
+      const trimmed = text.trim()
+      if (!trimmed) return
+      if (phase === 'waiting') {
+        clearInterval(spinner)
+        process.stderr.write('\r\x1b[K')
+        process.stderr.write(`${fmt.tag(` ${adapter.binary.toUpperCase()} `, AGENT_LABEL_BG)}\n`)
+        phase = 'thinking'
+      }
+      let line = trimmed.split('\n')[0]
+      if (line.length > 100) line = line.slice(0, 97) + '...'
+      process.stderr.write(`  ${chalk.dim('•')} ${chalk.dim(line)}\n`)
+    }
+
+    function startOutput() {
+      if (phase !== 'output') {
+        if (phase === 'waiting') {
+          clearInterval(spinner)
+          process.stderr.write('\r\x1b[K')
+        }
+        process.stderr.write(`${fmt.tag(' OUTPUT ', OUTPUT_LABEL_BG)}\n`)
+        phase = 'output'
+      }
+    }
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString()
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const event = JSON.parse(line) as Record<string, unknown>
+          if (event.type !== 'stream_event') continue
+          const inner = event.event as Record<string, unknown> | undefined
+          if (!inner) continue
+
+          switch (inner.type) {
+            case 'message_start':
+              msgHasToolUse = false
+              msgText = ''
+              break
+
+            case 'content_block_start': {
+              const block = inner.content_block as Record<string, unknown> | undefined
+              if (block?.type === 'tool_use') {
+                msgHasToolUse = true
+                seenToolUse = true
+                if (msgText) {
+                  showThinkingBullet(msgText)
+                  msgText = ''
+                }
+              }
+              break
+            }
+
+            case 'content_block_delta': {
+              const delta = inner.delta as { type?: string; text?: string } | undefined
+              if (delta?.type === 'text_delta' && delta.text) {
+                if (msgHasToolUse) {
+                  // Known thinking message — buffer for bullet
+                  msgText += delta.text
+                } else if (seenToolUse) {
+                  // Previous messages had tool_use, this one doesn't — stream as output
+                  startOutput()
+                  process.stdout.write(delta.text)
+                } else {
+                  // First message, undecided — buffer until we know
+                  msgText += delta.text
+                }
+              }
+              break
+            }
+
+            case 'message_stop':
+              if (msgHasToolUse) {
+                if (msgText) {
+                  showThinkingBullet(msgText)
+                  msgText = ''
+                }
+              } else if (msgText) {
+                startOutput()
+                process.stdout.write(msgText)
+                msgText = ''
+              }
+              break
+          }
+        } catch {
+          // skip unparseable lines
+        }
+      }
+    })
+
+    child.on('error', (err) => {
+      clearInterval(spinner)
+      reject(new CliError(
+        `Failed to spawn ${adapter.name}: ${err.message}`,
+        'AGENT_SPAWN_FAILED',
+      ))
+    })
+
+    child.on('close', (code) => {
+      clearInterval(spinner)
+      if (phase === 'output') process.stdout.write('\n')
+      if (phase === 'waiting') process.stderr.write('\r\x1b[K')
+      if (code !== 0) {
+        reject(new CliError(
+          `${adapter.name} exited with error: exit code ${code}`,
+          'AGENT_EXECUTION_FAILED',
+        ))
+        return
+      }
+      resolve()
+    })
+  })
 }

@@ -8,6 +8,8 @@ export interface InvokeOpts {
   systemPrompt?: string
   /** Path to a temp JSON schema file for structured returns. */
   jsonSchemaFile?: string
+  /** Request streaming output (stream-json) for incremental rendering. */
+  streaming?: boolean
 }
 
 /** Result of building an agent invocation command. */

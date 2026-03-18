@@ -645,7 +645,7 @@ export function registerRecipeCommand(program: Command): void {
       }
 
       let result = await output.withSpinner(
-        'Executing recipe...',
+        adapter ? 'Fetching data...' : 'Executing recipe...',
         recipeFormat,
         () =>
           executeRecipe({
@@ -658,7 +658,7 @@ export function registerRecipeCommand(program: Command): void {
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
           }),
-        'Recipe execution failed',
+        adapter ? 'Failed to fetch data' : 'Recipe execution failed',
       )
 
       // No agent — output as-is (existing behavior)
@@ -697,10 +697,9 @@ export function registerRecipeCommand(program: Command): void {
 
       // Recipe complete — handle final analysis if present
       if (result.analysis?.instructions) {
-        console.error(`\n${'─'.repeat(40)}`)
-        console.error(`Agent (${agentTarget}) analyzing...`)
-        console.error(`${'─'.repeat(40)}\n`)
+        console.error('')
         await invokeAgentForAnalysis(adapter, result)
+        console.error('')
       } else {
         output.outputStructured(result, recipeFormat)
       }
