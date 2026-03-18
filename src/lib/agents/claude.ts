@@ -2,9 +2,12 @@ import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import type { AgentAdapter, InvokeOpts, AgentInvocation } from './types.js'
 
+const DEFAULT_ALLOWED_TOOLS = ['Read', 'WebSearch', 'WebFetch', 'Bash(aixbt:*)']
+
 export const claudeAdapter: AgentAdapter = {
   name: 'Claude Code',
   binary: 'claude',
+  streamFormat: 'claude',
   supportsJsonSchema: true,
 
   checkAvailable(): boolean {
@@ -19,7 +22,11 @@ export const claudeAdapter: AgentAdapter = {
   buildInvocation(opts: InvokeOpts): AgentInvocation {
     const useJson = !!opts.jsonSchemaFile
     let outputFormat = useJson ? 'json' : 'text'
-    const args: string[] = ['-p', opts.prompt]
+    const tools = opts.allowedTools ?? DEFAULT_ALLOWED_TOOLS
+    const args: string[] = [
+      '-p', opts.prompt,
+      '--allowedTools', ...tools,
+    ]
 
     if (opts.streaming && !useJson) {
       outputFormat = 'stream-json'

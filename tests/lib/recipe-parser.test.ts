@@ -161,7 +161,6 @@ steps:
     context:
       - fetch-projects
       - fetch-details
-    task: "Analyze the project data"
     instructions: "Provides analysis of fetched projects"
     returns:
       summary: string
@@ -176,7 +175,6 @@ hints:
     - score
 analysis:
   instructions: "Summarize the data"
-  task: "Generate summary"
   output: "markdown"
 `
       const recipe = parseRecipe(yaml)
@@ -239,7 +237,6 @@ steps:
     type: agent
     context:
       - step1
-    task: "Analyze"
     instructions: "Analysis step"
     returns:
       summary: string
@@ -248,7 +245,6 @@ steps:
       const agentStep = recipe.steps[0] as AgentStep
       expect(agentStep.type).toBe('agent')
       expect(agentStep.context).toEqual(['step1'])
-      expect(agentStep.task).toBe('Analyze')
       expect(agentStep.instructions).toBe('Analysis step')
       expect(agentStep.returns).toEqual({ summary: 'string' })
     })
@@ -401,7 +397,6 @@ name: test-recipe
 steps:
   - id: step1
     type: agent
-    task: "Analyze"
     instructions: "Analysis"
     returns:
       summary: string
@@ -409,24 +404,6 @@ steps:
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
         expect.stringContaining('Agent step must have a context array'),
-      )
-    })
-
-    it('should throw when agent step is missing task', () => {
-      const yaml = `
-name: test-recipe
-steps:
-  - id: step1
-    type: agent
-    context:
-      - prev
-    instructions: "Analysis"
-    returns:
-      summary: string
-`
-      const err = expectValidationError(yaml)
-      expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Agent step must have a task string'),
       )
     })
 
@@ -438,7 +415,6 @@ steps:
     type: agent
     context:
       - prev
-    task: "Analyze"
     returns:
       summary: string
 `
@@ -446,6 +422,23 @@ steps:
       expect(issueMessages(err)).toContainEqual(
         expect.stringContaining('Agent step must have an instructions string'),
       )
+    })
+
+    it('should accept deprecated task as instructions (backward compat)', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: agent
+    context:
+      - prev
+    task: "Analyze"
+    returns:
+      summary: string
+`
+      const recipe = parseRecipe(yaml)
+      const agentStep = recipe.steps[0] as AgentStep
+      expect(agentStep.instructions).toBe('Analyze')
     })
 
     it('should throw when agent step is missing returns', () => {
@@ -456,7 +449,6 @@ steps:
     type: agent
     context:
       - prev
-    task: "Analyze"
     instructions: "Analysis"
 `
       const err = expectValidationError(yaml)
@@ -473,7 +465,6 @@ steps:
     type: agent
     context:
       - prev
-    task: "Analyze"
     instructions: "Analysis"
     returns:
       - summary
@@ -492,8 +483,8 @@ steps:
     type: agent
 `
       const err = expectValidationError(yaml)
-      // Should report context, task, instructions, and returns issues
-      expect(err.issues.length).toBeGreaterThanOrEqual(4)
+      // Should report context, instructions, and returns issues
+      expect(err.issues.length).toBeGreaterThanOrEqual(3)
     })
 
     it('should throw when foreach step is missing action', () => {
@@ -782,14 +773,27 @@ steps:
     action: "GET /v2/projects"
 analysis:
   instructions: "Summarize the data"
-  task: "Generate summary"
   output: "markdown"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.analysis).toBeDefined()
       expect(recipe.analysis!.instructions).toBe('Summarize the data')
-      expect(recipe.analysis!.task).toBe('Generate summary')
       expect(recipe.analysis!.output).toBe('markdown')
+    })
+
+    it('should merge deprecated task into instructions (backward compat)', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    action: "GET /v2/projects"
+analysis:
+  instructions: "Summarize the data"
+  task: "Generate summary"
+`
+      const recipe = parseRecipe(yaml)
+      expect(recipe.analysis).toBeDefined()
+      expect(recipe.analysis!.instructions).toBe('Summarize the data\n\nGenerate summary')
     })
 
     it('should parse analysis block with partial fields', () => {
@@ -804,7 +808,6 @@ analysis:
       const recipe = parseRecipe(yaml)
       expect(recipe.analysis).toBeDefined()
       expect(recipe.analysis!.instructions).toBe('Summarize')
-      expect(recipe.analysis!.task).toBeUndefined()
       expect(recipe.analysis!.output).toBeUndefined()
     })
 
@@ -819,7 +822,7 @@ analysis:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('instructions must be a string'),
+        expect.stringContaining('analysis must have an instructions string'),
       )
     })
 
@@ -1376,7 +1379,7 @@ describe('step type guards', () => {
   const steps = {
     api: { id: 'api1', action: 'GET /v2/projects' } as ApiStep,
     foreach: { id: 'foreach1', foreach: 'api1.data', action: 'GET /v2/projects/{{item.id}}' } as ForeachStep,
-    agent: { id: 'agent1', type: 'agent', context: ['api1'], task: 'Analyze', instructions: 'Analysis step', returns: { summary: 'string' } } as AgentStep,
+    agent: { id: 'agent1', type: 'agent', context: ['api1'], instructions: 'Analysis step', returns: { summary: 'string' } } as AgentStep,
     transform: { id: 'transform1', input: 'api1', transform: { select: ['id', 'name'] } } as TransformStep,
   }
 

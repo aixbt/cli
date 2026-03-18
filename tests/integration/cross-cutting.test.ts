@@ -32,7 +32,6 @@ steps:
     context:
       - projects
       - details
-    task: "Analyze project data"
     instructions: "AI analysis of projects"
     returns:
       summary: string
@@ -48,7 +47,6 @@ hints:
     - follow_up
 analysis:
   instructions: "Summarize the findings"
-  task: "Generate report"
 `
 
 const X402_RECIPE = `
@@ -77,7 +75,6 @@ steps:
     type: agent
     context:
       - scan
-    task: "Evaluate projects"
     instructions: "AI evaluation of scanned projects"
     returns:
       picks: "string[]"
@@ -165,7 +162,6 @@ describe('cross-cutting integration tests', () => {
       expect(awaiting.recipe).toBe('full-workflow')
       expect(awaiting.version).toBe('1.0')
       expect(awaiting.step).toBe('analyze')
-      expect(awaiting.task).toBe('Analyze project data')
       expect(awaiting.instructions).toBe('AI analysis of projects')
       expect(awaiting.returns).toEqual({ summary: 'string', insights: 'string[]' })
 
@@ -213,7 +209,6 @@ describe('cross-cutting integration tests', () => {
       expect(complete.hints).toEqual({ include: ['projects', 'details', 'follow_up'] })
       expect(complete.analysis).toEqual({
         instructions: 'Summarize the findings',
-        task: 'Generate report',
       })
     })
 
@@ -423,7 +418,7 @@ describe('cross-cutting integration tests', () => {
       expect(awaiting.recipe).toBe('registry-workflow')
       expect(awaiting.version).toBe('2.0')
       expect(awaiting.step).toBe('evaluate')
-      expect(awaiting.task).toBe('Evaluate projects')
+      expect(awaiting.instructions).toBe('AI evaluation of scanned projects')
       expect(awaiting.returns).toEqual({ picks: 'string[]', rationale: 'string' })
 
       // Verify scan data is in the context
