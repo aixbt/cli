@@ -4,7 +4,9 @@ Composable parts catalog for `@aixbt/cli` recipes (v1.1). Pick the blocks you ne
 
 This document complements the [Recipe Specification](recipe-specification.md) (formal schema) and the [CLI Guide](cli-guide.md) (command workflows). The spec tells you what's valid YAML; this doc tells you what to put in it.
 
-**Recipe registry:** 24 production recipes are installed at `~/.aixbt/recipes/`. Use `aixbt recipe list` to see all available recipes and `aixbt recipe show <name>` to dump any recipe's full YAML. These are the best source of working patterns — when in doubt, read an existing recipe that does something similar to what you're building.
+**Recipe registry:** 24 production recipes live in a remote registry. Use `aixbt recipe list` to see all available recipes and `aixbt recipe show <name>` to dump any recipe's full YAML. These are the best source of working patterns — when in doubt, read an existing recipe that does something similar to what you're building.
+
+**Cloning and customizing:** `aixbt recipe clone <name>` copies a registry recipe to `~/.aixbt/recipes/` with a `.clone` suffix (both filename and `name:` field). Use `--name <newName>` to choose your own name, `--out <dir>` for a different directory.
 
 ---
 
@@ -14,23 +16,7 @@ Every action available in recipe steps, grouped by provider. Use `action` (requi
 
 For live discovery: `aixbt provider list -f json` returns all actions with params and tier requirements. `aixbt provider <source> <action> -f json` runs an action outside a recipe for testing.
 
-### Provider Tiers and Rate Limits
-
-| Provider | Free Tier | Demo Tier | Pro Tier |
-|---|---|---|---|
-| **CoinGecko** | GeckoTerminal API (7 actions, 30 req/min) | CoinGecko demo API (13 actions, 30 req/min) | CoinGecko pro API (13 actions, 500 req/min) |
-| **DeFiLlama** | 5 actions, 60 req/min | — | 7 actions, 120 req/min |
-| **GoPlus** | All 9 actions, 30 req/min | — | All 9 actions, 120 req/min |
-
-Tier inference when adding keys via `provider add`:
-- **CoinGecko:** Keys starting with `CG-` → `demo`; others → `pro`
-- **DeFiLlama:** Always `pro`
-- **GoPlus:** Always `free`
-- Override with `--tier <free|demo|pro>`
-
 ### AIXBT
-
-All free tier. No API key required beyond your AIXBT key.
 
 | Action | Use when | Required params | Key response fields |
 |---|---|---|---|
@@ -43,7 +29,7 @@ All free tier. No API key required beyond your AIXBT key.
 
 ### CoinGecko
 
-Two API tiers with different action sets. GeckoTerminal actions (free) use on-chain DEX data by contract address. CoinGecko actions (demo/pro) use CoinGecko IDs.
+GeckoTerminal actions (free) use on-chain DEX data by contract address. CoinGecko API actions use CoinGecko IDs — most require a demo key, but `ohlc` works without one.
 
 **Chain name mapping:** All actions that take a `network` param accept CoinGecko platform IDs (e.g., `"ethereum"`, `"solana"`, `"base"`) — the CLI maps them to GeckoTerminal network IDs automatically.
 
@@ -51,9 +37,7 @@ Two API tiers with different action sets. GeckoTerminal actions (free) use on-ch
 
 | Action | Use when | Tier | Required params | Notes |
 |---|---|---|---|---|
-| `price-history` | You need historical price candles and have a token address and/or CoinGecko ID | free+ | At least one of: `network`+`address`, or `geckoId` | **Meta-action.** Routes to `token-ohlcv` (free, on-chain DEX data) when address is available, falls back to `ohlc` (demo, CoinGecko data) when only `geckoId` is available. Optional: `timeframe` (day/hour/minute), `limit`, `currency` |
-
-Always use with `fallback` — price data is enrichment, not critical path.
+| `price-history` | You need historical price candles and have a token address and/or CoinGecko ID | free | At least one of: `network`+`address`, or `geckoId` | **Meta-action.** Routes to `token-ohlcv` (on-chain DEX data) when address is available, falls back to `ohlc` (CoinGecko OHLC) when only `geckoId` is available. Both paths are free tier. Always use with `fallback`. Optional: `timeframe` (day/hour/minute), `limit`, `currency` |
 
 #### GeckoTerminal Actions (free tier)
 
@@ -75,7 +59,7 @@ Also available: `pool` (single pool detail), `token-ohlcv` (OHLCV by address —
 | `trending` | You need currently trending coins on CoinGecko | None | Coins, NFTs, and categories |
 | `categories` | You need coin categories with market data | None | Category slugs useful for `markets` filtering |
 
-Also available: `ohlc` (OHLC by CoinGecko ID — underlying action for `price-history` fallback when only `geckoId` is available).
+Also available: `ohlc` (free tier — OHLC by CoinGecko ID, underlying action for `price-history` when only `geckoId` is available).
 
 ### DeFiLlama
 
@@ -86,14 +70,14 @@ Also available: `ohlc` (OHLC by CoinGecko ID — underlying action for `price-hi
 | `tvl` | You need aggregate TVL history across all chains | free | None | Historical total DeFi TVL |
 | `chains` | You need blockchain TVL rankings | free | None | Current TVL per chain |
 | `chain-tvl` | You need TVL history for a specific chain | free | `chain` (path) | CoinGecko chain names accepted (mapped automatically) |
-| `emissions` | You need token unlock/emission schedules | **pro** | `coingeckoId` (path) | Requires DeFiLlama pro key. Used in 3 recipes with `fallback` |
+| `emissions` | You need token unlock/emission schedules | **pro** | `coingeckoId` (path) | Requires DeFiLlama pro key — use with `fallback` |
 | `yields` | You need DeFi yield/APY data | **pro** | None | Pool-level yield data |
 
 **Chain name mapping:** The `chain` param accepts CoinGecko platform IDs (e.g., `"ethereum"`) — the CLI maps them to DeFiLlama chain names (e.g., `"Ethereum"`).
 
 ### GoPlus
 
-All actions are free tier. No API key required.
+All actions are free tier.
 
 | Action | Use when | Required params | Notes |
 |---|---|---|---|
@@ -102,14 +86,6 @@ All actions are free tier. No API key required.
 | `approval-security` | You need to audit token approval risks | `chain_id` (path), `contract_addresses` | Unlimited approvals, proxy risks |
 
 Also available: `token-security` (direct EVM endpoint), `solana-token-security`, `sui-token-security` (use `security-check` instead — it handles chain routing), `nft-security`, `phishing-site`, `supported-chains`.
-
-### Meta-Actions
-
-Two actions use a `resolve` function instead of a fixed path — they route to different underlying actions based on available params and tier:
-
-**`price-history`** (CoinGecko): Prefers on-chain DEX data (free). When `network` + `address` are available, routes to `token-ohlcv`. When only `geckoId` is available and tier is demo+, routes to `ohlc`. Returns null (triggers fallback) if neither path works.
-
-**`security-check`** (GoPlus): Routes based on chain name. `"solana"` → `solana-token-security`. `"sui"` → `sui-token-security`. Anything else → `token-security` with CoinGecko chain name → numeric chain ID mapping.
 
 ---
 
@@ -230,7 +206,7 @@ data: [{
 - **Curve shape matters more than any single value.** Steady climb = organic growth. Sharp spike = event-driven (check signals). Spike then decay = attention didn't stick. V-shape = revival.
 - **Without clusters** (`includeClusters: "false"`): score trajectory only. Sufficient for direction/timing analysis.
 - **With clusters**: see which communities drive each phase. Single-cluster spike = fragile. Multi-cluster spike = broad conviction.
-- **Hourly granularity**: 168 data points per 7 days. High-resolution but expensive.
+- **Hourly granularity**: 168 data points per 7 days. High-resolution but data-heavy.
 
 ### Cluster
 
@@ -272,9 +248,9 @@ The measurements below (production API, 2026-03-15, post-select, pre-sample) hel
 |---|---|---|---|
 | SPECIFIED_PROJECTS (3 projects) | per recipe | ~320 | With select (~300/project). Without select: ~5,800 (embedded signals dominate) |
 | SURGING_PROJECTS (10) | per recipe | ~3,000 | With select (~300/project). Scales linearly with limit |
-| POPULAR_PROJECTS (10) | per recipe | ~46,000 | No select — embedded signals are ~90% of cost |
+| POPULAR_PROJECTS (10) | per recipe | ~46,000 | No select — embedded signals are ~90% of data mass |
 | DERIVED_PROJECTS | per recipe | ~3,000 | With select. Count depends on upstream signal diversity |
-| BROAD_SIGNALS (50) | per recipe | ~28,000 | With select including activity. Activity = 76% of cost. Without activity: ~6,700 |
+| BROAD_SIGNALS (50) | per recipe | ~28,000 | With select including activity. Activity = 76% of data mass. Without activity: ~6,700 |
 | PER_PROJECT_SIGNALS | per project | ~400 | Highly variable (0–1,300). Avg ~1 signal/project for surging, more for established |
 | NARRATIVE_ARC | per project | ~120 | 30d, description+date only. Pre-sample. Avg ~3 signals/project |
 | MOMENTUM_HISTORY (7d) | per project | ~1,200 | Without clusters. With clusters: ~1,700 |
@@ -379,7 +355,7 @@ Failed foreach items preserve identity fields (`id`, `name`, `symbol`, `slug`) s
 
 ## 5. Reusable Step Blocks
 
-Copy-paste YAML templates. All use `action`/`source` syntax. Adapt `id`, params, and transforms to your recipe's needs.
+Copy-paste YAML templates. Adapt `id`, params, and transforms to your recipe's needs.
 
 ### Project Discovery
 
@@ -493,7 +469,7 @@ Use when: Market-wide signal landscape before narrowing to specific projects. Es
 Variants:
 - With `clusterIds: "{params.clusterId}"` — cluster-scoped view
 - Lookback window: `-48h` (standard), `-24h` (freshness-critical)
-- With `activity` in select — adds reinforcement timeline (expensive: +76% tokens)
+- With `activity` in select — adds reinforcement timeline (data-heavy: +76% more tokens)
 
 #### PER_PROJECT_SIGNALS
 
@@ -607,7 +583,7 @@ Per-project price candles via CoinGecko.
   fallback: "Look up 30-day price data for this project."
 ```
 
-Use when: The recipe needs price context for momentum or signal analysis. The `price-history` meta-action uses on-chain DEX data (free) when address is available, falls back to CoinGecko OHLC (demo) when only geckoId is available.
+Use when: The recipe needs price context for momentum or signal analysis. The `price-history` meta-action uses on-chain DEX data (free) when address is available, falls back to CoinGecko OHLC when only geckoId is available.
 
 Variants:
 - `timeframe: hour`, `limit: 168` — 7-day hourly candles (trade_scanner)
@@ -670,7 +646,7 @@ Single agent that filters or selects from upstream data, returning IDs for downs
     projectIds: "string[]"
 ```
 
-Use when: Discovery pattern — start broad, narrow down before expensive per-project operations. Creates a segment boundary: steps after this reference `picks.projectIds`, not `projects.data`.
+Use when: Discovery pattern — start broad, narrow down before deeper per-project enrichment. Creates a segment boundary: steps after this reference `picks.projectIds`, not `projects.data`.
 
 Variants:
 - `returns: { picks: "{ signalId: string, reasoning: string }[]" }` — structured picks with reasoning
@@ -798,67 +774,122 @@ Examples: daily_digest
 
 ## 7. Worked Examples
 
-Two recipes illustrating core patterns. For more examples, browse the registry: `aixbt recipe list` shows all 24 recipes, and `aixbt recipe show <name>` dumps full YAML. Notable recipes to study:
+Two recipes illustrating core patterns. The registry has 22 more — `aixbt recipe list` to browse, `aixbt recipe show <name>` to dump full YAML.
 
-- **project_deep_dive** — `requiredOneOf`, parallel agent gate, rich per-project analysis instructions
-- **under_the_radar** — multi-provider enrichment (CoinGecko + GoPlus), parallel agent with structured returns
-- **daily_digest** — BROAD_SIGNALS (market-wide, not per-project), agent gate with selective drill-down
+### Project Deep Dive — Parallel Agent + requiredOneOf
 
-Run registry recipes with `aixbt recipe run <name>`, or save custom YAML and run with `aixbt recipe run path/to/file.yaml`.
-
-### Cluster Focus — Lightweight Minimal
-
-The simplest possible recipe. Two steps, no foreach, no agent, ~11K tokens.
+Full profile pattern with `requiredOneOf` params, multi-step per-project enrichment, and parallel agent gate. The agent step fans out per-project with per-item vs shared context classification. Condensed from the registry version (`aixbt recipe show project_deep_dive` for full instructions).
 
 ```yaml
-name: cluster_focus
+name: project_deep_dive
 version: "1.0"
-estimatedTokens: 11000
+estimatedTokens: 32000
 description: |
-  Signals filtered to a specific community cluster with project context.
-  - Use when investigating what a particular community segment is discussing.
+  Extended multi-section analysis with 90-day price history and full narrative arc.
+  - Use when building a thesis or doing comprehensive research on a project.
 
 params:
-  clusterId:
-    type: string
-    required: true
-    description: "Cluster ID to focus on"
+  projectIds: { type: string, description: "Comma-separated project IDs" }
+  tickers: { type: string, description: "Comma-separated ticker symbols (e.g. SOL,ETH)" }
+  names: { type: string, description: "Comma-separated project names" }
+  address: { type: string, description: "Token contract address" }
+requiredOneOf: [projectIds, tickers, names, address]
 
 steps:
-  - id: signals
+  - id: projects
+    action: projects
+    params:
+      projectIds: "{params.projectIds}"
+      tickers: "{params.tickers}"
+      names: "{params.names}"
+      address: "{params.address}"
+    transform:
+      select: [id, name, description, xHandle, momentumScore, popularityScore, metrics, tokens, coingeckoData, createdAt, reinforcedAt]
+
+  - id: narrative
+    foreach: projects.data
     action: signals
     params:
-      clusterIds: "{params.clusterId}"
-      reinforcedAfter: "-48h"
-      sortBy: reinforcedAt
+      projectIds: "{item.id}"
+      detectedAfter: "-30d"
     transform:
-      sample:
-        tokenBudget: 50000
-        guaranteeCount: 30
+      sample: { tokenBudget: 50000, guaranteePercent: 0.3 }
+      select: [description, detectedAt]
 
-  - id: clusters
+  - id: signals
+    foreach: projects.data
+    action: signals
+    params:
+      projectIds: "{item.id}"
+      reinforcedAfter: "-48h"
+    transform:
+      sample: { tokenBudget: 50000, guaranteeCount: 30 }
+      select: [id, detectedAt, reinforcedAt, description, projectName, projectId, category, hasOfficialSource, clusters]
+
+  - id: momentum
+    foreach: projects.data
+    action: momentum
+    params:
+      id: "{item.id}"
+      start: "-30d"
+      includeClusters: "false"
+
+  - id: surging_rankings            # shared reference — not per-project
+    action: projects
+    params: { limit: 25, sortBy: momentumScore, excludeStables: true }
+    transform:
+      select: [id, name, momentumScore]
+
+  - id: clusters                    # shared reference
     action: clusters
 
+  - id: price_history
+    foreach: projects.data
+    action: price-history
+    source: coingecko
+    params:
+      network: "{item.tokens[0].chain}"
+      address: "{item.tokens[0].address}"
+      geckoId: "{item.coingeckoData.apiId}"
+      timeframe: day
+      limit: 90
+    fallback: "Look up 90-day price data for this project."
+
+  - id: project_analyses
+    type: agent
+    foreach: projects.data          # parallel — one agent per project
+    context: [narrative, signals, momentum, price_history, surging_rankings, clusters]
+    instructions: |
+      Produce investment research on this project. You have:
+      - _item: project metadata (name, metrics, coingeckoData, tokens)
+      - narrative, signals, momentum, price_history: per-project data
+      - surging_rankings, clusters: shared reference data
+      Write a structured report: Narrative Arc, Fundamental Assessment,
+      Momentum Assessment, Market Context, Key Risks, Thesis.
+    returns:
+      projectId: "string"
+      projectName: "string"
+      thesis: "string"
+      analysis: "string"
+
 hints:
-  combine: [signals]
-  include: [clusters]
+  combine: [projects, signals, momentum, narrative, price_history]
+  key: "id"
+  include: [surging_rankings, clusters, project_analyses]
 
 analysis:
   instructions: |
-    Summarize what this cluster is focused on:
-    - Group signals by project and identify themes
-    - Assess signal quality: substantive (TECH_EVENT, PARTNERSHIP,
-      ONCHAIN_METRICS, WHALE_ACTIVITY) vs noise (VISIBILITY_EVENT,
-      OPINION_SPECULATION)
-    - Note cross-cluster reinforcement
-    - Highlight the most conviction-worthy findings
+    Present per-project research reports from parallel agents. Add
+    cross-project synthesis if multiple projects: sector overlap,
+    momentum phase alignment, cluster overlap, narrative convergence.
   output: |
-    Cluster focus summary with top projects, signal themes,
-    and conviction assessment.
+    Detailed research report per project, plus cross-project
+    synthesis if applicable.
 ```
 
 ```bash
-aixbt recipe run cluster_focus --clusterId <id>
+aixbt recipe run project_deep_dive --tickers SOL
+aixbt recipe run project_deep_dive --names "solana,ethereum"
 ```
 
 ### Trade Scanner — Discovery with Agent Gate
@@ -978,4 +1009,3 @@ analysis:
 aixbt recipe run trade_scanner
 aixbt recipe run trade_scanner --chain solana
 ```
-
