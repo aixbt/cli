@@ -46,8 +46,8 @@ describe('coingeckoProvider', () => {
   // -- Rate limits --
 
   describe('rateLimits', () => {
-    it('should have free tier rate limit of 30 per minute', () => {
-      expect(coingeckoProvider.rateLimits.perMinute.free).toBe(30)
+    it('should have free tier rate limit of 10 per minute', () => {
+      expect(coingeckoProvider.rateLimits.perMinute.free).toBe(10)
     })
 
     it('should have demo tier rate limit of 30 per minute', () => {

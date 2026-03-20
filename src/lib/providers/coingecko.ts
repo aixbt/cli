@@ -273,7 +273,7 @@ export const coingeckoProvider: Provider = {
   },
   rateLimits: {
     perMinute: {
-      free: 30,
+      free: 10,
       demo: 30,
       pro: 500,
     },
