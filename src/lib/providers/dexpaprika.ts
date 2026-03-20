@@ -60,9 +60,7 @@ export const dexpaprikaProvider: Provider = {
     default: 'https://api.dexpaprika.com',
   },
   rateLimits: {
-    perMinute: {
-      free: 60,
-    },
+    perMinute: {},
   },
   mapParams: (params, actionName) => {
     if (actionName !== 'pool-ohlcv') return params
