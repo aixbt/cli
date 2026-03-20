@@ -137,7 +137,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
     providerUpgradeHint = getUpgradeHint(provider, tier)
     const rateLimit = provider.rateLimits.perMinute[tier] ?? null
     providerTracker = rateLimit ? getTracker(step.source!, rateLimit) : null
-    concurrency = providerTracker ? deriveProviderConcurrency(providerTracker) : 3
+    concurrency = providerTracker ? deriveProviderConcurrency(providerTracker) : 10
   } else {
     concurrency = deriveConcurrency(currentRateLimit)
   }

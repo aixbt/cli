@@ -81,7 +81,7 @@ export const chartsProvider: Provider = {
   displayName: 'Charts',
   actions: chartsActions,
   baseUrl: { byTier: {}, default: '' },
-  rateLimits: { perMinute: { free: 600 } },
+  rateLimits: { perMinute: {} },
   normalize: (body) => body,
 }
 
