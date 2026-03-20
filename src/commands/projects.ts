@@ -1,6 +1,6 @@
 import type { Command } from 'commander'
 import type { SignalData } from '../types.js'
-import { getClientOptions } from '../lib/auth.js'
+import { getClientOptions, getPublicClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
@@ -298,18 +298,13 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
 }
 
 async function handleChains(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
-  const opts = cmd.optsWithGlobals()
+  // Chains is a reference endpoint — always returns current data, no auth required.
+  const { clientOpts, outputFormat } = getPublicClientOptions(cmd)
 
   const result = await output.withSpinner(
     'Fetching chains...',
     outputFormat,
-    () => withPayPerUse(
-      () => get<string[]>('/v2/projects/chains', undefined, clientOpts),
-      authMode,
-      reconstructCommand('aixbt projects chains', opts),
-      outputFormat,
-    ),
+    () => get<string[]>('/v2/projects/chains', undefined, clientOpts),
     'Failed to fetch chains',
     { silent: true },
   )
@@ -327,7 +322,7 @@ async function handleChains(cmd: Command): Promise<void> {
   }
 
   for (const chain of chains) {
-    console.log(`  ${chain}`)
+    console.log(chain)
   }
   console.log()
   output.dim(`${chains.length} chain${chains.length === 1 ? '' : 's'} available`)

@@ -76,9 +76,9 @@ export interface Recipe {
   name: string
   version: string
   description: string
-  tier?: string
   estimatedTokens?: number | null
   params?: Record<string, RecipeParam>
+  requiredOneOf?: string[]
   steps: RecipeStep[]
   hints?: RecipeHints
   analysis?: RecipeAnalysis
@@ -119,13 +119,16 @@ export interface ForeachStep {
   input?: never
 }
 
+export const AGENT_RETURN_TYPES = ['string', 'number', 'boolean', 'string[]', 'object'] as const
+export type AgentReturnType = (typeof AGENT_RETURN_TYPES)[number]
+
 export interface AgentStep {
   id: string
   type: 'agent'
   context: string[]
   instructions: string
   returns: Record<string, string>
-  foreach?: never
+  foreach?: string
   input?: never
   transform?: never
 }
@@ -171,7 +174,7 @@ export function isAgentStep(step: RecipeStep): step is AgentStep {
 }
 
 export function isForeachStep(step: RecipeStep): step is ForeachStep {
-  return 'foreach' in step && (step as ForeachStep).foreach !== undefined
+  return 'foreach' in step && (step as ForeachStep).foreach !== undefined && !isAgentStep(step)
 }
 
 export function isTransformStep(step: RecipeStep): step is TransformStep {
@@ -180,6 +183,10 @@ export function isTransformStep(step: RecipeStep): step is TransformStep {
 
 export function isApiStep(step: RecipeStep): step is ApiStep {
   return !isAgentStep(step) && !isForeachStep(step) && !isTransformStep(step)
+}
+
+export function isParallelAgentStep(step: RecipeStep): step is AgentStep & { foreach: string } {
+  return isAgentStep(step) && typeof step.foreach === 'string' && step.foreach.length > 0
 }
 
 // -- Execution types --
@@ -200,11 +207,14 @@ export interface StepResult {
   data: unknown
   rateLimit: RateLimitInfo | null
   timing: StepTiming
+  /** Present when a sample transform reduced the result set */
+  sampled?: { before: number; after: number; weightedBy: string }
 }
 
 export interface ForeachResult extends StepResult {
   items: unknown[]
   failures: ForeachFailure[]
+  _fallbackNote?: string
 }
 
 export interface ForeachFailure {
@@ -229,6 +239,14 @@ export interface Segment {
 
 // -- Recipe execution output types --
 
+export interface ParallelAgentMeta {
+  items: unknown[]
+  itemKey: string
+  concurrency: number
+  perItemContext: string[]
+  sharedContext: string[]
+}
+
 export interface RecipeAwaitingAgent {
   status: 'awaiting_agent'
   recipe: string
@@ -239,6 +257,11 @@ export interface RecipeAwaitingAgent {
   data: Record<string, unknown>
   tokenCount: number
   resumeCommand: string
+  parallel?: ParallelAgentMeta
+  /** Present only on parallel steps — tells the operating agent how to execute */
+  parallelExecution?: string
+  /** Domain context blocks resolved from recipe actions */
+  contextHints?: string[]
 }
 
 export interface RecipeComplete {
@@ -250,4 +273,6 @@ export interface RecipeComplete {
   tokenCount: number
   hints?: RecipeHints
   analysis?: RecipeAnalysis
+  /** Domain context blocks resolved from recipe actions */
+  contextHints?: string[]
 }

@@ -545,12 +545,12 @@ describe('providerRequest', () => {
       ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     })
 
-    it('should throw RateLimitError after max retries on 429', async () => {
+    it('should throw RateLimitError after cumulative wait exceeds limit on 429', async () => {
       const provider = makeProvider()
 
-      // 4 x 429 responses (initial + 3 retries)
+      // Keep returning 429 with 61s retry-after — exceeds 120s limit on 2nd retry
       for (let i = 0; i < 4; i++) {
-        mockFetchResponseWithHeaders({}, 429, { 'retry-after': '1' })
+        mockFetchResponseWithHeaders({}, 429, { 'retry-after': '61' })
       }
 
       await expect(
@@ -577,7 +577,7 @@ describe('providerRequest', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2)
     })
 
-    it('should default to 60s wait when retry-after header is missing', async () => {
+    it('should use exponential backoff when retry-after header is missing', async () => {
       const provider = makeProvider()
 
       // First call: 429 without retry-after
@@ -594,7 +594,8 @@ describe('providerRequest', () => {
         params: {},
       })
 
-      expect(sleep).toHaveBeenCalledWith(60_000)
+      // First retry: 5s * 2^0 = 5s
+      expect(sleep).toHaveBeenCalledWith(5_000)
     })
   })
 })

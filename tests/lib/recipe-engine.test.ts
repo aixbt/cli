@@ -1508,9 +1508,9 @@ steps:
 
       // 3 items in data: 2 successes + 1 error marker (inline)
       expect(foreachData).toHaveLength(3)
-      expect(foreachData[0]).toEqual({ ok: true })
+      expect(foreachData[0]).toEqual({ ok: true, _source_id: 'p1' })
       expect(foreachData[1]).toEqual(expect.objectContaining({ _error: true, error: 'API error for item 2' }))
-      expect(foreachData[2]).toEqual({ ok: true })
+      expect(foreachData[2]).toEqual({ ok: true, _source_id: 'p3' })
     })
 
     it('should resolve params per-item using item templating', async () => {
@@ -1571,7 +1571,7 @@ steps:
 
       // The foreach step data should be an array of the successful results
       const momentumData = data.momentum as unknown[]
-      expect(momentumData).toEqual([{ score: 10 }, { score: 20 }])
+      expect(momentumData).toEqual([{ score: 10, _source_id: 'p1' }, { score: 20, _source_id: 'p2' }])
     })
 
     it('should process all items even with low rate limit concurrency', async () => {
@@ -1606,7 +1606,7 @@ steps:
       const data = (result as { data: Record<string, unknown> }).data
       const momentumData = data.momentum as unknown[]
       expect(momentumData).toHaveLength(3)
-      expect(momentumData).toEqual([{ m: 1 }, { m: 2 }, { m: 3 }])
+      expect(momentumData).toEqual([{ m: 1, _source_id: 'p1' }, { m: 2, _source_id: 'p2' }, { m: 3, _source_id: 'p3' }])
     })
 
     it('should throw FOREACH_ALL_FAILED when all items fail', async () => {
@@ -1983,8 +1983,8 @@ steps:
       const details = data.details as Record<string, unknown>[]
       expect(details).toHaveLength(2)
       // Each iteration result should be projected to only id and status
-      expect(details[0]).toEqual({ id: 'p1', status: 'active' })
-      expect(details[1]).toEqual({ id: 'p2', status: 'inactive' })
+      expect(details[0]).toEqual({ id: 'p1', status: 'active', _source_id: 'p1' })
+      expect(details[1]).toEqual({ id: 'p2', status: 'inactive', _source_id: 'p2' })
     })
 
     it('should apply sample transform to array responses in foreach iterations', async () => {
@@ -2024,6 +2024,7 @@ steps:
     }
 
     it('should trigger multi-page fetch when limit exceeds 50', async () => {
+      // Note: MAX_TOTAL_LIMIT is 100, so a requested limit of 150 is capped to 100 (2 pages of 50)
       const yaml = `
 name: test-recipe
 version: "1.0"
@@ -2036,12 +2037,10 @@ steps:
 `
       const page1 = makeItems(50, 'sig')
       const page2 = makeItems(50, 'sig2')
-      const page3 = makeItems(50, 'sig3')
 
       mockGet
-        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 150))
-        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 150))
-        .mockResolvedValueOnce(mockPaginatedResponse(page3, 3, 150))
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 100))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 100))
 
       const result = await executeRecipe({
         yaml,
@@ -2050,17 +2049,16 @@ steps:
       })
 
       expect(result.status).toBe('complete')
-      expect(mockGet).toHaveBeenCalledTimes(3)
+      expect(mockGet).toHaveBeenCalledTimes(2)
 
       // Verify page params for each call
       expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
       expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 50 })
-      expect(mockGet.mock.calls[2][1]).toMatchObject({ page: 3, limit: 50 })
 
-      // Verify concatenated result
+      // Verify concatenated result (capped at 100 by MAX_TOTAL_LIMIT)
       const data = (result as { data: Record<string, unknown> }).data
       const signals = data.signals as unknown[]
-      expect(signals).toHaveLength(150)
+      expect(signals).toHaveLength(100)
     })
 
     it('should not paginate when limit is 50 or below', async () => {

@@ -1,6 +1,6 @@
 import { RecipeValidationError } from '../errors.js'
 import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../../types.js'
-import { isAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../../types.js'
+import { isAgentStep, isParallelAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../../types.js'
 import { getProviderNames, getProvider } from '../providers/registry.js'
 
 export function extractTemplateRefs(str: string): string[] {
@@ -43,6 +43,21 @@ export function extractStepReferences(step: RecipeStep): Set<string> {
   // Transform step: only reference is the input step
   if (isTransformStep(step)) {
     refs.add(step.input)
+    return refs
+  }
+
+  // Agent step with foreach (parallel agent)
+  if (isParallelAgentStep(step)) {
+    const foreachRef = step.foreach
+    const dotIndex = foreachRef.indexOf('.')
+    const stepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
+    if (stepId !== 'params' && stepId !== 'item') {
+      refs.add(stepId)
+    }
+    // Also add context refs
+    for (const ref of step.context) {
+      refs.add(ref)
+    }
     return refs
   }
 
@@ -114,7 +129,7 @@ export function buildSegments(recipe: Recipe): Segment[] {
     }
   }
 
-  if (currentSteps.length > 0) {
+  if (currentSteps.length > 0 || precedingAgentStep) {
     segments.push({
       index: segments.length,
       steps: currentSteps,
@@ -145,6 +160,19 @@ function validateSegmentBoundaries(
             issues.push({
               path: `steps.${step.id}.context`,
               message: `Step "${step.id}" references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
+            })
+          }
+        }
+        // Validate foreach ref on parallel agent steps
+        if (isParallelAgentStep(step)) {
+          const foreachRef = step.foreach
+          const dotIndex = foreachRef.indexOf('.')
+          const refStepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
+          if (refStepId !== 'params' && refStepId !== 'item' && !accessible.has(refStepId)) {
+            const accessibleList = [...accessible].sort()
+            issues.push({
+              path: `steps.${step.id}.foreach`,
+              message: `Step "${step.id}" foreach references "${refStepId}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
             })
           }
         }
@@ -220,6 +248,20 @@ function validateVariableReferences(
   }
 
   for (const step of recipe.steps) {
+    // Parallel agent step: validate foreach reference
+    if (isParallelAgentStep(step)) {
+      const foreachRef = step.foreach
+      const dotIndex = foreachRef.indexOf('.')
+      const stepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
+      if (stepId !== 'params' && stepId !== 'item' && !allStepIds.has(stepId)) {
+        issues.push({
+          path: `steps.${step.id}.foreach`,
+          message: `References unknown step "${stepId}"`,
+        })
+      }
+      continue
+    }
+
     if (isAgentStep(step)) continue
 
     // Transform step: validate input reference

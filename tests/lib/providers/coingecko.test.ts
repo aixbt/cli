@@ -83,7 +83,6 @@ describe('coingeckoProvider', () => {
       'markets',
       'coin',
       'trending',
-      'ohlc',
       'categories',
     ]
 
@@ -94,6 +93,12 @@ describe('coingeckoProvider', () => {
       'trending-pools',
       'token-ohlcv',
       'pool-ohlcv',
+    ]
+
+    /** Actions that are minTier: 'free' but use CoinGecko paths (not GeckoTerminal) */
+    const COINGECKO_FREE_ACTIONS = [
+      'ohlc',
+      'price-history',
     ]
 
     it('should define all 13 actions', () => {
@@ -128,6 +133,15 @@ describe('coingeckoProvider', () => {
       }
     })
 
+    it('should have minTier "free" for CoinGecko free actions', () => {
+      for (const name of COINGECKO_FREE_ACTIONS) {
+        expect(
+          coingeckoProvider.actions[name].minTier,
+          `action "${name}" should have minTier "free"`,
+        ).toBe('free')
+      }
+    })
+
     // -- CoinGecko-only actions: no pathByTier --
 
     it('should not have pathByTier on CoinGecko-only actions', () => {
@@ -141,16 +155,12 @@ describe('coingeckoProvider', () => {
 
     // -- GeckoTerminal actions: pathByTier overrides --
 
-    it('should have pathByTier with demo and pro overrides for GeckoTerminal actions', () => {
+    it('should have pathByTier with pro override for GeckoTerminal actions', () => {
       for (const name of GECKOTERMINAL_ACTIONS) {
         const action = coingeckoProvider.actions[name]
         expect(
           action.pathByTier,
           `action "${name}" should have pathByTier`,
-        ).toBeDefined()
-        expect(
-          action.pathByTier!.demo,
-          `action "${name}" pathByTier should have demo key`,
         ).toBeDefined()
         expect(
           action.pathByTier!.pro,
@@ -159,13 +169,9 @@ describe('coingeckoProvider', () => {
       }
     })
 
-    it('should have GeckoTerminal pathByTier demo/pro paths starting with /onchain', () => {
+    it('should have GeckoTerminal pathByTier pro paths starting with /onchain', () => {
       for (const name of GECKOTERMINAL_ACTIONS) {
         const action = coingeckoProvider.actions[name]
-        expect(
-          action.pathByTier!.demo,
-          `action "${name}" pathByTier.demo should start with /onchain`,
-        ).toMatch(/^\/onchain/)
         expect(
           action.pathByTier!.pro,
           `action "${name}" pathByTier.pro should start with /onchain`,

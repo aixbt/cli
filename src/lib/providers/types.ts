@@ -35,7 +35,7 @@ export interface ActionDefinition {
   resolve?: (
     params: Record<string, string | number | boolean | undefined>,
     effectiveTier: ProviderTier,
-  ) => ResolvedAction | null
+  ) => ResolvedAction | { error: string } | null
 }
 
 export interface ProviderRateLimits {
@@ -75,6 +75,13 @@ export interface Provider {
    * Called after template resolution, before path substitution and query params.
    */
   mapParams?: (params: Record<string, string | number | boolean | undefined>, actionName: string) => Record<string, string | number | boolean | undefined>
+  /**
+   * Override the base URL for specific action+tier combinations.
+   * Used when a provider has actions that route to a different API surface
+   * (e.g., CoinGecko on-chain actions route to GeckoTerminal on non-pro tiers).
+   * Return undefined to use the standard baseUrl.byTier resolution.
+   */
+  resolveBaseUrl?: (actionName: string, tier: ProviderTier) => string | undefined
 }
 
 export interface ProviderKeyConfig {

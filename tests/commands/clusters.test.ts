@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 
 import { createProgram } from '../../src/cli.js'
 import { setConfigPath } from '../../src/lib/config.js'
-import { CliError } from '../../src/lib/errors.js'
 import { jsonResponse } from '../helpers.js'
 
 // -- Mock fetch globally --
@@ -157,43 +156,6 @@ describe('clusters commands', () => {
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('No results')
-    })
-  })
-
-  // -- pay-per-use guard --
-
-  describe('pay-per-use guard', () => {
-    it('should throw CliError with X402_NOT_AVAILABLE when --pay-per-use is used', async () => {
-      const program = createProgram()
-      program.exitOverride()
-
-      await expect(
-        program.parseAsync(['node', 'aixbt', '--pay-per-use', 'clusters'], { from: 'node' }),
-      ).rejects.toThrow()
-
-      // Verify the error is a CliError with the correct code
-      try {
-        const p = createProgram()
-        p.exitOverride()
-        await p.parseAsync(['node', 'aixbt', '--pay-per-use', 'clusters'], { from: 'node' })
-      } catch (err) {
-        expect(err).toBeInstanceOf(CliError)
-        expect((err as CliError).code).toBe('X402_NOT_AVAILABLE')
-        expect((err as CliError).message).toContain('Pay-per-use is not available')
-      }
-    })
-
-    it('should not call the API when --pay-per-use is used', async () => {
-      const program = createProgram()
-      program.exitOverride()
-
-      try {
-        await program.parseAsync(['node', 'aixbt', '--pay-per-use', 'clusters'], { from: 'node' })
-      } catch {
-        // Expected to throw
-      }
-
-      expect(mockFetch).not.toHaveBeenCalled()
     })
   })
 

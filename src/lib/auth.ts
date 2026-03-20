@@ -111,3 +111,37 @@ export function getClientOptions(cmd: Command): {
 
   return { clientOpts, authMode, outputFormat, verbosity, limit }
 }
+
+/**
+ * Like getClientOptions but never throws on missing API key.
+ * For public reference endpoints (clusters, chains) that return current
+ * data for everyone — use the key if available, otherwise unauthenticated.
+ */
+export function getPublicClientOptions(cmd: Command): {
+  clientOpts: ApiClientOptions
+  outputFormat: OutputFormat
+  verbosity: number
+} {
+  const opts = cmd.optsWithGlobals()
+
+  const resolved = resolveConfig({
+    apiKey: opts.apiKey as string | undefined,
+    apiUrl: opts.apiUrl as string | undefined,
+    format: opts.format as string | undefined,
+    limit: opts.limit as string | undefined,
+  })
+
+  const outputFormat = resolved.format
+  const verbosity = (opts.verbose as number) ?? 0
+
+  // Use the key if available for better rate limits, otherwise go unauthenticated
+  const authMode: AuthMode = resolved.apiKey
+    ? { mode: 'api-key', apiKey: resolved.apiKey, config: resolved }
+    : { mode: 'delayed' }
+
+  const clientOpts = buildClientOptions(authMode, {
+    apiUrl: opts.apiUrl as string | undefined,
+  })
+
+  return { clientOpts, outputFormat, verbosity }
+}
