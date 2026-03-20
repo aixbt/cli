@@ -15,7 +15,7 @@ export type { ForeachProgressEvent } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
 import { buildAwaitingAgentOutput, buildAwaitingParallelAgentOutput, buildCompleteOutput } from './output.js'
 import { dispatchProviderStep } from '../providers/client.js'
-import { getProvider } from '../providers/registry.js'
+import { getProvider, parseSource } from '../providers/registry.js'
 import { resolveProviderKey } from '../providers/config.js'
 import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 import { TIER_RANK } from '../providers/types.js'
@@ -188,8 +188,9 @@ function validateRequiredParams(
 function emitTierWarnings(recipe: Recipe): void {
   for (const step of recipe.steps) {
     if (!isApiStep(step) && !isForeachStep(step)) continue
-    const source = step.source
-    if (!source || source === 'aixbt') continue
+    const rawSource = step.source
+    if (!rawSource || rawSource === 'aixbt') continue
+    const { providerName: source } = parseSource(rawSource)
 
     let provider
     try { provider = getProvider(source) } catch { continue }
@@ -379,10 +380,11 @@ async function executeStep(
     // Check provider availability before iterating — avoid N failed calls
     if (step.source && step.source !== 'aixbt') {
       try {
-        const provider = getProvider(step.source)
+        const { providerName } = parseSource(step.source)
+        const provider = getProvider(providerName)
         const action = provider.actions[step.action]
         if (action && action.minTier !== 'free') {
-          const resolved = resolveProviderKey(step.source)
+          const resolved = resolveProviderKey(providerName)
           const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
           if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
             if (step.fallback) {

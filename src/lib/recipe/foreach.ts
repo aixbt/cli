@@ -7,7 +7,7 @@ import { applyTransforms } from '../transforms.js'
 import { get, sleep } from '../api-client.js'
 import { CliError } from '../errors.js'
 import { fmt } from '../output.js'
-import { getProvider } from '../providers/registry.js'
+import { getProvider, parseSource } from '../providers/registry.js'
 import { dispatchProviderStep } from '../providers/client.js'
 import { resolveProviderKey } from '../providers/config.js'
 import { getTracker, deriveProviderConcurrency, waitForCapacity } from '../providers/rate-limit.js'
@@ -130,7 +130,8 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
   let providerTier: string | undefined
   let providerUpgradeHint: string | undefined
   if (isExternalProvider) {
-    const provider = getProvider(step.source!)
+    const { providerName } = parseSource(step.source!)
+    const provider = getProvider(providerName)
     const resolvedKey = resolveProviderKey(provider.name)
     const tier: ProviderTier = resolvedKey?.tier ?? 'free'
     providerTier = tier

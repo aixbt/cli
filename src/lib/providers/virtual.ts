@@ -31,8 +31,25 @@ const chartsActions: Record<string, ActionDefinition> = {
     ],
     minTier: 'free',
     resolve: (params) => {
-      // On-chain path: DexPaprika (pool lookup + OHLCV, no rate limit)
+      const via = params._via as string | undefined
+
+      // On-chain path
       if (hasValue(params.network) && hasValue(params.address)) {
+        // Default: DexPaprika (fast, keyless). Override with _via.
+        const target = via ?? 'dexpaprika'
+        if (target === 'coingecko') {
+          return {
+            provider: 'coingecko',
+            action: 'token-ohlcv',
+            params: {
+              network: params.network,
+              address: params.address,
+              timeframe: params.timeframe ?? 'day',
+              limit: params.limit,
+              currency: params.currency,
+            },
+          }
+        }
         return {
           provider: 'dexpaprika',
           action: 'token-ohlcv',
@@ -68,11 +85,34 @@ const chartsActions: Record<string, ActionDefinition> = {
       { name: 'address', required: true, description: 'Token contract address', inPath: true },
     ],
     minTier: 'free',
-    resolve: (params) => ({
-      provider: 'dexpaprika',
-      action: 'token-pools',
-      params,
-    }),
+    resolve: (params) => {
+      const via = params._via as string | undefined
+      return {
+        provider: via ?? 'dexpaprika',
+        action: 'token-pools',
+        params,
+      }
+    },
+  },
+  'pool-ohlcv': {
+    method: 'GET',
+    description: 'Get OHLCV candlestick data for a specific DEX pool',
+    hint: 'You have a pool address and need historical price candles from DEX trading data',
+    params: [
+      { name: 'network', required: true, description: 'Network ID (e.g., "ethereum", "solana")', inPath: true },
+      { name: 'address', required: true, description: 'Pool contract address', inPath: true },
+      { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")' },
+      { name: 'limit', required: false, description: 'Number of candles to return (default: 30)' },
+    ],
+    minTier: 'free',
+    resolve: (params) => {
+      const via = params._via as string | undefined
+      return {
+        provider: via ?? 'dexpaprika',
+        action: 'pool-ohlcv',
+        params,
+      }
+    },
   },
 }
 

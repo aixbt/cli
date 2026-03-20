@@ -3,7 +3,7 @@ import { TIER_RANK } from './types.js'
 import type { Provider, ProviderTier } from './types.js'
 import type { ProviderRateTracker } from './rate-limit.js'
 import { resolveProviderKey } from './config.js'
-import { getProvider } from './registry.js'
+import { getProvider, parseSource } from './registry.js'
 import { getTracker, recordRequest } from './rate-limit.js'
 import { CliError, ApiError, NetworkError, RateLimitError } from '../errors.js'
 import { sleep } from '../api-client.js'
@@ -208,8 +208,10 @@ export async function dispatchProviderStep(
   ctx: ExecutionContext,
   foreachItem?: unknown,
 ): Promise<unknown> {
-  const provider = getProvider(source)
+  const { providerName, hint } = parseSource(source)
+  const provider = getProvider(providerName)
   const params = stepParams ? flattenParams(stepParams, ctx, foreachItem) : {}
+  if (hint) params._via = hint
   const response = await providerRequest({ provider, actionName, params })
   return response.data
 }
