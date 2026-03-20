@@ -4,6 +4,7 @@ import { aixbtProvider } from './aixbt.js'
 import { defillamaProvider } from './defillama.js'
 import { coingeckoProvider } from './coingecko.js'
 import { goplusProvider } from './goplus.js'
+import { dexpaprikaProvider } from './dexpaprika.js'
 
 const providers = new Map<string, Provider>()
 
@@ -39,3 +40,4 @@ registerProvider(aixbtProvider)
 registerProvider(defillamaProvider)
 registerProvider(coingeckoProvider)
 registerProvider(goplusProvider)
+registerProvider(dexpaprikaProvider)
