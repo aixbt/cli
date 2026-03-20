@@ -198,11 +198,16 @@ describe('rate-limit', () => {
       expect(deriveProviderConcurrency(tracker)).toBe(3)
     })
 
-    it('should return 2 when 3-10 requests remaining', () => {
-      const tracker = getTracker('test-provider', 15)
+    it('should return 1 for low-limit providers regardless of remaining', () => {
+      const tracker = getTracker('test-provider', 10)
+      expect(deriveProviderConcurrency(tracker)).toBe(1)
+    })
 
-      // Use 10, leaving 5 remaining
-      for (let i = 0; i < 10; i++) {
+    it('should return 2 when 3-10 requests remaining', () => {
+      const tracker = getTracker('test-provider', 30)
+
+      // Use 25, leaving 5 remaining
+      for (let i = 0; i < 25; i++) {
         recordRequest(tracker)
       }
 
@@ -259,10 +264,10 @@ describe('rate-limit', () => {
     })
 
     it('should return 2 at exactly 3 remaining (boundary)', () => {
-      const tracker = getTracker('test-provider', 5)
+      const tracker = getTracker('test-provider', 20)
 
-      // Use 2, leaving 3 remaining
-      for (let i = 0; i < 2; i++) {
+      // Use 17, leaving 3 remaining
+      for (let i = 0; i < 17; i++) {
         recordRequest(tracker)
       }
 
