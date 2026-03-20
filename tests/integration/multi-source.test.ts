@@ -659,7 +659,7 @@ describe('multi-source integration tests', () => {
   // =========================================================================
 
   describe('step fallback on missing provider key/tier', () => {
-    // CoinGecko ohlc requires demo tier; with no key configured, effective tier is free
+    // CoinGecko "coin" requires demo tier; with no key configured, effective tier is free
     const COINGECKO_SINGLE_RECIPE = `
 name: coingecko-fallback-test
 version: "1.0"
@@ -667,13 +667,12 @@ description: Test fallback for CoinGecko step requiring demo tier
 steps:
   - id: projects
     action: projects
-  - id: price_history
-    action: ohlc
+  - id: coin_info
+    action: coin
     source: coingecko
     params:
       id: "bitcoin"
-      days: "30"
-    fallback: "Pull 30-day OHLC price data from CoinGecko for bitcoin"
+    fallback: "Pull coin detail from CoinGecko for bitcoin"
 `
 
     const COINGECKO_NO_FALLBACK_RECIPE = `
@@ -683,12 +682,11 @@ description: Test step without fallback for CoinGecko step
 steps:
   - id: projects
     action: projects
-  - id: price_history
-    action: ohlc
+  - id: coin_info
+    action: coin
     source: coingecko
     params:
       id: "bitcoin"
-      days: "30"
 `
 
     const COINGECKO_FOREACH_RECIPE = `
@@ -698,14 +696,13 @@ description: Test fallback for foreach CoinGecko step
 steps:
   - id: projects
     action: projects
-  - id: price_history
+  - id: coin_info
     foreach: "projects.data"
-    action: ohlc
+    action: coin
     source: coingecko
     params:
       id: "{item.cgId}"
-      days: "30"
-    fallback: "Pull 30-day OHLC price data from CoinGecko for each project"
+    fallback: "Pull coin detail from CoinGecko for each project"
 `
 
     const PROJECTS = [
@@ -734,11 +731,11 @@ steps:
       expect(complete.data.projects).toEqual(PROJECTS)
 
       // CoinGecko step should have fallback data, not throw
-      const priceHistory = complete.data.price_history as { _fallback: boolean; message: string }
-      expect(priceHistory._fallback).toBe(true)
-      expect(priceHistory.message).toContain('skipped')
-      expect(priceHistory.message).toContain('coingecko')
-      expect(priceHistory.message).toContain('Pull 30-day OHLC price data from CoinGecko for bitcoin')
+      const coinInfo = complete.data.coin_info as { _fallback: boolean; message: string }
+      expect(coinInfo._fallback).toBe(true)
+      expect(coinInfo.message).toContain('skipped')
+      expect(coinInfo.message).toContain('coingecko')
+      expect(coinInfo.message).toContain('Pull coin detail from CoinGecko for bitcoin')
 
       // Should NOT have made any CoinGecko API calls
       const cgCalls = (mockFetch.mock.calls as [string, unknown][])
@@ -763,9 +760,9 @@ steps:
       expect(result.status).toBe('complete')
       const complete = result as RecipeComplete
 
-      const priceHistory = complete.data.price_history as { _fallback: boolean; message: string }
-      expect(priceHistory._fallback).toBe(true)
-      expect(priceHistory.message).toContain('skipped')
+      const coinInfo = complete.data.coin_info as { _fallback: boolean; message: string }
+      expect(coinInfo._fallback).toBe(true)
+      expect(coinInfo.message).toContain('skipped')
     })
 
     it('should return fallback for foreach step before iterating (no API calls made)', async () => {
@@ -789,9 +786,9 @@ steps:
       expect(complete.data.projects).toEqual(PROJECTS)
 
       // Foreach CoinGecko step should have fallback data
-      const priceHistory = complete.data.price_history as { _fallback: boolean; message: string }
-      expect(priceHistory._fallback).toBe(true)
-      expect(priceHistory.message).toContain('Pull 30-day OHLC price data from CoinGecko for each project')
+      const coinInfo = complete.data.coin_info as { _fallback: boolean; message: string }
+      expect(coinInfo._fallback).toBe(true)
+      expect(coinInfo.message).toContain('Pull coin detail from CoinGecko for each project')
 
       // Should NOT have made any CoinGecko API calls
       const cgCalls = (mockFetch.mock.calls as [string, unknown][])

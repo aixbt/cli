@@ -47,12 +47,12 @@ describe('defillamaProvider', () => {
   // -- Rate limits --
 
   describe('rate limits', () => {
-    it('should have free tier rate limit of 60 per minute', () => {
-      expect(defillamaProvider.rateLimits.perMinute.free).toBe(60)
+    it('should have free tier rate limit of 500 per minute', () => {
+      expect(defillamaProvider.rateLimits.perMinute.free).toBe(500)
     })
 
-    it('should have pro tier rate limit of 120 per minute', () => {
-      expect(defillamaProvider.rateLimits.perMinute.pro).toBe(120)
+    it('should have pro tier rate limit of 1000 per minute', () => {
+      expect(defillamaProvider.rateLimits.perMinute.pro).toBe(1000)
     })
   })
 

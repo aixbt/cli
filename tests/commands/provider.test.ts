@@ -106,7 +106,7 @@ describe('provider commands', () => {
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'defillama', '--api-key', 'test-key-abc'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'defillama', '--provider-key', 'test-key-abc'],
         { from: 'node' },
       )
 
@@ -127,7 +127,7 @@ describe('provider commands', () => {
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--api-key', 'CG-demo-key-123'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'CG-demo-key-123'],
         { from: 'node' },
       )
 
@@ -143,7 +143,7 @@ describe('provider commands', () => {
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--api-key', 'pro-key-xyz'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'pro-key-xyz'],
         { from: 'node' },
       )
 
@@ -155,7 +155,7 @@ describe('provider commands', () => {
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'goplus', '--api-key', 'goplus-key'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'goplus', '--provider-key', 'goplus-key'],
         { from: 'node' },
       )
 
@@ -167,7 +167,7 @@ describe('provider commands', () => {
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--api-key', 'CG-demo-key', '--tier', 'pro'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'CG-demo-key', '--tier', 'pro'],
         { from: 'node' },
       )
 
@@ -179,7 +179,7 @@ describe('provider commands', () => {
 
       await expect(
         program.parseAsync(
-          ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'unknown-provider', '--api-key', 'key'],
+          ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'unknown-provider', '--provider-key', 'key'],
           { from: 'node' },
         ),
       ).rejects.toThrow()
@@ -190,7 +190,7 @@ describe('provider commands', () => {
     it('should skip verification when --skip-verify is passed', async () => {
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'defillama', '--api-key', 'key', '--skip-verify'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'defillama', '--provider-key', 'key', '--skip-verify'],
         { from: 'node' },
       )
 
@@ -205,7 +205,7 @@ describe('provider commands', () => {
     it('should display success message in human mode', async () => {
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', 'provider', 'add', 'defillama', '--api-key', 'test-key', '--skip-verify'],
+        ['node', 'aixbt', 'provider', 'add', 'defillama', '--provider-key', 'test-key', '--skip-verify'],
         { from: 'node' },
       )
 

@@ -2024,6 +2024,7 @@ steps:
     }
 
     it('should trigger multi-page fetch when limit exceeds 50', async () => {
+      // Note: MAX_TOTAL_LIMIT is 100, so a requested limit of 150 is capped to 100 (2 pages of 50)
       const yaml = `
 name: test-recipe
 version: "1.0"
@@ -2036,12 +2037,10 @@ steps:
 `
       const page1 = makeItems(50, 'sig')
       const page2 = makeItems(50, 'sig2')
-      const page3 = makeItems(50, 'sig3')
 
       mockGet
-        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 150))
-        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 150))
-        .mockResolvedValueOnce(mockPaginatedResponse(page3, 3, 150))
+        .mockResolvedValueOnce(mockPaginatedResponse(page1, 1, 100))
+        .mockResolvedValueOnce(mockPaginatedResponse(page2, 2, 100))
 
       const result = await executeRecipe({
         yaml,
@@ -2050,17 +2049,16 @@ steps:
       })
 
       expect(result.status).toBe('complete')
-      expect(mockGet).toHaveBeenCalledTimes(3)
+      expect(mockGet).toHaveBeenCalledTimes(2)
 
       // Verify page params for each call
       expect(mockGet.mock.calls[0][1]).toMatchObject({ page: 1, limit: 50 })
       expect(mockGet.mock.calls[1][1]).toMatchObject({ page: 2, limit: 50 })
-      expect(mockGet.mock.calls[2][1]).toMatchObject({ page: 3, limit: 50 })
 
-      // Verify concatenated result
+      // Verify concatenated result (capped at 100 by MAX_TOTAL_LIMIT)
       const data = (result as { data: Record<string, unknown> }).data
       const signals = data.signals as unknown[]
-      expect(signals).toHaveLength(150)
+      expect(signals).toHaveLength(100)
     })
 
     it('should not paginate when limit is 50 or below', async () => {
