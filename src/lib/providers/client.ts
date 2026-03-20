@@ -72,27 +72,21 @@ export async function providerRequest(
   // pool and use pool-ohlcv instead. Applies to free and demo (both use
   // GeckoTerminal for on-chain data; CoinGecko /onchain/ is pro-only).
   if (actionName === 'token-ohlcv' && effectiveTier !== 'pro') {
-    const poolsResponse = await providerRequest({
-      ...options,
-      actionName: 'token-pools',
-      params: { network: params.network, address: params.address },
-    })
-    const pools = poolsResponse.data
-    if (Array.isArray(pools) && pools.length > 0) {
-      const topPool = pools[0] as Record<string, unknown>
-      const poolAddress = topPool.address as string
-      if (poolAddress) {
-        return providerRequest({
-          ...options,
-          actionName: 'pool-ohlcv',
-          params: {
-            network: params.network,
-            address: poolAddress,
-            timeframe: params.timeframe ?? 'day',
-            limit: params.limit,
-          },
-        })
-      }
+    const poolAddress = await lookupPoolAddress(
+      String(params.network ?? ''),
+      String(params.address ?? ''),
+    )
+    if (poolAddress) {
+      return providerRequest({
+        ...options,
+        actionName: 'pool-ohlcv',
+        params: {
+          network: params.network,
+          address: poolAddress,
+          timeframe: params.timeframe ?? 'day',
+          limit: params.limit,
+        },
+      })
     }
     throw new CliError(
       `No DEX pools found for token on network "${params.network}"`,
@@ -311,6 +305,28 @@ async function safeJson(res: Response): Promise<Record<string, unknown> | null> 
   } catch {
     return null
   }
+}
+
+/**
+ * Look up the top DEX pool address for a token via DexScreener (fast, no rate limit).
+ * Returns null if no pool is found or the request fails.
+ */
+async function lookupPoolAddress(network: string, tokenAddress: string): Promise<string | null> {
+  if (!network || !tokenAddress) return null
+  try {
+    const res = await fetch(
+      `https://api.dexscreener.com/tokens/v1/${encodeURIComponent(network)}/${encodeURIComponent(tokenAddress)}`,
+      { headers: { 'User-Agent': USER_AGENT } },
+    )
+    if (!res.ok) return null
+    const pairs = await res.json() as Array<{ pairAddress?: string }>
+    if (Array.isArray(pairs) && pairs.length > 0 && pairs[0].pairAddress) {
+      return pairs[0].pairAddress
+    }
+  } catch {
+    // DexScreener unavailable — caller should fall back
+  }
+  return null
 }
 
 function extractErrorMessage(
