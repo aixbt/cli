@@ -8,12 +8,13 @@ import * as output from '../lib/output.js'
 const PROVIDER_DESCRIPTIONS: Record<string, string> = {
   defillama:
     'DeFi protocol analytics — TVL rankings, chain breakdowns, protocol deep-dives, ' +
-    'token emission schedules, and yield/APY data. 5 free actions (60 req/min), ' +
-    '2 pro actions (emissions, yields) require a DeFiLlama API key (120 req/min).',
+    'token emission schedules, and yield/APY data. 5 free actions (500 req/min), ' +
+    '2 pro actions (emissions, yields) require a DeFiLlama API key (1000 req/min).',
   coingecko:
     'Market data and on-chain DEX analytics — prices, market rankings, OHLC candles, ' +
-    'coin details, categories, pool liquidity, and trending tokens. 4 free actions ' +
-    'via GeckoTerminal (30 req/min), 6 actions require a CoinGecko demo key or above.',
+    'coin details, categories, pool liquidity, and trending tokens. 8 free actions ' +
+    '(30 req/min) including on-chain via GeckoTerminal and OHLC via keyless CoinGecko. ' +
+    '5 actions require a CoinGecko demo key (price, markets, coin, trending, categories).',
   goplus:
     'Token and contract security analysis — detect honeypots, rug pulls, malicious ' +
     'permissions, phishing sites, and approval risks across EVM, Solana, and Sui. ' +

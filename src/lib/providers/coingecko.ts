@@ -1,5 +1,4 @@
 import type { Provider, ActionDefinition, ProviderTier } from './types.js'
-import { TIER_RANK } from './types.js'
 import { flattenJsonApiResponse } from './normalize.js'
 
 function hasValue(v: unknown): v is string | number {
@@ -18,6 +17,7 @@ const CHAIN_TO_NETWORK: Record<string, string> = {
   'solana': 'solana',
   'base': 'base',
   'arbitrum-one': 'arbitrum',
+  'arbitrum-nova': 'arbitrum_nova',
   'avalanche': 'avax',
   'optimistic-ethereum': 'optimism',
   'fantom': 'ftm',
@@ -27,6 +27,15 @@ const CHAIN_TO_NETWORK: Record<string, string> = {
   'gnosis': 'xdai',
   'the-open-network': 'ton',
   'unichain': 'unichain',
+  'near-protocol': 'near',
+  'sei-v2': 'sei-evm',
+  'chiliz': 'chiliz-chain',
+  'immutable': 'immutable-zkevm',
+  'klay-token': 'kaia',
+  'metis-andromeda': 'metis',
+  'flare-network': 'flare',
+  'xrp': 'xrpl',
+  'internet-computer': 'icp',
 }
 
 /** Actions that use the `network` param and need chain mapping */
@@ -101,7 +110,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'days', required: false, description: 'Data range in days (1, 7, 14, 30, 90, 180, 365)' },
       { name: 'interval', required: false, description: 'Candle interval (daily)' },
     ],
-    minTier: 'demo',
+    minTier: 'free',
   },
   categories: {
     method: 'GET',
@@ -118,7 +127,6 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/simple/networks/{network}/token_price/{addresses}',
     pathByTier: {
-      demo: '/onchain/simple/networks/{network}/token_price/{addresses}',
       pro: '/onchain/simple/networks/{network}/token_price/{addresses}',
     },
     description: 'Get on-chain token price by contract address and network',
@@ -133,7 +141,6 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/pools/{address}',
     pathByTier: {
-      demo: '/onchain/networks/{network}/pools/{address}',
       pro: '/onchain/networks/{network}/pools/{address}',
     },
     description: 'Get details for a specific DEX liquidity pool',
@@ -148,7 +155,6 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/tokens/{address}/pools',
     pathByTier: {
-      demo: '/onchain/networks/{network}/tokens/{address}/pools',
       pro: '/onchain/networks/{network}/tokens/{address}/pools',
     },
     description: 'List DEX pools for a specific token',
@@ -164,7 +170,6 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/trending_pools',
     pathByTier: {
-      demo: '/onchain/networks/trending_pools',
       pro: '/onchain/networks/trending_pools',
     },
     description: 'Get trending DEX pools across all networks',
@@ -178,7 +183,6 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
     pathByTier: {
-      demo: '/onchain/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
       pro: '/onchain/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
     },
     description: 'Get on-chain OHLCV candlestick data for a token by contract address',
@@ -198,7 +202,6 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/pools/{address}/ohlcv/{timeframe}',
     pathByTier: {
-      demo: '/onchain/networks/{network}/pools/{address}/ohlcv/{timeframe}',
       pro: '/onchain/networks/{network}/pools/{address}/ohlcv/{timeframe}',
     },
     description: 'Get on-chain OHLCV candlestick data for a specific DEX pool',
@@ -215,7 +218,7 @@ const actions: Record<string, ActionDefinition> = {
   },
   'price-history': {
     method: 'GET',
-    description: 'Get price history — prefers on-chain DEX data (free), falls back to CoinGecko OHLC (demo)',
+    description: 'Get price history — on-chain DEX data if address available, CoinGecko OHLC if geckoId available',
     hint: 'You need historical price candles and have a token address and/or CoinGecko ID',
     params: [
       { name: 'network', required: false, description: 'Network ID — from tokens[].chain (CoinGecko chain names accepted)' },
@@ -226,7 +229,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
     minTier: 'free',
-    resolve: (params, tier) => {
+    resolve: (params) => {
       if (hasValue(params.network) && hasValue(params.address)) {
         return {
           action: 'token-ohlcv',
@@ -240,7 +243,7 @@ const actions: Record<string, ActionDefinition> = {
         }
       }
 
-      if (hasValue(params.geckoId) && TIER_RANK[tier] >= TIER_RANK['demo']) {
+      if (hasValue(params.geckoId)) {
         return {
           action: 'ohlc',
           params: {
@@ -251,7 +254,7 @@ const actions: Record<string, ActionDefinition> = {
         }
       }
 
-      return null
+      return { error: 'no on-chain address or geckoId available for this project' }
     },
   },
 }
@@ -274,6 +277,17 @@ export const coingeckoProvider: Provider = {
       demo: 30,
       pro: 500,
     },
+  },
+  resolveBaseUrl: (actionName: string, tier: ProviderTier): string | undefined => {
+    // On-chain actions use GeckoTerminal on free/demo (CoinGecko /onchain/ is pro-only)
+    if (GECKOTERMINAL_ACTIONS.has(actionName) && tier !== 'pro') {
+      return 'https://api.geckoterminal.com/api/v2'
+    }
+    // CoinGecko market actions work keyless — route to CoinGecko on free tier
+    if (!GECKOTERMINAL_ACTIONS.has(actionName) && tier === 'free') {
+      return 'https://api.coingecko.com/api/v3'
+    }
+    return undefined
   },
   resolveAuth: (apiKey: string, tier: ProviderTier): Record<string, string> => {
     if (tier === 'free') return {}

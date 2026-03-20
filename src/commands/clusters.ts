@@ -1,8 +1,7 @@
 import type { Command } from 'commander'
-import { getClientOptions } from '../lib/auth.js'
+import { getPublicClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
-import { CliError } from '../lib/errors.js'
 
 interface ClusterData {
   id: string
@@ -15,14 +14,8 @@ export function registerClustersCommand(program: Command): void {
     .command('clusters')
     .description('Explore signal clusters')
     .action(async (_opts: unknown, cmd: Command) => {
-      const { clientOpts, authMode, outputFormat, verbosity } = getClientOptions(cmd)
-
-      if (authMode.mode === 'pay-per-use') {
-        throw new CliError(
-          'Pay-per-use is not available for the clusters endpoint. Use an API key or --delayed.',
-          'X402_NOT_AVAILABLE',
-        )
-      }
+      // Clusters is a reference endpoint — always returns current data, no auth required.
+      const { clientOpts, outputFormat, verbosity } = getPublicClientOptions(cmd)
 
       const result = await output.withSpinner(
         'Fetching clusters...',

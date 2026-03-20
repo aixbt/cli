@@ -100,7 +100,7 @@ steps:
       expect(recipe.description).toBe('A test recipe for validation')
     })
 
-    it('should parse tier when provided', () => {
+    it('should ignore tier field (no longer parsed)', () => {
       const yaml = `
 name: test-recipe
 tier: pro
@@ -109,18 +109,8 @@ steps:
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
-      expect(recipe.tier).toBe('pro')
-    })
-
-    it('should leave tier undefined when omitted', () => {
-      const yaml = `
-name: test-recipe
-steps:
-  - id: step1
-    action: "GET /v2/projects"
-`
-      const recipe = parseRecipe(yaml)
-      expect(recipe.tier).toBeUndefined()
+      // tier is no longer a recognized field in recipes
+      expect((recipe as Record<string, unknown>).tier).toBeUndefined()
     })
 
     it('should trim whitespace from name', () => {
@@ -181,7 +171,7 @@ analysis:
       expect(recipe.name).toBe('full-recipe')
       expect(recipe.version).toBe('2.0')
       expect(recipe.description).toBe('A complete recipe')
-      expect(recipe.tier).toBe('enterprise')
+      // tier is no longer a recognized field
       expect(recipe.params).toBeDefined()
       expect(recipe.params!.token.type).toBe('string')
       expect(recipe.params!.token.required).toBe(true)
@@ -1322,7 +1312,7 @@ steps:
   // -- Tier validation --
 
   describe('tier validation', () => {
-    it('should throw when tier is not a string', () => {
+    it('should silently ignore tier field (no longer validated)', () => {
       const yaml = `
 name: test-recipe
 tier: 123
@@ -1330,10 +1320,9 @@ steps:
   - id: step1
     action: "GET /v2/projects"
 `
-      const err = expectValidationError(yaml)
-      expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('tier must be a string'),
-      )
+      // tier is no longer a recognized field, so non-string values are simply ignored
+      const recipe = parseRecipe(yaml)
+      expect(recipe.name).toBe('test-recipe')
     })
   })
 

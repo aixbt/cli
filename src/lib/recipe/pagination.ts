@@ -4,6 +4,7 @@ import { CliError } from '../errors.js'
 import { waitIfRateLimited, type RateLimitTracker } from './foreach.js'
 
 export const MAX_PAGE_LIMIT = 50
+export const MAX_TOTAL_LIMIT = 100
 
 export interface PaginationOptions {
   path: string
@@ -30,15 +31,16 @@ export async function paginateApiStep(options: PaginationOptions): Promise<Pagin
   let page = 1
   const rateLimitTracker: RateLimitTracker = { paused: false, waitedMs: 0 }
 
+  const effectiveLimit = Math.min(targetLimit, MAX_TOTAL_LIMIT)
   const pageSize = MAX_PAGE_LIMIT
-  const maxPages = Math.ceil(targetLimit / pageSize)
+  const maxPages = Math.ceil(effectiveLimit / pageSize)
 
   while (page <= maxPages) {
     if (page > 1) {
       await waitIfRateLimited(currentRateLimit, rateLimitTracker)
     }
 
-    const remaining = targetLimit - allData.length
+    const remaining = effectiveLimit - allData.length
     const perPageLimit = Math.min(pageSize, remaining)
 
     const pageParams = {
@@ -69,7 +71,7 @@ export async function paginateApiStep(options: PaginationOptions): Promise<Pagin
     allData.push(...pageData)
 
     if (!response.pagination?.hasMore) break
-    if (allData.length >= targetLimit) break
+    if (allData.length >= effectiveLimit) break
 
     page++
   }

@@ -132,7 +132,7 @@ export class NoApiKeyError extends CliError {
           flag: '--delayed',
           description: 'Free tier with delayed data',
           cost: 'free',
-          dataFreshness: '12-24h delay',
+          dataFreshness: '24h delay',
           requires: [],
         },
       ],
@@ -156,7 +156,7 @@ export class NoApiKeyError extends CliError {
       '     Run with: --pay-per-use',
       '',
       '  4. Use delayed data (free)',
-      '     Data delayed 12-24h, no account needed',
+      '     Data delayed 24h, no account needed',
       '     Run with: --delayed',
     ].join('\n')
   }
@@ -220,7 +220,7 @@ async function renderNoApiKeyError(outputFormat: OutputFormat): Promise<void> {
   console.log(`     Append ${output.fmt.dim('--pay-per-use')} to any command`)
   console.log()
   console.log(`  ${output.fmt.brandBold('4. Delayed data')} ${output.fmt.dim('(free)')}`)
-  console.log(`     Append ${output.fmt.dim('--delayed')} to any command (data delayed 12-24h)`)
+  console.log(`     Append ${output.fmt.dim('--delayed')} to any command (data delayed 24h)`)
   console.log()
   console.log(`  ${output.fmt.boldWhite('Docs')}`)
   console.log(`  ${output.fmt.dim('humans:')} ${output.fmt.link('https://docs.aixbt.tech/builders')}`)

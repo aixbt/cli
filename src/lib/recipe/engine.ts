@@ -3,16 +3,17 @@ import type {
   RecipeAwaitingAgent, RecipeComplete, Recipe,
   RateLimitInfo,
 } from '../../types.js'
-import { isAgentStep, isApiStep, isForeachStep, isTransformStep } from '../../types.js'
+import { isAgentStep, isParallelAgentStep, isApiStep, isForeachStep, isTransformStep } from '../../types.js'
 import { applyTransforms } from '../transforms.js'
 import { parseRecipe } from './parser.js'
 import { validateRecipe, buildSegments, extractStepReferences } from './validator.js'
 import { get, type ApiClientOptions } from '../api-client.js'
 import { CliError } from '../errors.js'
-import { resolveValue, resolveActionPath, flattenParams } from './template.js'
-import { executeForeach } from './foreach.js'
+import { resolveValue, resolveActionPath, flattenParams, substitutePathParams } from './template.js'
+import { executeForeach, type ForeachProgressEvent } from './foreach.js'
+export type { ForeachProgressEvent } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
-import { buildAwaitingAgentOutput, buildCompleteOutput } from './output.js'
+import { buildAwaitingAgentOutput, buildAwaitingParallelAgentOutput, buildCompleteOutput } from './output.js'
 import { dispatchProviderStep } from '../providers/client.js'
 import { getProvider } from '../providers/registry.js'
 import { resolveProviderKey } from '../providers/config.js'
@@ -75,6 +76,23 @@ function validateRequiredParams(
       `Missing required parameter${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
       'MISSING_PARAMS',
     )
+  }
+
+  // Validate requiredOneOf: exactly one param from the group must be provided
+  if (recipe.requiredOneOf) {
+    const supplied = recipe.requiredOneOf.filter(name => name in provided)
+    if (supplied.length === 0) {
+      throw new CliError(
+        `Provide exactly one of: ${recipe.requiredOneOf.join(', ')}`,
+        'MISSING_PARAMS',
+      )
+    }
+    if (supplied.length > 1) {
+      throw new CliError(
+        `Provide exactly one of: ${recipe.requiredOneOf.join(', ')} (got: ${supplied.join(', ')})`,
+        'CONFLICTING_PARAMS',
+      )
+    }
   }
 }
 
@@ -168,7 +186,10 @@ function findResumeSegment(
           'INVALID_RESUME_INPUT',
         )
       }
-      validateResumeInput(resumeInput, segment.precedingAgentStep.returns, stepId)
+      // Parallel agent steps use { _results: [...] } wrapping — skip returns validation
+      if (!isParallelAgentStep(segment.precedingAgentStep)) {
+        validateResumeInput(resumeInput, segment.precedingAgentStep.returns, stepId)
+      }
       return {
         segmentIndex: segment.index,
         agentInput: resumeInput,
@@ -261,6 +282,7 @@ async function executeStep(
   step: RecipeStep,
   ctx: ExecutionContext,
   clientOptions: ApiClientOptions,
+  onProgress?: (event: ForeachProgressEvent) => void,
 ): Promise<StepResult> {
   const startedAt = new Date()
 
@@ -308,6 +330,7 @@ async function executeStep(
       ctx,
       clientOptions,
       currentRateLimit: ctx.currentRateLimit,
+      onProgress,
     })
   }
 
@@ -373,9 +396,9 @@ async function executeStep(
     } else {
       actionPath = step.action
     }
-    const { path } = resolveActionPath(actionPath, ctx)
-
     const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
+    const substitutedPath = substitutePathParams(actionPath, resolvedParams)
+    const { path } = resolveActionPath(substitutedPath, ctx)
 
     // Determine if pagination is needed
     const resolvedLimit = resolvedParams.limit !== undefined
@@ -418,8 +441,11 @@ async function executeStep(
     }
   }
 
+  let sampled: { before: number; after: number; weightedBy: string } | undefined
   if (isApiStep(step) && step.transform) {
-    resultData = applyTransforms(resultData, step.transform)
+    const result = applyTransforms(resultData, step.transform, { meta: true })
+    resultData = result.data
+    sampled = result.meta.sampled
   }
 
   const completedAt = new Date()
@@ -434,6 +460,7 @@ async function executeStep(
       durationMs: completedAt.getTime() - startedAt.getTime(),
       ...(rateLimitPaused ? { rateLimitPaused: true, waitedMs } : {}),
     },
+    ...(sampled ? { sampled } : {}),
   }
 }
 
@@ -448,6 +475,7 @@ export async function executeRecipe(options: {
   outputDir?: string
   outputFormat?: string
   recipeSource?: string
+  onProgress?: (event: ForeachProgressEvent) => void
 }): Promise<RecipeAwaitingAgent | RecipeComplete> {
   const recipe = parseRecipe(options.yaml)
   validateRecipe(recipe)
@@ -482,9 +510,13 @@ export async function executeRecipe(options: {
 
     // If resuming and the segment has a preceding agent step, inject agent input
     if (segment.precedingAgentStep && ctx.agentInput) {
+      // Parallel agent results come wrapped as { _results: [...] }
+      const data = isParallelAgentStep(segment.precedingAgentStep) && ctx.agentInput._results
+        ? ctx.agentInput._results
+        : ctx.agentInput
       ctx.results.set(segment.precedingAgentStep.id, {
         stepId: segment.precedingAgentStep.id,
-        data: ctx.agentInput,
+        data,
         rateLimit: null,
         timing: {
           startedAt: new Date().toISOString(),
@@ -499,18 +531,21 @@ export async function executeRecipe(options: {
 
     for (const layer of layers) {
       // Agent steps are always alone in their layer
+      if (layer.length === 1 && isParallelAgentStep(layer[0])) {
+        return buildAwaitingParallelAgentOutput(ctx, layer[0], options.params, options.recipeSource)
+      }
       if (layer.length === 1 && isAgentStep(layer[0])) {
         return buildAwaitingAgentOutput(ctx, layer[0], options.params, options.recipeSource)
       }
 
       if (layer.length === 1) {
         const step = layer[0]
-        const result = await executeStep(step, ctx, options.clientOptions)
+        const result = await executeStep(step, ctx, options.clientOptions, options.onProgress)
         ctx.results.set(step.id, result)
         ctx.currentRateLimit = result.rateLimit
       } else {
         const results = await Promise.all(
-          layer.map(step => executeStep(step, ctx, options.clientOptions)),
+          layer.map(step => executeStep(step, ctx, options.clientOptions, options.onProgress)),
         )
         // Store in recipe-declared order (layer preserves recipe order)
         for (let j = 0; j < layer.length; j++) {

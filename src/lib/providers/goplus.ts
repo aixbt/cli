@@ -17,8 +17,22 @@ const CHAIN_TO_CHAIN_ID: Record<string, string> = {
   'fantom': '250',
   'cronos': '25',
   'gnosis': '100',
-  'moonbeam': '1284',
-  'moonriver': '1285',
+  'unichain': '130',
+  'sonic': '146',
+  'manta-pacific': '169',
+  'opbnb': '204',
+  'abstract': '2741',
+  'zksync': '324',
+  'merlin-chain': '4200',
+  'world-chain': '480',
+  'zircuit': '48900',
+  'mantle': '5000',
+  'scroll': '534352',
+  'linea': '59144',
+  'berachain': '80094',
+  'blast': '81457',
+  'soneium': '1868',
+  'bitlayer': '200901',
 }
 
 const ADDRESS_KEYED_ACTIONS = new Set([
@@ -141,7 +155,10 @@ const actions: Record<string, ActionDefinition> = {
         }
       }
 
-      // EVM — pass chain as chain_id, mapParams handles the CoinGecko name → numeric mapping
+      // EVM — only proceed if we can map to a numeric chain ID (or it's tron which GoPlus accepts raw)
+      // Unmapped CoinGecko names like "celo", "cosmos", "xrp" would reach GoPlus as-is → error 2022
+      if (chain !== 'tron' && !CHAIN_TO_CHAIN_ID[chain]) return null
+
       return {
         action: 'token-security',
         params: { chain_id: params.chain, contract_addresses: params.address },

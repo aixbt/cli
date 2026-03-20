@@ -1,5 +1,6 @@
 import { parse as parseYaml } from 'yaml'
 import { RecipeValidationError } from '../errors.js'
+import { AGENT_RETURN_TYPES } from '../../types.js'
 import type { Recipe, RecipeStep, RecipeParam, ValidationIssue, TransformBlock, SampleTransform } from '../../types.js'
 
 function validateTransformBlock(
@@ -184,6 +185,28 @@ function validateStep(
         path: `${stepPath}.returns`,
         message: 'Agent step must have a returns object',
       })
+    } else {
+      for (const [key, value] of Object.entries(step.returns as Record<string, unknown>)) {
+        if (typeof value !== 'string' || !(AGENT_RETURN_TYPES as readonly string[]).includes(value)) {
+          issues.push({
+            path: `${stepPath}.returns.${key}`,
+            message: `Invalid return type "${value}". Must be one of: ${AGENT_RETURN_TYPES.join(', ')}`,
+          })
+        }
+      }
+    }
+
+    // Validate optional foreach on agent steps (parallel agent)
+    let agentForeach: string | undefined
+    if ('foreach' in step && step.foreach !== undefined) {
+      if (typeof step.foreach !== 'string' || (step.foreach as string).trim() === '') {
+        issues.push({
+          path: `${stepPath}.foreach`,
+          message: 'Agent foreach must be a non-empty string',
+        })
+      } else {
+        agentForeach = step.foreach as string
+      }
     }
 
     return {
@@ -195,6 +218,7 @@ function validateStep(
         typeof step.returns === 'object' && step.returns !== null && !Array.isArray(step.returns)
           ? (step.returns as Record<string, string>)
           : {},
+      ...(agentForeach ? { foreach: agentForeach } : {}),
     }
   }
 
@@ -211,13 +235,6 @@ function validateStep(
       issues.push({
         path: stepPath,
         message: 'Transform step (with input) cannot have an action',
-      })
-    }
-
-    if ('endpoint' in step && step.endpoint !== undefined) {
-      issues.push({
-        path: stepPath,
-        message: 'Transform step (with input) cannot have an endpoint. Use "action" instead',
       })
     }
 
@@ -245,14 +262,8 @@ function validateStep(
 
   // API or foreach step — must have action
   const hasAction = typeof step.action === 'string' && step.action.trim() !== ''
-  const hasEndpoint = typeof step.endpoint === 'string' && step.endpoint.trim() !== ''
 
-  if (!hasAction && hasEndpoint) {
-    issues.push({
-      path: `${stepPath}.action`,
-      message: 'Step has "endpoint" but no "action". Use "action" instead of "endpoint" (e.g., action: projects)',
-    })
-  } else if (!hasAction) {
+  if (!hasAction) {
     issues.push({
       path: `${stepPath}.action`,
       message: 'Step must have a non-empty "action" string',
@@ -486,16 +497,6 @@ export function parseRecipe(yamlString: string): Recipe {
     }
   }
 
-  // Validate tier
-  let tier: string | undefined
-  if (doc.tier !== undefined && doc.tier !== null) {
-    if (typeof doc.tier === 'string') {
-      tier = doc.tier
-    } else {
-      issues.push({ path: 'tier', message: 'tier must be a string' })
-    }
-  }
-
   // Validate estimatedTokens
   let estimatedTokens: number | null | undefined
   if (doc.estimatedTokens !== undefined) {
@@ -528,6 +529,29 @@ export function parseRecipe(yamlString: string): Recipe {
   // Validate params
   const params = validateParams(doc.params, issues)
 
+  // Validate requiredOneOf
+  let requiredOneOf: string[] | undefined
+  if (doc.requiredOneOf !== undefined && doc.requiredOneOf !== null) {
+    if (!Array.isArray(doc.requiredOneOf) || !doc.requiredOneOf.every((v: unknown) => typeof v === 'string')) {
+      issues.push({ path: 'requiredOneOf', message: 'requiredOneOf must be an array of param name strings' })
+    } else if (!params) {
+      issues.push({ path: 'requiredOneOf', message: 'requiredOneOf requires params to be defined' })
+    } else {
+      const names = doc.requiredOneOf as string[]
+      for (const name of names) {
+        if (!(name in params)) {
+          issues.push({ path: `requiredOneOf`, message: `"${name}" is not a defined param` })
+        } else if (params[name].required) {
+          issues.push({ path: `requiredOneOf`, message: `"${name}" must not be required: true (conflicts with requiredOneOf)` })
+        }
+      }
+      if (names.length < 2) {
+        issues.push({ path: 'requiredOneOf', message: 'requiredOneOf must contain at least 2 param names' })
+      }
+      requiredOneOf = names
+    }
+  }
+
   // Validate hints
   const hints = validateHintsBlock(doc.hints, issues)
 
@@ -545,9 +569,9 @@ export function parseRecipe(yamlString: string): Recipe {
     name: (doc.name as string).trim(),
     version,
     description,
-    tier,
     ...(estimatedTokens !== undefined ? { estimatedTokens } : {}),
     params,
+    requiredOneOf,
     steps,
     hints,
     analysis,

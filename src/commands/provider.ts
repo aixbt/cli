@@ -68,7 +68,7 @@ export function registerProviderCommand(program: Command): void {
   providerCmd
     .command('add <name>')
     .description('Add or update a provider API key')
-    .requiredOption('--api-key <key>', 'API key for the provider')
+    .requiredOption('--provider-key <key>', 'API key for the provider')
     .addOption(new Option('--tier <tier>', 'Key tier').choices(['free', 'demo', 'pro']))
     .option('--skip-verify', 'Skip API key verification probe')
     .action(async (name: string, opts: Record<string, unknown>, cmd: Command) => {
@@ -77,7 +77,7 @@ export function registerProviderCommand(program: Command): void {
 
       validateExternalProviderName(name)
 
-      const apiKey = opts.apiKey as string
+      const apiKey = opts.providerKey as string
       const tierFlag = opts.tier as ProviderTier | undefined
       const skipVerify = opts.skipVerify as boolean | undefined
 
