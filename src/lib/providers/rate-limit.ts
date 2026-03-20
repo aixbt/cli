@@ -41,16 +41,30 @@ function pruneWindow(tracker: ProviderRateTracker): void {
 export function recordRequest(tracker: ProviderRateTracker): number {
   pruneWindow(tracker)
 
-  tracker.timestamps.push(Date.now())
+  const now = Date.now()
+
+  // Enforce minimum spacing between calls (60s / maxPerMinute)
+  // Prevents bursts that trigger server-side rate limits stricter than our window
+  const minInterval = Math.ceil(60_000 / tracker.maxPerMinute)
+  const lastTimestamp = tracker.timestamps[tracker.timestamps.length - 1]
+  let spacingWait = 0
+  if (lastTimestamp !== undefined) {
+    const elapsed = now - lastTimestamp
+    if (elapsed < minInterval) {
+      spacingWait = minInterval - elapsed
+    }
+  }
+
+  tracker.timestamps.push(now)
 
   if (tracker.timestamps.length >= tracker.maxPerMinute) {
     const oldestInWindow = tracker.timestamps[0]
     const waitUntil = oldestInWindow + 60_000
-    const waitMs = waitUntil - Date.now()
-    return Math.max(waitMs, 0)
+    const windowWait = Math.max(waitUntil - now, 0)
+    return Math.max(windowWait, spacingWait)
   }
 
-  return 0
+  return spacingWait
 }
 
 export function remainingInWindow(tracker: ProviderRateTracker): number {
@@ -61,8 +75,12 @@ export function remainingInWindow(tracker: ProviderRateTracker): number {
 export function deriveProviderConcurrency(tracker: ProviderRateTracker): number {
   const remaining = remainingInWindow(tracker)
   if (remaining <= 2) return 1
+  // Low-limit providers (e.g. CoinGecko free at 10/min) need serial requests
+  if (tracker.maxPerMinute <= 15) return 1
   if (remaining <= 10) return 2
   if (remaining <= 20) return 3
+  // High-capacity providers (e.g. DexPaprika) can handle more parallelism
+  if (tracker.maxPerMinute >= 60) return 10
   return 5
 }
 

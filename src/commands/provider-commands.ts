@@ -12,13 +12,24 @@ const PROVIDER_DESCRIPTIONS: Record<string, string> = {
     '2 pro actions (emissions, yields) require a DeFiLlama API key (1000 req/min).',
   coingecko:
     'Market data and on-chain DEX analytics — prices, market rankings, OHLC candles, ' +
-    'coin details, categories, pool liquidity, and trending tokens. 8 free actions ' +
-    '(30 req/min) including on-chain via GeckoTerminal and OHLC via keyless CoinGecko. ' +
-    '5 actions require a CoinGecko demo key (price, markets, coin, trending, categories).',
+    'coin details, categories, pool liquidity, and trending tokens. Free on-chain actions ' +
+    'via GeckoTerminal (10 req/min). 5 actions require a CoinGecko demo key.',
   goplus:
     'Token and contract security analysis — detect honeypots, rug pulls, malicious ' +
     'permissions, phishing sites, and approval risks across EVM, Solana, and Sui. ' +
-    'All 8 actions are free (30 req/min, 120 with API key).',
+    'All actions are free (30 req/min, 120 with API key).',
+  dexpaprika:
+    'On-chain DEX data from DexPaprika — token pools, pool OHLCV candles, and ' +
+    'token OHLCV via automatic pool lookup. Free, keyless, no rate limit.',
+  market:
+    'Unified on-chain market data — routes to the fastest available provider. ' +
+    'Uses DexPaprika by default (fast, keyless), override with market.coingecko.',
+  security:
+    'Token and contract security analysis — routes to GoPlus. ' +
+    'Exposes all GoPlus actions under a provider-agnostic name.',
+  defi:
+    'DeFi protocol analytics — routes to DeFiLlama. ' +
+    'Exposes all DeFiLlama actions under a provider-agnostic name.',
 }
 
 /**

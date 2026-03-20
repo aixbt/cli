@@ -46,8 +46,8 @@ describe('coingeckoProvider', () => {
   // -- Rate limits --
 
   describe('rateLimits', () => {
-    it('should have free tier rate limit of 30 per minute', () => {
-      expect(coingeckoProvider.rateLimits.perMinute.free).toBe(30)
+    it('should have free tier rate limit of 10 per minute', () => {
+      expect(coingeckoProvider.rateLimits.perMinute.free).toBe(10)
     })
 
     it('should have demo tier rate limit of 30 per minute', () => {
@@ -75,7 +75,7 @@ describe('coingeckoProvider', () => {
       'trending-pools',
       'token-ohlcv',
       'pool-ohlcv',
-      'price-history',
+      'chart',
     ]
 
     const COINGECKO_ONLY_ACTIONS = [
@@ -98,7 +98,7 @@ describe('coingeckoProvider', () => {
     /** Actions that are minTier: 'free' but use CoinGecko paths (not GeckoTerminal) */
     const COINGECKO_FREE_ACTIONS = [
       'ohlc',
-      'price-history',
+      'chart',
     ]
 
     it('should define all 13 actions', () => {

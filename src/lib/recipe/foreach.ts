@@ -7,7 +7,7 @@ import { applyTransforms } from '../transforms.js'
 import { get, sleep } from '../api-client.js'
 import { CliError } from '../errors.js'
 import { fmt } from '../output.js'
-import { getProvider } from '../providers/registry.js'
+import { getProvider, parseSource } from '../providers/registry.js'
 import { dispatchProviderStep } from '../providers/client.js'
 import { resolveProviderKey } from '../providers/config.js'
 import { getTracker, deriveProviderConcurrency, waitForCapacity } from '../providers/rate-limit.js'
@@ -19,10 +19,10 @@ import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 
 function getUpgradeHint(provider: Provider, currentTier: ProviderTier): string | undefined {
   const tiers: ProviderTier[] = ['free', 'demo', 'pro']
-  const currentRate = provider.rateLimits.perMinute[currentTier] ?? 0
+  const currentRate = provider.rateLimits?.perMinute[currentTier] ?? 0
   for (const tier of tiers) {
     if (TIER_RANK[tier] <= TIER_RANK[currentTier]) continue
-    const rate = provider.rateLimits.perMinute[tier]
+    const rate = provider.rateLimits?.perMinute[tier]
     if (!rate) continue
     const isFreeKey = tier === 'demo' && provider.name === 'coingecko'
     const freeNote = isFreeKey ? ' (free key)' : ''
@@ -130,14 +130,15 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
   let providerTier: string | undefined
   let providerUpgradeHint: string | undefined
   if (isExternalProvider) {
-    const provider = getProvider(step.source!)
+    const { providerName } = parseSource(step.source!)
+    const provider = getProvider(providerName)
     const resolvedKey = resolveProviderKey(provider.name)
     const tier: ProviderTier = resolvedKey?.tier ?? 'free'
     providerTier = tier
     providerUpgradeHint = getUpgradeHint(provider, tier)
-    const rateLimit = provider.rateLimits.perMinute[tier] ?? null
+    const rateLimit = provider.rateLimits?.perMinute[tier] ?? null
     providerTracker = rateLimit ? getTracker(step.source!, rateLimit) : null
-    concurrency = providerTracker ? deriveProviderConcurrency(providerTracker) : 3
+    concurrency = providerTracker ? deriveProviderConcurrency(providerTracker) : 10
   } else {
     concurrency = deriveConcurrency(currentRateLimit)
   }

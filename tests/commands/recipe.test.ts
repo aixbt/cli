@@ -733,9 +733,7 @@ steps:
     action: "GET /v2/projects"
 `
 
-    it('should clone a recipe and output JSON result with correct file content', async () => {
-      const outPath = join(tempDir, 'cloned.yaml')
-
+    it('should clone a recipe with .clone suffix and rewrite name in YAML', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
           status: 200,
@@ -750,7 +748,7 @@ steps:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', outPath],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', tempDir],
         { from: 'node' },
       )
 
@@ -764,18 +762,17 @@ steps:
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.status).toBe('cloned')
-      expect(parsed.name).toBe('my-recipe')
-      expect(parsed.path).toBe(outPath)
+      expect(parsed.name).toBe('my-recipe.clone')
+      expect(parsed.from).toBe('my-recipe')
 
-      // Verify the file was actually written with correct YAML content
+      // Verify the file was written with rewritten name
+      const outPath = join(tempDir, 'my-recipe.clone.yaml')
       expect(existsSync(outPath)).toBe(true)
       const written = readFileSync(outPath, 'utf-8')
-      expect(written).toBe(CLONE_RECIPE_YAML)
+      expect(written).toContain('name: my-recipe.clone')
     })
 
-    it('should display success message in human mode', async () => {
-      const outPath = join(tempDir, 'human-clone.yaml')
-
+    it('should use --name flag for custom clone name', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
           status: 200,
@@ -790,21 +787,46 @@ steps:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', 'recipe', 'clone', 'my-recipe', '--out', outPath],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--name', 'custom-name', '--out', tempDir],
+        { from: 'node' },
+      )
+
+      const outPath = join(tempDir, 'custom-name.yaml')
+      expect(existsSync(outPath)).toBe(true)
+      const written = readFileSync(outPath, 'utf-8')
+      expect(written).toContain('name: custom-name')
+
+      const jsonOutput = logs.find(l => l.includes('"status"'))
+      const parsed = JSON.parse(jsonOutput!)
+      expect(parsed.name).toBe('custom-name')
+    })
+
+    it('should display success message in human mode', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: 200,
+          data: {
+            name: 'my-recipe',
+            updatedAt: '2025-06-01T00:00:00Z',
+            yaml: CLONE_RECIPE_YAML,
+          },
+        }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        ['node', 'aixbt', 'recipe', 'clone', 'my-recipe', '--out', tempDir],
         { from: 'node' },
       )
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Recipe saved to')
-      expect(allOutput).toContain(outPath)
+      expect(allOutput).toContain('Recipe cloned as')
+      expect(allOutput).toContain('my-recipe.clone')
     })
 
-    it('should use custom output path from --out option', async () => {
-      const customPath = join(tempDir, 'custom', 'path', 'recipe.yaml')
-
-      // Create the parent directory so writeFileSync works
-      const { mkdirSync } = await import('node:fs')
-      mkdirSync(join(tempDir, 'custom', 'path'), { recursive: true })
+    it('should use --out as output directory', async () => {
+      const customDir = join(tempDir, 'custom', 'dir')
 
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
@@ -820,22 +842,21 @@ steps:
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', customPath],
+        ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', customDir],
         { from: 'node' },
       )
 
-      // Verify the file was written to the custom path
-      expect(existsSync(customPath)).toBe(true)
+      const outPath = join(customDir, 'my-recipe.clone.yaml')
+      expect(existsSync(outPath)).toBe(true)
 
-      // Verify JSON output reflects the custom path
       const jsonOutput = logs.find(l => l.includes('"status"'))
-      expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.path).toBe(customPath)
+      expect(parsed.path).toBe(outPath)
     })
 
-    it('should error when the output file already exists', async () => {
-      const outPath = join(tempDir, 'existing.yaml')
+    it('should error when the clone already exists', async () => {
+      // Create the file that would conflict
+      const outPath = join(tempDir, 'my-recipe.clone.yaml')
       const originalContent = 'original content - should not be overwritten'
       writeFileSync(outPath, originalContent)
 
@@ -844,10 +865,10 @@ steps:
 
       await expect(
         program.parseAsync(
-          ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', outPath],
+          ['node', 'aixbt', '--format', 'json', 'recipe', 'clone', 'my-recipe', '--out', tempDir],
           { from: 'node' },
         ),
-      ).rejects.toThrow('File already exists')
+      ).rejects.toThrow('already exists')
 
       // Verify the file was NOT overwritten
       const content = readFileSync(outPath, 'utf-8')
@@ -858,7 +879,6 @@ steps:
     })
 
     it('should default output path to recipes dir', async () => {
-      // Use a unique recipe name to avoid collisions with real files
       const recipeName = `test-default-${Date.now()}`
 
       mockFetch.mockResolvedValueOnce(
@@ -879,13 +899,11 @@ steps:
         { from: 'node' },
       )
 
-      // Verify the JSON output shows the default path
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.path).toContain(`recipes/${recipeName}.yaml`)
+      expect(parsed.path).toContain(`recipes/${recipeName}.clone.yaml`)
 
-      // Clean up the file that was created in cwd
       try {
         rmSync(parsed.path, { force: true })
       } catch {

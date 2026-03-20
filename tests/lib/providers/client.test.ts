@@ -577,7 +577,7 @@ describe('providerRequest', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2)
     })
 
-    it('should use exponential backoff when retry-after header is missing', async () => {
+    it('should use spacing interval from tracker when retry-after header is missing', async () => {
       const provider = makeProvider()
 
       // First call: 429 without retry-after
@@ -594,8 +594,8 @@ describe('providerRequest', () => {
         params: {},
       })
 
-      // First retry: 5s * 2^0 = 5s
-      expect(sleep).toHaveBeenCalledWith(5_000)
+      // Uses spacing interval: ceil(60_000 / 30) = 2000ms
+      expect(sleep).toHaveBeenCalledWith(2_000)
     })
   })
 })
