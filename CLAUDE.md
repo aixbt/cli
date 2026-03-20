@@ -37,7 +37,7 @@ src/
 
 ## Git Workflow
 
-Forking workflow — see [Branch Guidelines](../about/howto/branch-guidelines.md) for full details.
+Forking workflow — feature branches live on the fork, not the main repo.
 
 **Remotes:**
 - `origin` = main repo (`aixbt/cli`) — DO NOT push feature branches here
