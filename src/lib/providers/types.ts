@@ -12,6 +12,8 @@ export interface ActionParam {
 }
 
 export interface ResolvedAction {
+  /** Target provider name. When set, resolution crosses to a different provider. */
+  provider?: string
   action: string
   params: Record<string, string | number | boolean | undefined>
 }

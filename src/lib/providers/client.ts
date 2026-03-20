@@ -61,8 +61,12 @@ export async function providerRequest(
         'ACTION_UNRESOLVABLE',
       )
     }
+    const targetProvider = resolution.provider
+      ? getProvider(resolution.provider)
+      : provider
     return providerRequest({
       ...options,
+      provider: targetProvider,
       actionName: resolution.action,
       params: resolution.params,
     })

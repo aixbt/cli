@@ -5,6 +5,7 @@ import { defillamaProvider } from './defillama.js'
 import { coingeckoProvider } from './coingecko.js'
 import { goplusProvider } from './goplus.js'
 import { dexpaprikaProvider } from './dexpaprika.js'
+import { chartsProvider, securityProvider, defiProvider } from './virtual.js'
 
 const providers = new Map<string, Provider>()
 
@@ -41,3 +42,6 @@ registerProvider(defillamaProvider)
 registerProvider(coingeckoProvider)
 registerProvider(goplusProvider)
 registerProvider(dexpaprikaProvider)
+registerProvider(chartsProvider)
+registerProvider(securityProvider)
+registerProvider(defiProvider)
