@@ -79,6 +79,8 @@ export function deriveProviderConcurrency(tracker: ProviderRateTracker): number 
   if (tracker.maxPerMinute <= 15) return 1
   if (remaining <= 10) return 2
   if (remaining <= 20) return 3
+  // High-capacity providers (e.g. DexPaprika) can handle more parallelism
+  if (tracker.maxPerMinute >= 60) return 10
   return 5
 }
 

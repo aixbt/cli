@@ -6,8 +6,14 @@ import type { Provider, ActionDefinition } from './types.js'
  * so the underlying data source can change without affecting recipes.
  */
 
+function hasValue(v: string | number | boolean | undefined): boolean {
+  return v !== undefined && v !== ''
+}
+
 // ---------------------------------------------------------------------------
-// charts — price/OHLCV data (routes to coingecko, which internally uses dexpaprika)
+// charts — price/OHLCV data
+//   on-chain (network + address) → dexpaprika (fast, keyless)
+//   CEX-only (geckoId) → coingecko
 // ---------------------------------------------------------------------------
 
 const chartsActions: Record<string, ActionDefinition> = {
@@ -24,11 +30,34 @@ const chartsActions: Record<string, ActionDefinition> = {
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
     minTier: 'free',
-    resolve: (params) => ({
-      provider: 'coingecko',
-      action: 'price-history',
-      params,
-    }),
+    resolve: (params) => {
+      // On-chain path: DexPaprika (pool lookup + OHLCV, no rate limit)
+      if (hasValue(params.network) && hasValue(params.address)) {
+        return {
+          provider: 'dexpaprika',
+          action: 'token-ohlcv',
+          params: {
+            network: params.network,
+            address: params.address,
+            timeframe: params.timeframe ?? 'day',
+            limit: params.limit,
+          },
+        }
+      }
+      // CEX path: CoinGecko OHLC (requires geckoId)
+      if (hasValue(params.geckoId)) {
+        return {
+          provider: 'coingecko',
+          action: 'ohlc',
+          params: {
+            id: params.geckoId,
+            vs_currency: params.currency ?? 'usd',
+            days: params.limit ?? 30,
+          },
+        }
+      }
+      return { error: 'no on-chain address or geckoId available for this project' }
+    },
   },
   'token-pools': {
     method: 'GET',
@@ -52,7 +81,7 @@ export const chartsProvider: Provider = {
   displayName: 'Charts',
   actions: chartsActions,
   baseUrl: { byTier: {}, default: '' },
-  rateLimits: { perMinute: {} },
+  rateLimits: { perMinute: { free: 60 } },
   normalize: (body) => body,
 }
 

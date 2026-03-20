@@ -72,42 +72,11 @@ export async function providerRequest(
     })
   }
 
-  // GeckoTerminal no longer offers token-level OHLCV, so we resolve via
-  // DexPaprika (no rate limit) for both pool lookup and OHLCV data.
-  // Falls back to GeckoTerminal token-pools + pool-ohlcv if DexPaprika fails.
-  if (actionName === 'token-ohlcv' && effectiveTier !== 'pro') {
-    const dexpaprika = getProvider('dexpaprika')
-    const network = String(params.network ?? '')
-    const address = String(params.address ?? '')
-
-    // Try DexPaprika for the full flow (pool lookup + OHLCV)
-    try {
-      const poolsResponse = await providerRequest({
-        provider: dexpaprika,
-        actionName: 'token-pools',
-        params: { network, address, limit: 1 },
-      })
-      const pools = poolsResponse.data
-      if (Array.isArray(pools) && pools.length > 0) {
-        const poolAddress = (pools[0] as Record<string, unknown>).address as string
-        if (poolAddress) {
-          return providerRequest({
-            provider: dexpaprika,
-            actionName: 'pool-ohlcv',
-            params: {
-              network,
-              address: poolAddress,
-              timeframe: params.timeframe ?? 'day',
-              limit: params.limit,
-            },
-          })
-        }
-      }
-    } catch {
-      // DexPaprika failed — fall through to GeckoTerminal
-    }
-
-    // Fallback: GeckoTerminal token-pools + pool-ohlcv (rate limited)
+  // token-ohlcv requires a pool lookup first — neither GeckoTerminal nor
+  // DexPaprika offer token-level OHLCV. Look up the top pool, then fetch
+  // pool-ohlcv from the same provider.
+  // CoinGecko pro tier has native token OHLCV via /onchain/, so skip this.
+  if (actionName === 'token-ohlcv' && !(provider.name === 'coingecko' && effectiveTier === 'pro')) {
     const poolsResponse = await providerRequest({
       ...options,
       actionName: 'token-pools',

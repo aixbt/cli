@@ -6,7 +6,23 @@ const TIMEFRAME_TO_INTERVAL: Record<string, string> = {
   'day': '24h',
 }
 
+function hasValue(v: string | number | boolean | undefined): boolean {
+  return v !== undefined && v !== ''
+}
+
 const actions: Record<string, ActionDefinition> = {
+  'token-ohlcv': {
+    method: 'GET',
+    description: 'Get OHLCV data for a token by looking up its top pool first',
+    hint: 'You have a token address and need historical price candles from DEX trading data',
+    params: [
+      { name: 'network', required: true, description: 'Network ID (e.g., "ethereum", "solana", "base")' },
+      { name: 'address', required: true, description: 'Token contract address' },
+      { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")' },
+      { name: 'limit', required: false, description: 'Number of candles to return (default: 30)' },
+    ],
+    minTier: 'free',
+  },
   'token-pools': {
     method: 'GET',
     path: '/networks/{network}/tokens/{address}/pools',
@@ -45,7 +61,7 @@ export const dexpaprikaProvider: Provider = {
   },
   rateLimits: {
     perMinute: {
-      free: 300,
+      free: 60,
     },
   },
   mapParams: (params, actionName) => {

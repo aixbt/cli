@@ -180,8 +180,14 @@ describe('rate-limit', () => {
   // -- deriveProviderConcurrency --
 
   describe('deriveProviderConcurrency', () => {
-    it('should return 5 when plenty of capacity remains (>20)', () => {
+    it('should return 10 for high-capacity providers (>=60/min) with plenty of capacity', () => {
       const tracker = getTracker('test-provider', 60)
+
+      expect(deriveProviderConcurrency(tracker)).toBe(10)
+    })
+
+    it('should return 5 for mid-capacity providers (>20 remaining, <60/min)', () => {
+      const tracker = getTracker('test-provider', 40)
 
       expect(deriveProviderConcurrency(tracker)).toBe(5)
     })
