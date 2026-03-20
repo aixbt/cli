@@ -699,7 +699,7 @@ export function registerRecipeCommand(program: Command): void {
       let spinnerInterval: ReturnType<typeof setInterval> | undefined
       let spinnerLabel = ''
 
-      let upgradeHints: string[] = []
+      const upgradeHints: string[] = []
 
       // Rate limit countdown state
       let rateLimitStart = 0

@@ -31,7 +31,6 @@ export function resolveExpression(
   // Also: step_id[*].field — shorthand pluck
   const bracketIdx = trimmed.indexOf('[*].')
   let stepId: string
-  let rest: string | undefined
 
   if (bracketIdx !== -1 && (trimmed.indexOf('.') === -1 || bracketIdx < trimmed.indexOf('.'))) {
     // step_id[*].field — shorthand pluck
@@ -58,7 +57,7 @@ export function resolveExpression(
     return stepResult.data
   }
 
-  rest = trimmed.slice(dotIndex + 1)
+  const rest = trimmed.slice(dotIndex + 1)
 
   // If rest doesn't start with "data", treat as shorthand for data.X
   // This allows step_id.field as shorthand for step_id.data.field

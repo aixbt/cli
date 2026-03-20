@@ -9,7 +9,6 @@ import { CliError, ApiError, NetworkError, RateLimitError } from '../errors.js'
 import { sleep } from '../api-client.js'
 import { flattenParams } from '../recipe/template.js'
 
-const MAX_RETRIES = 3
 const MAX_RATE_LIMIT_WAIT = 120_000 // give up after 2 min total wait on 429s
 const USER_AGENT = '@aixbt/cli'
 

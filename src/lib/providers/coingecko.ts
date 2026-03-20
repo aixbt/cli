@@ -229,7 +229,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
     minTier: 'free',
-    resolve: (params, tier) => {
+    resolve: (params) => {
       if (hasValue(params.network) && hasValue(params.address)) {
         return {
           action: 'token-ohlcv',

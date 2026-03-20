@@ -151,13 +151,6 @@ export function buildAwaitingParallelAgentOutput(
     .map(([k, v]) => `${k}: ${v}`)
     .join(', ')
 
-  const perItemLines = perItemContext.length > 0
-    ? `\n- Per-item context (sliced by position — item[i] gets data.${perItemContext[0]}[i], etc.): ${perItemContext.join(', ')}`
-    : ''
-  const sharedLines = sharedContext.length > 0
-    ? `\n- Shared context (same data for all items): ${sharedContext.join(', ')}`
-    : ''
-
   const parallelExecution = [
     `This is a parallel step. Run the instructions once for EACH of the ${itemCount} items in parallel.items.\n`,
     `\nFor each item at index i:\n`,
