@@ -832,7 +832,9 @@ export function registerRecipeCommand(program: Command): void {
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
       const { clientOpts: clientOptions } = getClientOptions(cmd)
-      const formatFlag = cmd.optsWithGlobals().format as string | undefined
+      const globalOpts = cmd.optsWithGlobals()
+      const verbosity = (globalOpts.verbose as number) ?? 0
+      const formatFlag = globalOpts.format as string | undefined
       if (formatFlag === 'human') {
         throw new CliError(
           'Recipes do not support --format human. Use --format json or --format toon.',
@@ -935,10 +937,11 @@ export function registerRecipeCommand(program: Command): void {
       }
       if (adapter && !structured) {
         // Agent mode: AIXBT with trailing spinner → tick on success
+        // Suppress spinner when verbose — debug lines go to stderr too
         let fi = 0
-        const tick = setInterval(() => {
+        const tick = verbosity < 1 ? setInterval(() => {
           process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
-        }, 80)
+        }, 80) : undefined
         try {
           result = await executeRecipe({
             yaml,
@@ -950,12 +953,13 @@ export function registerRecipeCommand(program: Command): void {
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
             onProgress: handleRunProgress,
+            verbosity,
           })
-          clearInterval(tick)
-          process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
+          if (tick) clearInterval(tick)
+          if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
         } catch (err) {
-          clearInterval(tick)
-          process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
+          if (tick) clearInterval(tick)
+          if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
           throw err
         }
       } else if (adapter && structured) {
@@ -970,11 +974,12 @@ export function registerRecipeCommand(program: Command): void {
           outputFormat: recipeFormat,
           recipeSource: opts.stdin ? undefined : source,
           onProgress: handleRunProgress,
+          verbosity,
         })
       } else {
         let noAgentFi = 0
         let noAgentInterval: ReturnType<typeof setInterval> | undefined
-        if (!structured) {
+        if (!structured && verbosity < 1) {
           noAgentInterval = setInterval(() => {
             process.stderr.write(`\r${FRAMES[noAgentFi++ % FRAMES.length]} ${output.fmt.dim('Executing recipe...')}${getRunRateLimitSuffix()}`)
           }, 80)
@@ -990,6 +995,7 @@ export function registerRecipeCommand(program: Command): void {
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
             onProgress: handleRunProgress,
+            verbosity,
           })
           if (noAgentInterval) {
             clearInterval(noAgentInterval)
@@ -1056,15 +1062,16 @@ export function registerRecipeCommand(program: Command): void {
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
             onProgress: handleRunProgress,
+            verbosity,
           })
         } else {
           // Visual mode: AIXBT spinner for recipe resume
-          process.stderr.write(`  ${chalk.dim('↓')}\n`)
+          if (verbosity < 1) process.stderr.write(`  ${chalk.dim('↓')}\n`)
           runRateLimitStart = 0
           let fi = 0
-          const resumeTick = setInterval(() => {
+          const resumeTick = verbosity < 1 ? setInterval(() => {
             process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
-          }, 80)
+          }, 80) : undefined
           try {
             result = await executeRecipe({
               yaml,
@@ -1076,12 +1083,13 @@ export function registerRecipeCommand(program: Command): void {
               outputFormat: recipeFormat,
               recipeSource: opts.stdin ? undefined : source,
               onProgress: handleRunProgress,
+              verbosity,
             })
-            clearInterval(resumeTick)
-            process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
+            if (resumeTick) clearInterval(resumeTick)
+            if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
           } catch (err) {
-            clearInterval(resumeTick)
-            process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
+            if (resumeTick) clearInterval(resumeTick)
+            if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
             throw err
           }
         }
