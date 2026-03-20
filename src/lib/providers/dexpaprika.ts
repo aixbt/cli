@@ -1,13 +1,10 @@
-import type { Provider, ActionDefinition } from './types.js'
+import type { Provider, ActionDefinition, Params } from './types.js'
+import { resolveTokenOhlcvViaPool } from './alias.js'
 
 const TIMEFRAME_TO_INTERVAL: Record<string, string> = {
   'minute': '1m',
   'hour': '1h',
   'day': '24h',
-}
-
-function hasValue(v: string | number | boolean | undefined): boolean {
-  return v !== undefined && v !== ''
 }
 
 const actions: Record<string, ActionDefinition> = {
@@ -22,6 +19,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'limit', required: false, description: 'Number of candles to return (default: 30)' },
     ],
     minTier: 'free',
+    resolve: async (params, ctx) => resolveTokenOhlcvViaPool(params, ctx.request),
   },
   'token-pools': {
     method: 'GET',
@@ -62,7 +60,7 @@ export const dexpaprikaProvider: Provider = {
   rateLimits: {
     perMinute: {},
   },
-  mapParams: (params, actionName) => {
+  mapParams: (params: Params, actionName: string) => {
     if (actionName !== 'pool-ohlcv') return params
 
     const result = { ...params }
@@ -96,7 +94,7 @@ export const dexpaprikaProvider: Provider = {
   },
 }
 
-/** Normalize to match GeckoTerminal pool shape (address field used by client.ts) */
+/** Normalize to match GeckoTerminal pool shape (address field used by pool-lookup resolve) */
 function normalizeTokenPools(body: unknown): unknown {
   if (typeof body !== 'object' || body === null) return []
   const envelope = body as Record<string, unknown>

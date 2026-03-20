@@ -1,6 +1,6 @@
 import type { ExecutionContext } from '../../types.js'
 import { TIER_RANK } from './types.js'
-import type { Provider, ProviderTier } from './types.js'
+import type { Provider, ProviderTier, Params, ResolveContext, ProviderResponse } from './types.js'
 import type { ProviderRateTracker } from './rate-limit.js'
 import { resolveProviderKey } from './config.js'
 import { getProvider, parseSource } from './registry.js'
@@ -15,22 +15,19 @@ const USER_AGENT = '@aixbt/cli'
 export interface ProviderRequestOptions {
   provider: Provider
   actionName: string
-  params: Record<string, string | number | boolean | undefined>
+  params: Params
   apiKeyOverride?: string
   tierOverride?: ProviderTier
+  /** Routing hint from dotted source syntax (e.g. "coingecko" from "market.coingecko") */
+  hint?: string
 }
 
-export interface ProviderResponse {
-  data: unknown
-  status: number
-  provider: string
-  action: string
-}
+export type { ProviderResponse }
 
 export async function providerRequest(
   options: ProviderRequestOptions,
 ): Promise<ProviderResponse> {
-  const { provider, actionName, params, apiKeyOverride, tierOverride } = options
+  const { provider, actionName, params, apiKeyOverride, tierOverride, hint } = options
 
   const action = provider.actions[actionName]
   if (!action) {
@@ -51,56 +48,45 @@ export async function providerRequest(
 
   // Meta-action: resolve to a concrete action and recurse
   if (action.resolve) {
-    const resolution = action.resolve(params, effectiveTier)
-    if (!resolution || (typeof resolution === 'object' && 'error' in resolution)) {
-      const reason = resolution && 'error' in resolution
-        ? resolution.error
-        : 'could not resolve action for current tier and params'
-      throw new CliError(
-        `${provider.name}:${actionName} - ${reason}`,
-        'ACTION_UNRESOLVABLE',
-      )
+    const resolveCtx: ResolveContext = {
+      hint,
+      tier: effectiveTier,
+      request: (opts) => providerRequest({
+        provider: opts.provider ? getProvider(opts.provider) : provider,
+        actionName: opts.action,
+        params: opts.params,
+        apiKeyOverride,
+        tierOverride,
+      }),
     }
-    const targetProvider = resolution.provider
-      ? getProvider(resolution.provider)
-      : provider
-    return providerRequest({
-      ...options,
-      provider: targetProvider,
-      actionName: resolution.action,
-      params: resolution.params,
-    })
+    const resolution = await action.resolve(params, resolveCtx)
+
+    // null = fall through to normal HTTP dispatch (action must have a path)
+    if (resolution !== null) {
+      if ('error' in resolution) {
+        throw new CliError(
+          `${provider.name}:${actionName} - ${resolution.error}`,
+          'ACTION_UNRESOLVABLE',
+        )
+      }
+      const targetProvider = resolution.provider
+        ? getProvider(resolution.provider)
+        : provider
+      return providerRequest({
+        ...options,
+        provider: targetProvider,
+        actionName: resolution.action,
+        params: resolution.params,
+        hint: undefined, // hint consumed, don't propagate
+      })
+    }
   }
 
-  // token-ohlcv requires a pool lookup first — neither GeckoTerminal nor
-  // DexPaprika offer token-level OHLCV. Look up the top pool, then fetch
-  // pool-ohlcv from the same provider.
-  // CoinGecko pro tier has native token OHLCV via /onchain/, so skip this.
-  if (actionName === 'token-ohlcv' && !(provider.name === 'coingecko' && effectiveTier === 'pro')) {
-    const poolsResponse = await providerRequest({
-      ...options,
-      actionName: 'token-pools',
-      params: { network: params.network, address: params.address },
-    })
-    const pools = poolsResponse.data
-    if (Array.isArray(pools) && pools.length > 0) {
-      const poolAddress = (pools[0] as Record<string, unknown>).address as string
-      if (poolAddress) {
-        return providerRequest({
-          ...options,
-          actionName: 'pool-ohlcv',
-          params: {
-            network: params.network,
-            address: poolAddress,
-            timeframe: params.timeframe ?? 'day',
-            limit: params.limit,
-          },
-        })
-      }
-    }
+  // From here: normal HTTP dispatch — provider must have baseUrl
+  if (!provider.baseUrl) {
     throw new CliError(
-      `No DEX pools found for token on network "${params.network}"`,
-      'ACTION_UNRESOLVABLE',
+      `Provider "${provider.name}" has no baseUrl — resolve should have routed to a concrete provider`,
+      'INVALID_PROVIDER',
     )
   }
 
@@ -133,7 +119,7 @@ export async function providerRequest(
 
   if (!action.path) {
     throw new CliError(
-      `Action "${provider.name}:${actionName}" has no path and no resolve function`,
+      `Action "${provider.name}:${actionName}" has no path and resolve returned null`,
       'INVALID_ACTION',
     )
   }
@@ -166,7 +152,7 @@ export async function providerRequest(
     }
   }
 
-  const rateLimit = provider.rateLimits.perMinute[effectiveTier]
+  const rateLimit = provider.rateLimits?.perMinute[effectiveTier]
   const tracker = rateLimit ? getTracker(provider.name, rateLimit) : null
 
   const { body, status } = await executeProviderRequest(
@@ -178,9 +164,10 @@ export async function providerRequest(
     actionName,
   )
 
+  const normalize = provider.normalize ?? ((b: unknown) => b)
   let normalized: unknown
   try {
-    normalized = provider.normalize(body, actionName)
+    normalized = normalize(body, actionName)
   } catch (err) {
     if (err instanceof CliError) throw err
     throw new CliError(
@@ -211,14 +198,13 @@ export async function dispatchProviderStep(
   const { providerName, hint } = parseSource(source)
   const provider = getProvider(providerName)
   const params = stepParams ? flattenParams(stepParams, ctx, foreachItem) : {}
-  if (hint) params._via = hint
-  const response = await providerRequest({ provider, actionName, params })
+  const response = await providerRequest({ provider, actionName, params, hint })
   return response.data
 }
 
 function resolveActionPath(
   path: string,
-  params: Record<string, string | number | boolean | undefined>,
+  params: Params,
 ): string {
   return path.replace(/\{(\w+)\}/g, (_, paramName: string) => {
     const value = params[paramName]

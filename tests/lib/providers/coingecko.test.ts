@@ -75,7 +75,7 @@ describe('coingeckoProvider', () => {
       'trending-pools',
       'token-ohlcv',
       'pool-ohlcv',
-      'price-history',
+      'chart',
     ]
 
     const COINGECKO_ONLY_ACTIONS = [
@@ -98,7 +98,7 @@ describe('coingeckoProvider', () => {
     /** Actions that are minTier: 'free' but use CoinGecko paths (not GeckoTerminal) */
     const COINGECKO_FREE_ACTIONS = [
       'ohlc',
-      'price-history',
+      'chart',
     ]
 
     it('should define all 13 actions', () => {

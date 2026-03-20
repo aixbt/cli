@@ -5,7 +5,7 @@ import { defillamaProvider } from './defillama.js'
 import { coingeckoProvider } from './coingecko.js'
 import { goplusProvider } from './goplus.js'
 import { dexpaprikaProvider } from './dexpaprika.js'
-import { chartsProvider, securityProvider, defiProvider } from './virtual.js'
+import { marketProvider, securityProvider, defiProvider } from './virtual.js'
 
 const providers = new Map<string, Provider>()
 
@@ -29,7 +29,7 @@ export function getProvider(name: string): Provider {
 }
 
 /**
- * Parse a dotted source like "charts.coingecko" into provider name + routing hint.
+ * Parse a dotted source like "market.coingecko" into provider name + routing hint.
  * Plain sources like "coingecko" return no hint.
  */
 export function parseSource(source: string): { providerName: string; hint?: string } {
@@ -54,6 +54,6 @@ registerProvider(defillamaProvider)
 registerProvider(coingeckoProvider)
 registerProvider(goplusProvider)
 registerProvider(dexpaprikaProvider)
-registerProvider(chartsProvider)
+registerProvider(marketProvider)
 registerProvider(securityProvider)
 registerProvider(defiProvider)
