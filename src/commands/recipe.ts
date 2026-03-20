@@ -571,16 +571,19 @@ export function registerRecipeCommand(program: Command): void {
 
   recipe
     .command('clone <name>')
-    .description('Download a recipe from the registry to a local file')
-    .option('--out <path>', 'Output file path (default: ./<name>.yaml)')
+    .description('Clone a recipe from the registry for local editing')
+    .option('--name <newName>', 'Name for the cloned recipe (default: <name>.clone)')
+    .option('--out <path>', 'Output directory (default: ~/.aixbt/recipes/)')
     .action(async (name: string, opts: Record<string, unknown>, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
       const outputFormat = resolveFormat(globalOpts.format as string | undefined)
       const recipesDir = getRecipesDir()
-      const outPath = (opts.out as string) ?? join(recipesDir, `${name}.yaml`)
+      const cloneName = (opts.name as string) ?? `${name}.clone`
+      const outDir = (opts.out as string) ?? recipesDir
+      const outPath = join(outDir, `${cloneName}.yaml`)
 
       if (existsSync(outPath)) {
-        throw new CliError(`File already exists: ${outPath}. Use --out to specify a different path`, 'FILE_EXISTS')
+        throw new CliError(`Recipe "${cloneName}" already exists at ${outPath}`, 'FILE_EXISTS')
       }
 
       const detail = await output.withSpinner(
@@ -590,19 +593,22 @@ export function registerRecipeCommand(program: Command): void {
         `Failed to fetch recipe "${name}"`,
       )
 
+      // Replace the name field in the YAML to match the clone name
+      const yaml = detail.yaml.replace(/^name:\s*.+$/m, `name: ${cloneName}`)
+
       try {
         mkdirSync(dirname(outPath), { recursive: true })
-        writeFileSync(outPath, detail.yaml, 'utf-8')
+        writeFileSync(outPath, yaml, 'utf-8')
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown write error'
         throw new CliError(`Failed to write ${outPath}: ${msg}`, 'WRITE_FAILED')
       }
 
       if (output.isStructuredFormat(outputFormat)) {
-        output.outputStructured({ status: 'cloned', name, path: outPath }, outputFormat)
+        output.outputStructured({ status: 'cloned', name: cloneName, from: name, path: outPath }, outputFormat)
       } else {
-        output.success(`Recipe saved to ${outPath}`)
-        output.dim(`Run with: aixbt recipe run ${outPath}`)
+        output.success(`Recipe cloned as "${cloneName}" → ${outPath}`)
+        output.dim(`Run with: aixbt recipe run ${cloneName}`)
       }
     })
 
