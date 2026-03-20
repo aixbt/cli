@@ -236,7 +236,8 @@ async function executeProviderRequest(
   attempt = 0,
   rateLimitWaited = 0,
 ): Promise<{ body: unknown; status: number }> {
-  if (tracker) {
+  // Only record first attempt — retries replace the failed request, not add new ones
+  if (tracker && attempt === 0) {
     const waitMs = recordRequest(tracker)
     if (waitMs > 0) {
       await sleep(waitMs)
@@ -263,8 +264,10 @@ async function executeProviderRequest(
         const date = Date.parse(retryAfter)
         waitMs = !Number.isNaN(date) ? Math.max(0, date - Date.now()) : 5_000
       }
+    } else if (tracker) {
+      // Use spacing interval derived from known rate limit
+      waitMs = Math.ceil(60_000 / tracker.maxPerMinute)
     } else {
-      // Exponential backoff: 5s, 10s, 20s, ...
       waitMs = Math.min(5_000 * Math.pow(2, attempt), 60_000)
     }
 
