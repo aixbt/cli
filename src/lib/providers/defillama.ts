@@ -1,54 +1,6 @@
-import type { Provider, ActionDefinition } from './types.js'
+import type { Provider, ActionDefinition, Params } from './types.js'
 import { CliError } from '../errors.js'
-
-/** Map CoinGecko platform IDs to DeFiLlama chain names */
-const CHAIN_TO_LLAMA: Record<string, string> = {
-  'ethereum': 'Ethereum',
-  'binance-smart-chain': 'BSC',
-  'polygon-pos': 'Polygon',
-  'solana': 'Solana',
-  'base': 'Base',
-  'arbitrum-one': 'Arbitrum',
-  'avalanche': 'Avalanche',
-  'optimistic-ethereum': 'Optimism',
-  'fantom': 'Fantom',
-  'cronos': 'Cronos',
-  'gnosis': 'Gnosis',
-  'moonbeam': 'Moonbeam',
-  'moonriver': 'Moonriver',
-  'the-open-network': 'TON',
-  'tron': 'Tron',
-  'near-protocol': 'Near',
-  'sui': 'Sui',
-  'sonic': 'Sonic',
-  'abstract': 'Abstract',
-  'hyperevm': 'Hyperliquid L1',
-  'berachain': 'Berachain',
-  'aptos': 'Aptos',
-  'starknet': 'Starknet',
-  'sei-v2': 'Sei',
-  'scroll': 'Scroll',
-  'linea': 'Linea',
-  'blast': 'Blast',
-  'mantle': 'Mantle',
-  'zksync': 'ZKsync Era',
-  'cardano': 'Cardano',
-  'stacks': 'Stacks',
-  'kava': 'Kava',
-  'hedera-hashgraph': 'Hedera',
-  'xrp': 'XRPL',
-  'celo': 'Celo',
-  'unichain': 'Unichain',
-  'flare-network': 'Flare',
-  'klay-token': 'Kaia',
-  'immutable': 'Immutable zkEVM',
-  'internet-computer': 'ICP',
-  'world-chain': 'World Chain',
-  'injective': 'Injective',
-  'osmosis': 'Osmosis',
-  'soneium': 'Soneium',
-  'ronin': 'Ronin',
-}
+import { toLlamaChain } from './chains.js'
 
 const actions: Record<string, ActionDefinition> = {
   protocols: {
@@ -132,10 +84,10 @@ export const defillamaProvider: Provider = {
       pro: 1000,
     },
   },
-  mapParams: (params) => {
+  mapParams: (params: Params) => {
     const chain = params.chain
     if (typeof chain !== 'string') return params
-    const mapped = CHAIN_TO_LLAMA[chain]
+    const mapped = toLlamaChain(chain)
     if (!mapped) return params
     return { ...params, chain: mapped }
   },

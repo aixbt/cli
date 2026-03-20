@@ -1,39 +1,7 @@
-import type { Provider, ActionDefinition } from './types.js'
+import type { Provider, ActionDefinition, Params } from './types.js'
 import { CliError } from '../errors.js'
-
-function hasValue(v: unknown): v is string | number {
-  return v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'null'
-}
-
-/** Map CoinGecko platform IDs to EIP-155 numeric chain IDs */
-const CHAIN_TO_CHAIN_ID: Record<string, string> = {
-  'ethereum': '1',
-  'binance-smart-chain': '56',
-  'polygon-pos': '137',
-  'arbitrum-one': '42161',
-  'base': '8453',
-  'optimistic-ethereum': '10',
-  'avalanche': '43114',
-  'fantom': '250',
-  'cronos': '25',
-  'gnosis': '100',
-  'unichain': '130',
-  'sonic': '146',
-  'manta-pacific': '169',
-  'opbnb': '204',
-  'abstract': '2741',
-  'zksync': '324',
-  'merlin-chain': '4200',
-  'world-chain': '480',
-  'zircuit': '48900',
-  'mantle': '5000',
-  'scroll': '534352',
-  'linea': '59144',
-  'berachain': '80094',
-  'blast': '81457',
-  'soneium': '1868',
-  'bitlayer': '200901',
-}
+import { hasValue } from './utils.js'
+import { toChainId } from './chains.js'
 
 const ADDRESS_KEYED_ACTIONS = new Set([
   'token-security',
@@ -156,8 +124,7 @@ const actions: Record<string, ActionDefinition> = {
       }
 
       // EVM — only proceed if we can map to a numeric chain ID (or it's tron which GoPlus accepts raw)
-      // Unmapped CoinGecko names like "celo", "cosmos", "xrp" would reach GoPlus as-is → error 2022
-      if (chain !== 'tron' && !CHAIN_TO_CHAIN_ID[chain]) return null
+      if (chain !== 'tron' && !toChainId(chain)) return null
 
       return {
         action: 'token-security',
@@ -185,10 +152,10 @@ export const goplusProvider: Provider = {
   },
   authHeader: 'Authorization',
   buildAuthValue: (apiKey: string) => `Bearer ${apiKey}`,
-  mapParams: (params) => {
+  mapParams: (params: Params) => {
     const chainId = params.chain_id
     if (typeof chainId !== 'string') return params
-    const mapped = CHAIN_TO_CHAIN_ID[chainId]
+    const mapped = toChainId(chainId)
     if (!mapped) return params
     return { ...params, chain_id: mapped }
   },

@@ -15,15 +15,104 @@ export type { ForeachProgressEvent } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
 import { buildAwaitingAgentOutput, buildAwaitingParallelAgentOutput, buildCompleteOutput } from './output.js'
 import { dispatchProviderStep } from '../providers/client.js'
-import { getProvider } from '../providers/registry.js'
+import { getProvider, parseSource } from '../providers/registry.js'
 import { resolveProviderKey } from '../providers/config.js'
 import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 import { TIER_RANK } from '../providers/types.js'
 import type { ProviderTier } from '../providers/types.js'
+import type { ForeachResult } from '../../types.js'
+import { estimateTokenCount } from './output.js'
 
 // Re-export public API for backward compatibility
 export { resolveValue, resolveActionPath, resolveRelativeTime } from './template.js'
 export { applyTransforms } from '../transforms.js'
+
+// -- Debug logging --
+
+function debugStepLog(verbosity: number, result: StepResult, step: RecipeStep, parallel?: boolean): void {
+  if (verbosity < 1) return
+
+  const ms = result.timing.durationMs
+  const tokens = estimateTokenCount(result.data)
+  const tokensStr = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens)
+
+  const parts: string[] = [
+    `[v] ${result.stepId.padEnd(24)}`,
+    `${String(ms).padStart(6)}ms`,
+    `${tokensStr.padStart(7)} tok`,
+  ]
+
+  // Step type tag
+  if (isForeachStep(step)) {
+    const fr = result as ForeachResult
+    const itemCount = fr.items?.length ?? 0
+    const failCount = fr.failures?.length ?? 0
+    if (verbosity >= 2) {
+      const fallbackCount = fr.items?.filter(
+        (i): i is Record<string, unknown> => typeof i === 'object' && i !== null && (i as Record<string, unknown>)._fallback === true,
+      ).length ?? 0
+      const okCount = itemCount - fallbackCount
+      const detail = [
+        `${okCount} ok`,
+        ...(fallbackCount > 0 ? [`${fallbackCount} fallback`] : []),
+        ...(failCount > 0 ? [`${failCount} failed`] : []),
+      ].join(', ')
+      parts.push(`foreach(${itemCount + failCount}: ${detail})`)
+    } else {
+      parts.push(`foreach(${itemCount}${failCount > 0 ? `, ${failCount} failed` : ''})`)
+    }
+  } else if (isTransformStep(step)) {
+    parts.push('transform')
+  } else if (isApiStep(step) && step.source && step.source !== 'aixbt') {
+    parts.push(step.source)
+  }
+
+  if (parallel) parts.push('‖')
+
+  // -v: rate limit pauses
+  if (result.timing.rateLimitPaused) {
+    parts.push(`waited ${result.timing.waitedMs}ms`)
+  }
+
+  // -v: sample info
+  if (result.sampled) {
+    parts.push(`sampled ${result.sampled.before}→${result.sampled.after}`)
+  }
+
+  // -vv: source:action and foreach source
+  if (verbosity >= 2) {
+    if (isApiStep(step) || isForeachStep(step)) {
+      const source = step.source ?? 'aixbt'
+      parts.push(`${source}:${step.action}`)
+    }
+    if (isForeachStep(step)) {
+      parts.push(`over ${step.foreach}`)
+    }
+  }
+
+  // -vvv: data shape and byte size
+  if (verbosity >= 3) {
+    const json = JSON.stringify(result.data)
+    const bytes = Buffer.byteLength(json)
+    const sizeStr = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}KB` : `${bytes}B`
+    let shape: string
+    if (Array.isArray(result.data)) {
+      shape = `[${result.data.length}]`
+    } else if (typeof result.data === 'object' && result.data !== null) {
+      shape = `{${Object.keys(result.data as Record<string, unknown>).join(',')}}`
+    } else {
+      shape = typeof result.data
+    }
+    parts.push(`${sizeStr}  ${shape}`)
+  }
+
+  process.stderr.write(parts.join('  ') + '\n')
+}
+
+function debugSegmentLog(verbosity: number, segmentIndex: number, totalMs: number): void {
+  if (verbosity < 1) return
+  process.stderr.write(`[v] --- segment ${segmentIndex + 1} complete  ${totalMs}ms ---\n`)
+}
 
 // -- Fallback helpers --
 
@@ -99,8 +188,9 @@ function validateRequiredParams(
 function emitTierWarnings(recipe: Recipe): void {
   for (const step of recipe.steps) {
     if (!isApiStep(step) && !isForeachStep(step)) continue
-    const source = step.source
-    if (!source || source === 'aixbt') continue
+    const rawSource = step.source
+    if (!rawSource || rawSource === 'aixbt') continue
+    const { providerName: source } = parseSource(rawSource)
 
     let provider
     try { provider = getProvider(source) } catch { continue }
@@ -290,10 +380,11 @@ async function executeStep(
     // Check provider availability before iterating — avoid N failed calls
     if (step.source && step.source !== 'aixbt') {
       try {
-        const provider = getProvider(step.source)
+        const { providerName } = parseSource(step.source)
+        const provider = getProvider(providerName)
         const action = provider.actions[step.action]
         if (action && action.minTier !== 'free') {
-          const resolved = resolveProviderKey(step.source)
+          const resolved = resolveProviderKey(providerName)
           const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
           if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
             if (step.fallback) {
@@ -476,7 +567,9 @@ export async function executeRecipe(options: {
   outputFormat?: string
   recipeSource?: string
   onProgress?: (event: ForeachProgressEvent) => void
+  verbosity?: number
 }): Promise<RecipeAwaitingAgent | RecipeComplete> {
+  const verbosity = options.verbosity ?? 0
   const recipe = parseRecipe(options.yaml)
   validateRecipe(recipe)
   validateRequiredParams(recipe, options.params)
@@ -527,6 +620,7 @@ export async function executeRecipe(options: {
       ctx.agentInput = null
     }
 
+    const segmentStart = Date.now()
     const layers = buildExecutionLayers(segment.steps, new Set(ctx.results.keys()))
 
     for (const layer of layers) {
@@ -543,6 +637,7 @@ export async function executeRecipe(options: {
         const result = await executeStep(step, ctx, options.clientOptions, options.onProgress)
         ctx.results.set(step.id, result)
         ctx.currentRateLimit = result.rateLimit
+        debugStepLog(verbosity, result, step)
       } else {
         const results = await Promise.all(
           layer.map(step => executeStep(step, ctx, options.clientOptions, options.onProgress)),
@@ -550,10 +645,13 @@ export async function executeRecipe(options: {
         // Store in recipe-declared order (layer preserves recipe order)
         for (let j = 0; j < layer.length; j++) {
           ctx.results.set(layer[j].id, results[j])
+          debugStepLog(verbosity, results[j], layer[j], true)
         }
         ctx.currentRateLimit = mergeRateLimits(results.map(r => r.rateLimit))
       }
     }
+
+    debugSegmentLog(verbosity, i, Date.now() - segmentStart)
   }
 
   return buildCompleteOutput(ctx, options.outputDir, options.outputFormat)

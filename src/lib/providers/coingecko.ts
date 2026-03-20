@@ -1,42 +1,12 @@
-import type { Provider, ActionDefinition, ProviderTier } from './types.js'
+import type { Provider, ActionDefinition, ProviderTier, Params } from './types.js'
 import { flattenJsonApiResponse } from './normalize.js'
-
-function hasValue(v: unknown): v is string | number {
-  return v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'null'
-}
+import { hasValue } from './utils.js'
+import { toGeckoTerminalNetwork } from './chains.js'
+import { resolveTokenOhlcvViaPool } from './alias.js'
 
 const GECKOTERMINAL_ACTIONS = new Set([
   'token-price', 'pool', 'token-pools', 'trending-pools', 'token-ohlcv', 'pool-ohlcv',
 ])
-
-/** Map CoinGecko platform IDs (from AIXBT project tokens[].chain) to GeckoTerminal network IDs */
-const CHAIN_TO_NETWORK: Record<string, string> = {
-  'ethereum': 'eth',
-  'binance-smart-chain': 'bsc',
-  'polygon-pos': 'polygon_pos',
-  'solana': 'solana',
-  'base': 'base',
-  'arbitrum-one': 'arbitrum',
-  'arbitrum-nova': 'arbitrum_nova',
-  'avalanche': 'avax',
-  'optimistic-ethereum': 'optimism',
-  'fantom': 'ftm',
-  'cronos': 'cro',
-  'moonbeam': 'glmr',
-  'moonriver': 'movr',
-  'gnosis': 'xdai',
-  'the-open-network': 'ton',
-  'unichain': 'unichain',
-  'near-protocol': 'near',
-  'sei-v2': 'sei-evm',
-  'chiliz': 'chiliz-chain',
-  'immutable': 'immutable-zkevm',
-  'klay-token': 'kaia',
-  'metis-andromeda': 'metis',
-  'flare-network': 'flare',
-  'xrp': 'xrpl',
-  'internet-computer': 'icp',
-}
 
 /** Actions that use the `network` param and need chain mapping */
 const NETWORK_PARAM_ACTIONS = new Set([
@@ -197,6 +167,11 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
     minTier: 'free',
+    resolve: async (params, ctx) => {
+      // Pro tier has native token-level OHLCV — skip pool lookup
+      if (ctx.tier === 'pro') return null
+      return resolveTokenOhlcvViaPool(params, ctx.request)
+    },
   },
   'pool-ohlcv': {
     method: 'GET',
@@ -216,9 +191,9 @@ const actions: Record<string, ActionDefinition> = {
     ],
     minTier: 'free',
   },
-  'price-history': {
+  'chart': {
     method: 'GET',
-    description: 'Get price history — on-chain DEX data if address available, CoinGecko OHLC if geckoId available',
+    description: 'Get price chart — on-chain DEX data if address available, CoinGecko OHLC if geckoId available',
     hint: 'You need historical price candles and have a token address and/or CoinGecko ID',
     params: [
       { name: 'network', required: false, description: 'Network ID — from tokens[].chain (CoinGecko chain names accepted)' },
@@ -273,7 +248,7 @@ export const coingeckoProvider: Provider = {
   },
   rateLimits: {
     perMinute: {
-      free: 30,
+      free: 10,
       demo: 30,
       pro: 500,
     },
@@ -294,14 +269,15 @@ export const coingeckoProvider: Provider = {
     if (tier === 'demo') return { 'x-cg-demo-api-key': apiKey }
     return { 'x-cg-pro-api-key': apiKey }
   },
-  mapParams: (params, actionName) => {
+  mapParams: (params: Params, actionName: string) => {
     let result = params
 
     // Map CoinGecko chain names to GeckoTerminal network IDs
     if (NETWORK_PARAM_ACTIONS.has(actionName)) {
       const network = result.network
-      if (typeof network === 'string' && CHAIN_TO_NETWORK[network]) {
-        result = { ...result, network: CHAIN_TO_NETWORK[network] }
+      if (typeof network === 'string') {
+        const mapped = toGeckoTerminalNetwork(network)
+        if (mapped) result = { ...result, network: mapped }
       }
     }
 

@@ -1,7 +1,7 @@
 import { RecipeValidationError } from '../errors.js'
 import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../../types.js'
 import { isAgentStep, isParallelAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../../types.js'
-import { getProviderNames, getProvider } from '../providers/registry.js'
+import { getProviderNames, getProvider, parseSource } from '../providers/registry.js'
 
 export function extractTemplateRefs(str: string): string[] {
   const refs: string[] = []
@@ -345,7 +345,8 @@ export function validateProviderActions(
   for (const step of recipe.steps) {
     if (isAgentStep(step) || isTransformStep(step)) continue
 
-    const source = step.source ?? 'aixbt'
+    const rawSource = step.source ?? 'aixbt'
+    const { providerName: source } = parseSource(rawSource)
     const action = step.action
     if (!action) continue
 

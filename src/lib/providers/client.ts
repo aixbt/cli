@@ -1,9 +1,9 @@
 import type { ExecutionContext } from '../../types.js'
 import { TIER_RANK } from './types.js'
-import type { Provider, ProviderTier } from './types.js'
+import type { Provider, ProviderTier, Params, ResolveContext, ProviderResponse } from './types.js'
 import type { ProviderRateTracker } from './rate-limit.js'
 import { resolveProviderKey } from './config.js'
-import { getProvider } from './registry.js'
+import { getProvider, parseSource } from './registry.js'
 import { getTracker, recordRequest } from './rate-limit.js'
 import { CliError, ApiError, NetworkError, RateLimitError } from '../errors.js'
 import { sleep } from '../api-client.js'
@@ -15,22 +15,19 @@ const USER_AGENT = '@aixbt/cli'
 export interface ProviderRequestOptions {
   provider: Provider
   actionName: string
-  params: Record<string, string | number | boolean | undefined>
+  params: Params
   apiKeyOverride?: string
   tierOverride?: ProviderTier
+  /** Routing hint from dotted source syntax (e.g. "coingecko" from "market.coingecko") */
+  hint?: string
 }
 
-export interface ProviderResponse {
-  data: unknown
-  status: number
-  provider: string
-  action: string
-}
+export type { ProviderResponse }
 
 export async function providerRequest(
   options: ProviderRequestOptions,
 ): Promise<ProviderResponse> {
-  const { provider, actionName, params, apiKeyOverride, tierOverride } = options
+  const { provider, actionName, params, apiKeyOverride, tierOverride, hint } = options
 
   const action = provider.actions[actionName]
   if (!action) {
@@ -51,52 +48,45 @@ export async function providerRequest(
 
   // Meta-action: resolve to a concrete action and recurse
   if (action.resolve) {
-    const resolution = action.resolve(params, effectiveTier)
-    if (!resolution || (typeof resolution === 'object' && 'error' in resolution)) {
-      const reason = resolution && 'error' in resolution
-        ? resolution.error
-        : 'could not resolve action for current tier and params'
-      throw new CliError(
-        `${provider.name}:${actionName} - ${reason}`,
-        'ACTION_UNRESOLVABLE',
-      )
+    const resolveCtx: ResolveContext = {
+      hint,
+      tier: effectiveTier,
+      request: (opts) => providerRequest({
+        provider: opts.provider ? getProvider(opts.provider) : provider,
+        actionName: opts.action,
+        params: opts.params,
+        apiKeyOverride,
+        tierOverride,
+      }),
     }
-    return providerRequest({
-      ...options,
-      actionName: resolution.action,
-      params: resolution.params,
-    })
+    const resolution = await action.resolve(params, resolveCtx)
+
+    // null = fall through to normal HTTP dispatch (action must have a path)
+    if (resolution !== null) {
+      if ('error' in resolution) {
+        throw new CliError(
+          `${provider.name}:${actionName} - ${resolution.error}`,
+          'ACTION_UNRESOLVABLE',
+        )
+      }
+      const targetProvider = resolution.provider
+        ? getProvider(resolution.provider)
+        : provider
+      return providerRequest({
+        ...options,
+        provider: targetProvider,
+        actionName: resolution.action,
+        params: resolution.params,
+        hint: undefined, // hint consumed, don't propagate
+      })
+    }
   }
 
-  // GeckoTerminal no longer offers token-level OHLCV, so we look up the top
-  // pool and use pool-ohlcv instead. Applies to free and demo (both use
-  // GeckoTerminal for on-chain data; CoinGecko /onchain/ is pro-only).
-  if (actionName === 'token-ohlcv' && effectiveTier !== 'pro') {
-    const poolsResponse = await providerRequest({
-      ...options,
-      actionName: 'token-pools',
-      params: { network: params.network, address: params.address },
-    })
-    const pools = poolsResponse.data
-    if (Array.isArray(pools) && pools.length > 0) {
-      const topPool = pools[0] as Record<string, unknown>
-      const poolAddress = topPool.address as string
-      if (poolAddress) {
-        return providerRequest({
-          ...options,
-          actionName: 'pool-ohlcv',
-          params: {
-            network: params.network,
-            address: poolAddress,
-            timeframe: params.timeframe ?? 'day',
-            limit: params.limit,
-          },
-        })
-      }
-    }
+  // From here: normal HTTP dispatch — provider must have baseUrl
+  if (!provider.baseUrl) {
     throw new CliError(
-      `No DEX pools found for token on network "${params.network}"`,
-      'ACTION_UNRESOLVABLE',
+      `Provider "${provider.name}" has no baseUrl — resolve should have routed to a concrete provider`,
+      'INVALID_PROVIDER',
     )
   }
 
@@ -129,7 +119,7 @@ export async function providerRequest(
 
   if (!action.path) {
     throw new CliError(
-      `Action "${provider.name}:${actionName}" has no path and no resolve function`,
+      `Action "${provider.name}:${actionName}" has no path and resolve returned null`,
       'INVALID_ACTION',
     )
   }
@@ -162,7 +152,7 @@ export async function providerRequest(
     }
   }
 
-  const rateLimit = provider.rateLimits.perMinute[effectiveTier]
+  const rateLimit = provider.rateLimits?.perMinute[effectiveTier]
   const tracker = rateLimit ? getTracker(provider.name, rateLimit) : null
 
   const { body, status } = await executeProviderRequest(
@@ -174,9 +164,10 @@ export async function providerRequest(
     actionName,
   )
 
+  const normalize = provider.normalize ?? ((b: unknown) => b)
   let normalized: unknown
   try {
-    normalized = provider.normalize(body, actionName)
+    normalized = normalize(body, actionName)
   } catch (err) {
     if (err instanceof CliError) throw err
     throw new CliError(
@@ -204,15 +195,16 @@ export async function dispatchProviderStep(
   ctx: ExecutionContext,
   foreachItem?: unknown,
 ): Promise<unknown> {
-  const provider = getProvider(source)
+  const { providerName, hint } = parseSource(source)
+  const provider = getProvider(providerName)
   const params = stepParams ? flattenParams(stepParams, ctx, foreachItem) : {}
-  const response = await providerRequest({ provider, actionName, params })
+  const response = await providerRequest({ provider, actionName, params, hint })
   return response.data
 }
 
 function resolveActionPath(
   path: string,
-  params: Record<string, string | number | boolean | undefined>,
+  params: Params,
 ): string {
   return path.replace(/\{(\w+)\}/g, (_, paramName: string) => {
     const value = params[paramName]
@@ -236,7 +228,8 @@ async function executeProviderRequest(
   attempt = 0,
   rateLimitWaited = 0,
 ): Promise<{ body: unknown; status: number }> {
-  if (tracker) {
+  // Only record first attempt — retries replace the failed request, not add new ones
+  if (tracker && attempt === 0) {
     const waitMs = recordRequest(tracker)
     if (waitMs > 0) {
       await sleep(waitMs)
@@ -263,8 +256,10 @@ async function executeProviderRequest(
         const date = Date.parse(retryAfter)
         waitMs = !Number.isNaN(date) ? Math.max(0, date - Date.now()) : 5_000
       }
+    } else if (tracker) {
+      // Use spacing interval derived from known rate limit
+      waitMs = Math.ceil(60_000 / tracker.maxPerMinute)
     } else {
-      // Exponential backoff: 5s, 10s, 20s, ...
       waitMs = Math.min(5_000 * Math.pow(2, attempt), 60_000)
     }
 

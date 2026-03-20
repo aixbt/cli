@@ -1,5 +1,6 @@
 import { type Command, Option } from 'commander'
 import type { ProviderTier } from '../lib/providers/types.js'
+import { isConcreteProvider } from '../lib/providers/types.js'
 import { resolveFormat } from '../lib/config.js'
 import { getProviderNames, getProvider } from '../lib/providers/registry.js'
 import { resolveProviderKey, saveProviderKey, removeProviderKey } from '../lib/providers/config.js'
@@ -12,11 +13,16 @@ function getExternalProviderNames(): string[] {
   return getProviderNames().filter(n => n !== 'aixbt')
 }
 
-function validateExternalProviderName(name: string): void {
-  const validNames = getExternalProviderNames()
+/** Concrete providers that accept API keys (excludes virtual providers like market, security, defi) */
+function getConcreteProviderNames(): string[] {
+  return getExternalProviderNames().filter(n => isConcreteProvider(getProvider(n)))
+}
+
+function validateConcreteProviderName(name: string): void {
+  const validNames = getConcreteProviderNames()
   if (!validNames.includes(name)) {
     throw new CliError(
-      `Unknown provider "${name}". Supported: ${validNames.join(', ')}`,
+      `Unknown provider "${name}". Providers with API keys: ${validNames.join(', ')}`,
       'UNKNOWN_PROVIDER',
     )
   }
@@ -75,7 +81,7 @@ export function registerProviderCommand(program: Command): void {
       const globalOpts = cmd.optsWithGlobals()
       const fmt = resolveFormat(globalOpts.format as string | undefined)
 
-      validateExternalProviderName(name)
+      validateConcreteProviderName(name)
 
       const apiKey = opts.providerKey as string
       const tierFlag = opts.tier as ProviderTier | undefined
@@ -182,7 +188,7 @@ export function registerProviderCommand(program: Command): void {
       const globalOpts = cmd.optsWithGlobals()
       const fmt = resolveFormat(globalOpts.format as string | undefined)
 
-      validateExternalProviderName(name)
+      validateConcreteProviderName(name)
 
       const removed = removeProviderKey(name)
 
@@ -207,7 +213,7 @@ export function registerProviderCommand(program: Command): void {
       const globalOpts = cmd.optsWithGlobals()
       const fmt = resolveFormat(globalOpts.format as string | undefined)
 
-      validateExternalProviderName(name)
+      validateConcreteProviderName(name)
 
       const provider = getProvider(name)
       const resolved = resolveProviderKey(name)

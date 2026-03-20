@@ -571,16 +571,19 @@ export function registerRecipeCommand(program: Command): void {
 
   recipe
     .command('clone <name>')
-    .description('Download a recipe from the registry to a local file')
-    .option('--out <path>', 'Output file path (default: ./<name>.yaml)')
+    .description('Clone a recipe from the registry for local editing')
+    .option('--name <newName>', 'Name for the cloned recipe (default: <name>.clone)')
+    .option('--out <path>', 'Output directory (default: ~/.aixbt/recipes/)')
     .action(async (name: string, opts: Record<string, unknown>, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
       const outputFormat = resolveFormat(globalOpts.format as string | undefined)
       const recipesDir = getRecipesDir()
-      const outPath = (opts.out as string) ?? join(recipesDir, `${name}.yaml`)
+      const cloneName = (opts.name as string) ?? `${name}.clone`
+      const outDir = (opts.out as string) ?? recipesDir
+      const outPath = join(outDir, `${cloneName}.yaml`)
 
       if (existsSync(outPath)) {
-        throw new CliError(`File already exists: ${outPath}. Use --out to specify a different path`, 'FILE_EXISTS')
+        throw new CliError(`Recipe "${cloneName}" already exists at ${outPath}`, 'FILE_EXISTS')
       }
 
       const detail = await output.withSpinner(
@@ -590,19 +593,22 @@ export function registerRecipeCommand(program: Command): void {
         `Failed to fetch recipe "${name}"`,
       )
 
+      // Replace the name field in the YAML to match the clone name
+      const yaml = detail.yaml.replace(/^name:\s*.+$/m, `name: ${cloneName}`)
+
       try {
         mkdirSync(dirname(outPath), { recursive: true })
-        writeFileSync(outPath, detail.yaml, 'utf-8')
+        writeFileSync(outPath, yaml, 'utf-8')
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown write error'
         throw new CliError(`Failed to write ${outPath}: ${msg}`, 'WRITE_FAILED')
       }
 
       if (output.isStructuredFormat(outputFormat)) {
-        output.outputStructured({ status: 'cloned', name, path: outPath }, outputFormat)
+        output.outputStructured({ status: 'cloned', name: cloneName, from: name, path: outPath }, outputFormat)
       } else {
-        output.success(`Recipe saved to ${outPath}`)
-        output.dim(`Run with: aixbt recipe run ${outPath}`)
+        output.success(`Recipe cloned as "${cloneName}" → ${outPath}`)
+        output.dim(`Run with: aixbt recipe run ${cloneName}`)
       }
     })
 
@@ -826,7 +832,9 @@ export function registerRecipeCommand(program: Command): void {
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
       const { clientOpts: clientOptions } = getClientOptions(cmd)
-      const formatFlag = cmd.optsWithGlobals().format as string | undefined
+      const globalOpts = cmd.optsWithGlobals()
+      const verbosity = (globalOpts.verbose as number) ?? 0
+      const formatFlag = globalOpts.format as string | undefined
       if (formatFlag === 'human') {
         throw new CliError(
           'Recipes do not support --format human. Use --format json or --format toon.',
@@ -929,10 +937,11 @@ export function registerRecipeCommand(program: Command): void {
       }
       if (adapter && !structured) {
         // Agent mode: AIXBT with trailing spinner → tick on success
+        // Suppress spinner when verbose — debug lines go to stderr too
         let fi = 0
-        const tick = setInterval(() => {
+        const tick = verbosity < 1 ? setInterval(() => {
           process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
-        }, 80)
+        }, 80) : undefined
         try {
           result = await executeRecipe({
             yaml,
@@ -944,12 +953,13 @@ export function registerRecipeCommand(program: Command): void {
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
             onProgress: handleRunProgress,
+            verbosity,
           })
-          clearInterval(tick)
-          process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
+          if (tick) clearInterval(tick)
+          if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
         } catch (err) {
-          clearInterval(tick)
-          process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
+          if (tick) clearInterval(tick)
+          if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
           throw err
         }
       } else if (adapter && structured) {
@@ -964,11 +974,12 @@ export function registerRecipeCommand(program: Command): void {
           outputFormat: recipeFormat,
           recipeSource: opts.stdin ? undefined : source,
           onProgress: handleRunProgress,
+          verbosity,
         })
       } else {
         let noAgentFi = 0
         let noAgentInterval: ReturnType<typeof setInterval> | undefined
-        if (!structured) {
+        if (!structured && verbosity < 1) {
           noAgentInterval = setInterval(() => {
             process.stderr.write(`\r${FRAMES[noAgentFi++ % FRAMES.length]} ${output.fmt.dim('Executing recipe...')}${getRunRateLimitSuffix()}`)
           }, 80)
@@ -984,6 +995,7 @@ export function registerRecipeCommand(program: Command): void {
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
             onProgress: handleRunProgress,
+            verbosity,
           })
           if (noAgentInterval) {
             clearInterval(noAgentInterval)
@@ -1050,15 +1062,16 @@ export function registerRecipeCommand(program: Command): void {
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
             onProgress: handleRunProgress,
+            verbosity,
           })
         } else {
           // Visual mode: AIXBT spinner for recipe resume
-          process.stderr.write(`  ${chalk.dim('↓')}\n`)
+          if (verbosity < 1) process.stderr.write(`  ${chalk.dim('↓')}\n`)
           runRateLimitStart = 0
           let fi = 0
-          const resumeTick = setInterval(() => {
+          const resumeTick = verbosity < 1 ? setInterval(() => {
             process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
-          }, 80)
+          }, 80) : undefined
           try {
             result = await executeRecipe({
               yaml,
@@ -1070,12 +1083,13 @@ export function registerRecipeCommand(program: Command): void {
               outputFormat: recipeFormat,
               recipeSource: opts.stdin ? undefined : source,
               onProgress: handleRunProgress,
+              verbosity,
             })
-            clearInterval(resumeTick)
-            process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
+            if (resumeTick) clearInterval(resumeTick)
+            if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
           } catch (err) {
-            clearInterval(resumeTick)
-            process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
+            if (resumeTick) clearInterval(resumeTick)
+            if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
             throw err
           }
         }

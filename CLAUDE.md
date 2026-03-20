@@ -45,7 +45,7 @@ Forking workflow — feature branches live on the fork, not the main repo.
 
 **Branches:**
 - `main` = production (protected, PR only)
-- `develop` = default branch, PR target (protected, PR only)
+- `develop` = default branch, **default PR target** (protected, PR only)
 
 **Flow:** feature branch → PR to `develop` → merge to `main` for release
 
