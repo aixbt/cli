@@ -28,8 +28,25 @@ export function resolveExpression(
   }
 
   // Step references: step_id, step_id.data, step_id.data[*].field, step_id.data.nested.path
+  // Also: step_id[*].field — shorthand pluck
+  const bracketIdx = trimmed.indexOf('[*].')
+  let stepId: string
+  let rest: string | undefined
+
+  if (bracketIdx !== -1 && (trimmed.indexOf('.') === -1 || bracketIdx < trimmed.indexOf('.'))) {
+    // step_id[*].field — shorthand pluck
+    stepId = trimmed.slice(0, bracketIdx)
+    const stepResult = ctx.results.get(stepId)
+    if (!stepResult) return undefined
+    const field = trimmed.slice(bracketIdx + '[*].'.length)
+    if (!Array.isArray(stepResult.data)) return undefined
+    return stepResult.data
+      .filter((item: unknown) => !isErrorMarker(item))
+      .map((item: unknown) => getNestedValue(item, field))
+  }
+
   const dotIndex = trimmed.indexOf('.')
-  const stepId = dotIndex === -1 ? trimmed : trimmed.slice(0, dotIndex)
+  stepId = dotIndex === -1 ? trimmed : trimmed.slice(0, dotIndex)
   const stepResult = ctx.results.get(stepId)
 
   if (!stepResult) {
@@ -41,11 +58,13 @@ export function resolveExpression(
     return stepResult.data
   }
 
-  const rest = trimmed.slice(dotIndex + 1)
+  rest = trimmed.slice(dotIndex + 1)
 
-  // Must start with "data"
+  // If rest doesn't start with "data", treat as shorthand for data.X
+  // This allows step_id.field as shorthand for step_id.data.field
+  // (e.g., picks.projectIds resolves to picks.data.projectIds)
   if (!rest.startsWith('data')) {
-    return undefined
+    return getNestedValue(stepResult.data, rest)
   }
 
   // step_id.data
@@ -147,6 +166,24 @@ export function resolveActionPath(
   // Resolve templates in the path
   const resolved = resolveString(path, ctx, foreachItem)
   return { method, path: String(resolved) }
+}
+
+/**
+ * Substitute {name} path placeholders from resolved params.
+ * Mutates params by removing consumed path params.
+ */
+export function substitutePathParams(
+  path: string,
+  params: Record<string, string | number | boolean | undefined>,
+): string {
+  return path.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = params[name]
+    if (value !== undefined && value !== '') {
+      delete params[name]
+      return encodeURIComponent(String(value))
+    }
+    return match
+  })
 }
 
 export function resolveRelativeTime(expr: string): string {

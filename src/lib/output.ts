@@ -352,7 +352,7 @@ interface TableColumn {
 
 export type { TableColumn }
 
-function getTerminalWidth(): number {
+export function getTerminalWidth(): number {
   return process.stdout.columns || 80
 }
 
@@ -434,7 +434,7 @@ function styledSlice(styled: string, map: number[], start: number, end: number):
   return styled.slice(sStart, sEnd)
 }
 
-function wrapText(text: string, width: number): string[] {
+export function wrapText(text: string, width: number): string[] {
   if (width <= 0) return [text]
   if (visibleLength(text) <= width) return [text]
 

@@ -384,8 +384,8 @@ describe('multi-source integration tests', () => {
       expect(security).toHaveLength(2)
 
       // GoPlus normalize flattens single-address results from { "0xaaa111": {...} } to {...}
-      expect(security[0]).toEqual({ is_honeypot: '0', buy_tax: '0', sell_tax: '0' })
-      expect(security[1]).toEqual({ is_honeypot: '1', buy_tax: '0.05', sell_tax: '0.10' })
+      expect(security[0]).toEqual({ is_honeypot: '0', buy_tax: '0', sell_tax: '0', _source_id: 'proj-a', _source_name: 'Token A' })
+      expect(security[1]).toEqual({ is_honeypot: '1', buy_tax: '0.05', sell_tax: '0.10', _source_id: 'proj-b', _source_name: 'Token B' })
     })
 
     it('should construct GoPlus URLs with correct chain_id path parameter and contract_addresses query', async () => {
@@ -506,7 +506,7 @@ describe('multi-source integration tests', () => {
       expect(security).toHaveLength(2)
 
       // First result should be the successful GoPlus data
-      expect(security[0]).toEqual({ is_honeypot: '0' })
+      expect(security[0]).toEqual({ is_honeypot: '0', _source_id: 'proj-a', _source_name: 'Token A' })
 
       // Second result should be an error marker
       const errorItem = security[1] as { _error: boolean; error: string }

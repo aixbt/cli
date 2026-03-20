@@ -10,6 +10,7 @@ import { sleep } from '../api-client.js'
 import { flattenParams } from '../recipe/template.js'
 
 const MAX_RETRIES = 3
+const MAX_RATE_LIMIT_WAIT = 120_000 // give up after 2 min total wait on 429s
 const USER_AGENT = '@aixbt/cli'
 
 export interface ProviderRequestOptions {
@@ -52,9 +53,12 @@ export async function providerRequest(
   // Meta-action: resolve to a concrete action and recurse
   if (action.resolve) {
     const resolution = action.resolve(params, effectiveTier)
-    if (!resolution) {
+    if (!resolution || (typeof resolution === 'object' && 'error' in resolution)) {
+      const reason = resolution && 'error' in resolution
+        ? resolution.error
+        : 'could not resolve action for current tier and params'
       throw new CliError(
-        `No suitable provider path for "${provider.name}:${actionName}" with current params and "${effectiveTier}" tier`,
+        `${provider.name}:${actionName} - ${reason}`,
         'ACTION_UNRESOLVABLE',
       )
     }
@@ -65,9 +69,10 @@ export async function providerRequest(
     })
   }
 
-  // Free-tier pool-based OHLCV: GeckoTerminal no longer offers token-level OHLCV
-  // on the free tier, so we look up the top pool and use pool-ohlcv instead.
-  if (actionName === 'token-ohlcv' && effectiveTier === 'free') {
+  // GeckoTerminal no longer offers token-level OHLCV, so we look up the top
+  // pool and use pool-ohlcv instead. Applies to free and demo (both use
+  // GeckoTerminal for on-chain data; CoinGecko /onchain/ is pro-only).
+  if (actionName === 'token-ohlcv' && effectiveTier !== 'pro') {
     const poolsResponse = await providerRequest({
       ...options,
       actionName: 'token-pools',
@@ -99,12 +104,13 @@ export async function providerRequest(
   if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
     throw new CliError(
       `Action "${provider.name}:${actionName}" requires "${action.minTier}" tier, but current tier is "${effectiveTier}". ` +
-      `Run: aixbt provider add ${provider.name} --api-key <key> --tier ${action.minTier}`,
+      `Run: aixbt provider add ${provider.name} --provider-key <key> --tier ${action.minTier}`,
       'TIER_INSUFFICIENT',
     )
   }
 
   let baseUrl = (
+    provider.resolveBaseUrl?.(actionName, effectiveTier) ??
     provider.baseUrl.byTier[effectiveTier] ??
     provider.baseUrl.default
   ).replace(/\/$/, '')
@@ -113,7 +119,7 @@ export async function providerRequest(
     if (!resolvedKey) {
       throw new CliError(
         `Provider "${provider.name}" requires an API key for the "${effectiveTier}" tier. ` +
-        `Run: aixbt provider add ${provider.name} --api-key <key>`,
+        `Run: aixbt provider add ${provider.name} --provider-key <key>`,
         'MISSING_PROVIDER_KEY',
       )
     }
@@ -131,7 +137,7 @@ export async function providerRequest(
 
   const actionPath = action.pathByTier?.[effectiveTier] ?? action.path
   const resolvedPath = resolveActionPath(actionPath, mappedParams)
-  const url = new URL(resolvedPath, baseUrl)
+  const url = new URL(resolvedPath.replace(/^\//, ''), baseUrl + '/')
 
   for (const [key, value] of Object.entries(mappedParams)) {
     if (value === undefined || value === '') continue
@@ -229,6 +235,7 @@ async function executeProviderRequest(
   providerName: string,
   actionName: string,
   attempt = 0,
+  rateLimitWaited = 0,
 ): Promise<{ body: unknown; status: number }> {
   if (tracker) {
     const waitMs = recordRequest(tracker)
@@ -247,27 +254,31 @@ async function executeProviderRequest(
   }
 
   if (res.status === 429) {
-    if (attempt >= MAX_RETRIES) {
-      throw new RateLimitError(
-        `${providerName}:${actionName} - Rate limit exceeded after ${MAX_RETRIES} retries`,
-        null,
-      )
-    }
     const retryAfter = res.headers.get('retry-after')
-    let waitMs = 60_000
+    let waitMs: number
     if (retryAfter) {
       const seconds = parseInt(retryAfter, 10)
       if (!Number.isNaN(seconds) && seconds > 0) {
         waitMs = seconds * 1000
       } else {
         const date = Date.parse(retryAfter)
-        if (!Number.isNaN(date)) {
-          waitMs = Math.max(0, date - Date.now())
-        }
+        waitMs = !Number.isNaN(date) ? Math.max(0, date - Date.now()) : 5_000
       }
+    } else {
+      // Exponential backoff: 5s, 10s, 20s, ...
+      waitMs = Math.min(5_000 * Math.pow(2, attempt), 60_000)
     }
+
+    const totalWaited = rateLimitWaited + waitMs
+    if (totalWaited > MAX_RATE_LIMIT_WAIT) {
+      throw new RateLimitError(
+        `${providerName}:${actionName} - Rate limit exceeded (waited ${Math.round(totalWaited / 1000)}s total)`,
+        null,
+      )
+    }
+
     await sleep(waitMs)
-    return executeProviderRequest(method, url, headers, tracker, providerName, actionName, attempt + 1)
+    return executeProviderRequest(method, url, headers, tracker, providerName, actionName, attempt + 1, totalWaited)
   }
 
   if (!res.ok) {

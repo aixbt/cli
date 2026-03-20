@@ -2,10 +2,11 @@ import type { Command } from 'commander'
 import { readFileSync, existsSync, writeFileSync, mkdirSync, globSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import type { Recipe } from '../types.js'
-import { isAgentStep, isForeachStep, isTransformStep } from '../types.js'
+import type { Recipe, RecipeAwaitingAgent } from '../types.js'
+import { isAgentStep, isParallelAgentStep, isForeachStep, isTransformStep } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { executeRecipe } from '../lib/recipe/engine.js'
+import { measureRecipe } from '../lib/recipe/measure.js'
 import { parseRecipe } from '../lib/recipe/parser.js'
 import { validateRecipeCollectIssues } from '../lib/recipe/validator.js'
 import { CliError, RecipeValidationError } from '../lib/errors.js'
@@ -13,7 +14,59 @@ import { readConfig, resolveFormat, getRecipesDir } from '../lib/config.js'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../lib/registry.js'
 import type { OutputFormat } from '../lib/output.js'
 import * as output from '../lib/output.js'
-import { resolveAdapter, resolveAgentTarget, invokeAgentForStep, invokeAgentForAnalysis, captureAgentAnalysis } from '../lib/agents/index.js'
+import chalk from 'chalk'
+import type { AgentAdapter } from '../lib/agents/index.js'
+import { resolveAdapter, resolveAgentTarget, invokeAgentForStep, invokeAgentForAnalysis, captureAgentAnalysis, invokeParallelAgents, AGENT_COLORS } from '../lib/agents/index.js'
+
+const PARALLEL_FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
+
+async function handleParallelAgentStep(
+  adapter: AgentAdapter,
+  awaiting: RecipeAwaitingAgent,
+  structured: boolean,
+  agentAllowedTools?: string[],
+): Promise<Record<string, unknown>> {
+  const parallel = awaiting.parallel!
+  const total = parallel.items.length
+  let failedCount = 0
+
+  if (structured) {
+    const results = await invokeParallelAgents(adapter, awaiting, { allowedTools: agentAllowedTools })
+    return { _results: results }
+  }
+
+  // Visual mode: show progress
+  const agentColor = AGENT_COLORS[adapter.binary] ?? '#888888'
+  const agentLabel = chalk.hex(agentColor)(adapter.binary.toUpperCase())
+  process.stderr.write(`  ${chalk.dim('↓')}\n`)
+
+  let fi = 0
+  let completedCount = 0
+  const stepTick = setInterval(() => {
+    process.stderr.write(`\r${agentLabel} ${PARALLEL_FRAMES[fi++ % PARALLEL_FRAMES.length]} ${chalk.dim(`step: ${awaiting.step} [${completedCount}/${total}]`)}`)
+  }, 80)
+
+  try {
+    const results = await invokeParallelAgents(adapter, awaiting, {
+      allowedTools: agentAllowedTools,
+      callbacks: {
+        onItemComplete: (completed, _total, failed) => {
+          completedCount = completed
+          if (failed) failedCount++
+        },
+      },
+    })
+
+    clearInterval(stepTick)
+    const failSuffix = failedCount > 0 ? ` ${chalk.dim(`${failedCount} failed`)}` : ''
+    process.stderr.write(`\r${agentLabel} ${output.fmt.dim('✓')} ${chalk.dim(`step: ${awaiting.step} [${total}/${total}]`)}${failSuffix}\n`)
+    return { _results: results }
+  } catch (err) {
+    clearInterval(stepTick)
+    process.stderr.write(`\r${agentLabel} ${output.fmt.red('✗')} ${chalk.dim(`step: ${awaiting.step}`)}\n`)
+    throw err
+  }
+}
 
 // -- Helpers --
 
@@ -36,7 +89,7 @@ function reportValidationResults(
     console.error()
     for (const issue of issues) {
       const location = issue.path ? `  at ${issue.path}` : ''
-      console.error(`  x ${issue.message}${location}`)
+      console.error(`x ${issue.message}${location}`)
     }
   }
 }
@@ -93,7 +146,7 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
     output.keyValue('Foreach steps', foreachSteps.join(', '), 20)
   }
   if (recipe.analysis?.instructions) {
-    output.keyValue('', 'Includes analysis instructions', 20)
+    output.keyValue('Analysis', 'Yes', 20)
   }
 }
 
@@ -267,11 +320,22 @@ export function registerRecipeCommand(program: Command): void {
         return
       }
 
+      // Helper to print a wrapped description (respects newlines for bullets)
+      const printDescription = (desc: string, indent = 2) => {
+        const pad = ' '.repeat(indent)
+        const width = output.getTerminalWidth() - indent
+        for (const paragraph of desc.trimEnd().split('\n')) {
+          if (paragraph === '') continue
+          const lines = width > 20 ? output.wrapText(paragraph, width) : [paragraph]
+          for (const line of lines) console.log(`${pad}${line}`)
+        }
+      }
+
       // Helper to print a local recipe entry
       const printLocalRecipe = ({ file, recipe, valid }: LocalRecipe) => {
         console.log()
         console.log(`  ${output.fmt.brandBold(recipe.name)}  ${output.fmt.dim(`v${recipe.version}`)}  ${output.fmt.dim(file)}`)
-        console.log(`  ${recipe.description}`)
+        printDescription(recipe.description)
 
         const meta: string[] = []
         if (recipe.estimatedTokens) {
@@ -296,7 +360,7 @@ export function registerRecipeCommand(program: Command): void {
       for (const r of registryRecipes) {
         console.log()
         console.log(`  ${output.fmt.brandBold(r.name)}  ${output.fmt.dim(`v${r.version}`)}`)
-        console.log(`  ${r.description}`)
+        printDescription(r.description)
 
         const meta: string[] = []
         if (r.estimatedTokens) {
@@ -395,6 +459,9 @@ export function registerRecipeCommand(program: Command): void {
       const parsed = parseRecipe(yaml)
 
       const steps = parsed.steps.map((step) => {
+        if (isParallelAgentStep(step)) {
+          return { id: step.id, type: 'foreach' as const, action: 'agent', foreach: step.foreach, instructions: step.instructions }
+        }
         if (isAgentStep(step)) {
           return { id: step.id, type: 'agent' as const, instructions: step.instructions }
         }
@@ -450,9 +517,11 @@ export function registerRecipeCommand(program: Command): void {
       console.log()
       output.info('Steps:')
       for (const step of parsed.steps) {
-        if (isAgentStep(step)) {
-          const preview = step.instructions.split('\n')[0].slice(0, 80)
-          output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(preview)}`, 20)
+        if (isParallelAgentStep(step)) {
+          const ctxLabel = step.context.length > 0 ? ` ${output.fmt.dim(`[${step.context.join(', ')}]`)}` : ''
+          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} agent${ctxLabel}\n${output.fmt.dim(step.instructions.trim())}`, 20)
+        } else if (isAgentStep(step)) {
+          output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(step.instructions.trim())}`, 20)
         } else if (isForeachStep(step)) {
           const label = step.source ? `${step.action} (${step.source})` : step.action
           output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} ${output.fmt.dim(label)}`, 20)
@@ -538,17 +607,27 @@ export function registerRecipeCommand(program: Command): void {
     })
 
   recipe
-    .command('validate <file>')
+    .command('validate <name>')
     .description('Validate a recipe YAML file without executing')
-    .action(async (file: string, _opts: unknown, cmd: Command) => {
+    .action(async (name: string, _opts: unknown, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
       const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
-      if (!existsSync(file)) {
-        throw new CliError(`File not found: ${file}`, 'FILE_NOT_FOUND')
+      let file = name
+      let yamlString: string
+      if (existsSync(name)) {
+        yamlString = readFileSync(name, 'utf-8')
+      } else if (name.includes('/') || name.endsWith('.yaml') || name.endsWith('.yml')) {
+        throw new CliError(`File not found: ${name}`, 'FILE_NOT_FOUND')
+      } else {
+        const userFile = resolveUserRecipe(name)
+        if (userFile) {
+          yamlString = readFileSync(userFile, 'utf-8')
+          file = userFile
+        } else {
+          throw new CliError(`Recipe "${name}" not found in ${getRecipesDir()}`, 'RECIPE_NOT_FOUND')
+        }
       }
-
-      const yamlString = readFileSync(file, 'utf-8')
 
       let recipe: Recipe
       try {
@@ -568,6 +647,172 @@ export function registerRecipeCommand(program: Command): void {
       }
 
       printValidRecipeSummary(file, recipe, outputFormat)
+    })
+
+  recipe
+    .command('measure <name>')
+    .description('Run data steps and report context token usage')
+    .allowUnknownOption(true)
+    .action(async (name: string, _opts: unknown, cmd: Command) => {
+      const { clientOpts: clientOptions } = getClientOptions(cmd)
+      const outputFormat = resolveFormat(cmd.optsWithGlobals().format as string | undefined)
+
+      // Resolve recipe source (same logic as info/run)
+      let yaml: string
+      let source = name
+      if (existsSync(name)) {
+        yaml = readFileSync(name, 'utf-8')
+      } else if (name.includes('/') || name.endsWith('.yaml') || name.endsWith('.yml')) {
+        throw new CliError(`File not found: ${name}`, 'FILE_NOT_FOUND')
+      } else {
+        const userFile = resolveUserRecipe(name)
+        if (userFile) {
+          yaml = readFileSync(userFile, 'utf-8')
+          source = userFile
+        } else {
+          throw new CliError(`Recipe "${name}" not found in ${getRecipesDir()}`, 'RECIPE_NOT_FOUND')
+        }
+      }
+
+      const params = extractDynamicParams(cmd)
+
+      // Auto-populate missing required params with Bitcoin project ID for measurement
+      const BITCOIN_ID = '66f4fdc76811ccaef955de3e'
+      try {
+        const parsed = parseRecipe(yaml)
+        if (parsed.params) {
+          for (const [key, def] of Object.entries(parsed.params)) {
+            if (def.required && !params[key] && !def.default) {
+              params[key] = BITCOIN_ID
+              if (!output.isStructuredFormat(outputFormat)) {
+                output.dim(`Auto-populated --${key} with Bitcoin for measurement`)
+              }
+            }
+          }
+        }
+      } catch { /* validation errors will surface when executeRecipe runs */ }
+
+      const structured = output.isStructuredFormat(outputFormat)
+
+      const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
+      let frameIdx = 0
+      let spinnerInterval: ReturnType<typeof setInterval> | undefined
+      let spinnerLabel = ''
+
+      let upgradeHints: string[] = []
+
+      // Rate limit countdown state
+      let rateLimitStart = 0
+      let rateLimitWaitMs = 0
+      let rateLimitProvider = ''
+      let rateLimitProgress = ''
+
+      if (!structured) {
+        spinnerLabel = 'Running data steps...'
+        spinnerInterval = setInterval(() => {
+          let extra = ''
+          if (rateLimitStart > 0) {
+            const elapsed = Date.now() - rateLimitStart
+            const remaining = Math.max(0, Math.ceil((rateLimitWaitMs - elapsed) / 1000))
+            if (remaining > 0) {
+              extra = ` (${rateLimitProvider}: rate limited, waiting ${remaining}s) ${rateLimitProgress}`
+            }
+          }
+          process.stderr.write(`\r${FRAMES[frameIdx++ % FRAMES.length]} ${output.fmt.dim(`${spinnerLabel}${extra}`)}`)
+        }, 80)
+      }
+
+      const handleProgress = (event: { type: string; provider: string; waitMs: number; completed: number; total: number; tier?: string; upgradeHint?: string }) => {
+        if (event.type === 'rate_limit') {
+          rateLimitStart = Date.now()
+          rateLimitWaitMs = event.waitMs
+          rateLimitProvider = event.provider
+          rateLimitProgress = `[${event.completed}/${event.total}]`
+          if (event.upgradeHint && !upgradeHints.includes(event.upgradeHint)) {
+            upgradeHints.push(event.upgradeHint)
+          }
+        } else if (event.type === 'item_complete') {
+          rateLimitStart = 0
+        }
+      }
+
+      try {
+        const result = await measureRecipe({
+          yaml,
+          params,
+          clientOptions,
+          recipeSource: source,
+          onSegment: (label) => { spinnerLabel = label },
+          onProgress: handleProgress,
+        })
+
+        if (spinnerInterval) {
+          clearInterval(spinnerInterval)
+          process.stderr.write(`\r${output.fmt.dim('✓')} Measured ${result.segments.length} segment${result.segments.length !== 1 ? 's' : ''}\n`)
+        }
+
+        if (upgradeHints.length > 0) {
+          for (const hint of upgradeHints) {
+            console.error(output.fmt.dim(`  ↳ ${hint}`))
+          }
+        }
+
+        if (structured) {
+          output.outputStructured(result, outputFormat)
+          return
+        }
+
+        // Human output
+        const fmtTokens = (n: number) => n < 1000 ? `~${n}` : `~${Math.round(n / 1000)}k`
+
+        console.log()
+        console.log(`${output.fmt.boldWhite(result.recipeName)}  ${output.fmt.dim(source)}`)
+        console.log()
+
+        for (const seg of result.segments) {
+          const typeTag = seg.type === 'post-yield'
+            ? output.fmt.dim('(post-yield, 1 mock item)')
+            : ''
+          console.log(`${output.fmt.dim(seg.label)} ${typeTag}`)
+          console.log(`  json: ${output.fmt.number(fmtTokens(seg.tokens.json))}  toon: ${output.fmt.number(fmtTokens(seg.tokens.toon))}`)
+        }
+
+        console.log()
+        console.log(`${output.fmt.boldWhite('Total')}`)
+        console.log(`  json: ${output.fmt.number(fmtTokens(result.totalTokens.json))}  toon: ${output.fmt.number(fmtTokens(result.totalTokens.toon))}`)
+
+        // Scaling note for multi-segment recipes with post-yield data
+        const postYieldSegs = result.segments.filter(s => s.type === 'post-yield')
+        if (postYieldSegs.length > 0) {
+          const postYieldTotal = {
+            json: postYieldSegs.reduce((sum, s) => sum + s.tokens.json, 0),
+            toon: postYieldSegs.reduce((sum, s) => sum + s.tokens.toon, 0),
+          }
+          const dataSegs = result.segments.filter(s => s.type === 'data')
+          const dataTotal = {
+            json: dataSegs.reduce((sum, s) => sum + s.tokens.json, 0),
+            toon: dataSegs.reduce((sum, s) => sum + s.tokens.toon, 0),
+          }
+          console.log()
+          output.dim('Post-yield segments measured with 1 mock item (Bitcoin).')
+          output.dim('Scale per-item cost by expected agent pick count:')
+          for (const n of [3, 5]) {
+            const scaled = {
+              json: dataTotal.json + postYieldTotal.json * n,
+              toon: dataTotal.toon + postYieldTotal.toon * n,
+            }
+            console.log(`  ${n} picks: json ${fmtTokens(scaled.json)}  toon ${fmtTokens(scaled.toon)}`)
+          }
+        }
+
+        console.log()
+      } catch (err) {
+        if (spinnerInterval) {
+          clearInterval(spinnerInterval)
+          process.stderr.write(`\r${output.fmt.red('✗')} Measure failed\n`)
+        }
+        throw err
+      }
     })
 
   recipe
@@ -621,6 +866,10 @@ export function registerRecipeCommand(program: Command): void {
         // Registry takes precedence over local — prevents name shadowing
         try {
           yaml = await fetchRecipeFromRegistry(source, clientOptions)
+          const localFile = resolveUserRecipe(source)
+          if (localFile) {
+            console.error(output.fmt.dim(`using registry recipe "${source}" (local version at ${localFile} is overridden)`))
+          }
         } catch {
           const userFile = resolveUserRecipe(source)
           if (userFile) {
@@ -648,13 +897,41 @@ export function registerRecipeCommand(program: Command): void {
       let result: Awaited<ReturnType<typeof executeRecipe>>
 
       const structured = formatFlag === 'json' || formatFlag === 'toon'
+      const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
+      const aixbt = output.fmt.brand('AIXBT')
+      // Rate limit countdown state for run command
+      let runRateLimitStart = 0
+      let runRateLimitWaitMs = 0
+      let runRateLimitProvider = ''
+      let runRateLimitProgress = ''
+      const runUpgradeHints: string[] = []
+
+      function getRunRateLimitSuffix(): string {
+        if (runRateLimitStart <= 0) return ''
+        const elapsed = Date.now() - runRateLimitStart
+        const remaining = Math.max(0, Math.ceil((runRateLimitWaitMs - elapsed) / 1000))
+        if (remaining <= 0) return ''
+        return ` ${output.fmt.dim(`(${runRateLimitProvider}: rate limited, waiting ${remaining}s) ${runRateLimitProgress}`)}`
+      }
+
+      const handleRunProgress = (event: { type: string; provider: string; waitMs: number; completed: number; total: number; tier?: string; upgradeHint?: string }) => {
+        if (event.type === 'rate_limit') {
+          runRateLimitStart = Date.now()
+          runRateLimitWaitMs = event.waitMs
+          runRateLimitProvider = event.provider
+          runRateLimitProgress = `[${event.completed}/${event.total}]`
+          if (event.upgradeHint && !runUpgradeHints.includes(event.upgradeHint)) {
+            runUpgradeHints.push(event.upgradeHint)
+          }
+        } else if (event.type === 'item_complete') {
+          runRateLimitStart = 0
+        }
+      }
       if (adapter && !structured) {
         // Agent mode: AIXBT with trailing spinner → tick on success
-        const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
-        const aixbt = output.fmt.brand('AIXBT')
         let fi = 0
         const tick = setInterval(() => {
-          process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}`)
+          process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
         }, 80)
         try {
           result = await executeRecipe({
@@ -666,6 +943,7 @@ export function registerRecipeCommand(program: Command): void {
             outputDir: opts.outputDir as string | undefined,
             outputFormat: recipeFormat,
             recipeSource: opts.stdin ? undefined : source,
+            onProgress: handleRunProgress,
           })
           clearInterval(tick)
           process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
@@ -685,24 +963,44 @@ export function registerRecipeCommand(program: Command): void {
           outputDir: opts.outputDir as string | undefined,
           outputFormat: recipeFormat,
           recipeSource: opts.stdin ? undefined : source,
+          onProgress: handleRunProgress,
         })
       } else {
-        result = await output.withSpinner(
-          'Executing recipe...',
-          recipeFormat,
-          () =>
-            executeRecipe({
-              yaml,
-              params,
-              clientOptions,
-              resumeFromStep: opts.resumeFrom as string | undefined,
-              resumeInput,
-              outputDir: opts.outputDir as string | undefined,
-              outputFormat: recipeFormat,
-              recipeSource: opts.stdin ? undefined : source,
-            }),
-          'Recipe execution failed',
-        )
+        let noAgentFi = 0
+        let noAgentInterval: ReturnType<typeof setInterval> | undefined
+        if (!structured) {
+          noAgentInterval = setInterval(() => {
+            process.stderr.write(`\r${FRAMES[noAgentFi++ % FRAMES.length]} ${output.fmt.dim('Executing recipe...')}${getRunRateLimitSuffix()}`)
+          }, 80)
+        }
+        try {
+          result = await executeRecipe({
+            yaml,
+            params,
+            clientOptions,
+            resumeFromStep: opts.resumeFrom as string | undefined,
+            resumeInput,
+            outputDir: opts.outputDir as string | undefined,
+            outputFormat: recipeFormat,
+            recipeSource: opts.stdin ? undefined : source,
+            onProgress: handleRunProgress,
+          })
+          if (noAgentInterval) {
+            clearInterval(noAgentInterval)
+            process.stderr.write('\r\x1b[K')
+          }
+        } catch (err) {
+          if (noAgentInterval) {
+            clearInterval(noAgentInterval)
+            process.stderr.write('\r\x1b[K')
+          }
+          throw err
+        }
+      }
+      if (runUpgradeHints.length > 0 && !structured) {
+        for (const hint of runUpgradeHints) {
+          console.error(output.fmt.dim(`↳ ${hint}`))
+        }
       }
 
       // No agent — output as-is (existing behavior)
@@ -714,18 +1012,55 @@ export function registerRecipeCommand(program: Command): void {
       // Agent orchestration loop: handle intermediate agent steps
       while (result.status === 'awaiting_agent') {
         const awaiting = result
-        const agentResponse = await output.withSpinner(
-          `Agent (${agentTarget}) processing step "${awaiting.step}"...`,
-          recipeFormat,
-          () => invokeAgentForStep(adapter, awaiting, { allowedTools: agentAllowedTools }),
-          `Agent failed on step "${awaiting.step}"`,
-        )
+        let agentResponse: Record<string, unknown>
 
-        result = await output.withSpinner(
-          'Resuming recipe...',
-          recipeFormat,
-          () =>
-            executeRecipe({
+        if (awaiting.parallel) {
+          // Parallel agent step — fan out
+          agentResponse = await handleParallelAgentStep(adapter, awaiting, structured, agentAllowedTools)
+        } else if (structured) {
+          agentResponse = await invokeAgentForStep(adapter, awaiting, { allowedTools: agentAllowedTools })
+        } else {
+          // Visual mode: show agent label + spinner for intermediate step
+          const agentColor = AGENT_COLORS[adapter.binary] ?? '#888888'
+          const agentLabel = chalk.hex(agentColor)(adapter.binary.toUpperCase())
+          process.stderr.write(`  ${chalk.dim('↓')}\n`)
+          let fi = 0
+          const stepTick = setInterval(() => {
+            process.stderr.write(`\r${agentLabel} ${FRAMES[fi++ % FRAMES.length]} ${chalk.dim(`step: ${awaiting.step}`)}`)
+          }, 80)
+          try {
+            agentResponse = await invokeAgentForStep(adapter, awaiting, { allowedTools: agentAllowedTools })
+            clearInterval(stepTick)
+            process.stderr.write(`\r${agentLabel} ${output.fmt.dim('✓')} ${chalk.dim(`step: ${awaiting.step}`)}\n`)
+          } catch (err) {
+            clearInterval(stepTick)
+            process.stderr.write(`\r${agentLabel} ${output.fmt.red('✗')} ${chalk.dim(`step: ${awaiting.step}`)}\n`)
+            throw err
+          }
+        }
+
+        if (structured) {
+          result = await executeRecipe({
+            yaml,
+            params,
+            clientOptions,
+            resumeFromStep: `step:${awaiting.step}`,
+            resumeInput: agentResponse,
+            outputDir: opts.outputDir as string | undefined,
+            outputFormat: recipeFormat,
+            recipeSource: opts.stdin ? undefined : source,
+            onProgress: handleRunProgress,
+          })
+        } else {
+          // Visual mode: AIXBT spinner for recipe resume
+          process.stderr.write(`  ${chalk.dim('↓')}\n`)
+          runRateLimitStart = 0
+          let fi = 0
+          const resumeTick = setInterval(() => {
+            process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
+          }, 80)
+          try {
+            result = await executeRecipe({
               yaml,
               params,
               clientOptions,
@@ -734,9 +1069,16 @@ export function registerRecipeCommand(program: Command): void {
               outputDir: opts.outputDir as string | undefined,
               outputFormat: recipeFormat,
               recipeSource: opts.stdin ? undefined : source,
-            }),
-          'Recipe execution failed',
-        )
+              onProgress: handleRunProgress,
+            })
+            clearInterval(resumeTick)
+            process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
+          } catch (err) {
+            clearInterval(resumeTick)
+            process.stderr.write(`\r${aixbt} ${output.fmt.red('✗')}\n`)
+            throw err
+          }
+        }
       }
 
       // Recipe complete — handle final analysis

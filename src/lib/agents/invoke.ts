@@ -3,21 +3,29 @@ import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentAdapter, StreamFormat } from './types.js'
-import type { RecipeAwaitingAgent, RecipeComplete } from '../../types.js'
+import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta } from '../../types.js'
 import { CliError } from '../errors.js'
 import { getConfigDir } from '../config.js'
 import { fmt } from '../output.js'
 
 const AGENT_SYSTEM_PROMPT = [
   'You are analyzing AIXBT recipe output.',
+  'AIXBT is a crypto intelligence platform that tracks discussions on X.',
+  'It organizes tracked accounts into clusters (independent community segments via social graph analysis), detects signals (discrete verified facts about projects, not opinions), and scores momentum (rate of new cluster convergence, measuring breadth of attention, not volume).',
   'When using tools, briefly describe what you are about to do (e.g. "Reading signals data").',
   'Once all tool calls are complete and you begin your final response, go straight into the analysis.',
   'No preamble, no "here is the analysis", no summary of what you just read — just the analysis itself.',
+  'Never use em-dashes. Use commas, periods, or restructure the sentence.',
 ].join(' ')
+
+function buildContextBlock(contextHints?: string[]): string {
+  if (!contextHints || contextHints.length === 0) return ''
+  return ['<context>', ...contextHints, '</context>', ''].join('\n')
+}
 
 const BRAND_PURPLE = '#b07de3'
 
-const AGENT_COLORS: Record<string, string> = {
+export const AGENT_COLORS: Record<string, string> = {
   claude: '#da7756',
   codex: '#10a37f',
 }
@@ -45,8 +53,10 @@ function buildPromptForStep(result: RecipeAwaitingAgent, dataFiles: Map<string, 
     parts.push(`- ${stepId}: ${filePath}`)
   }
 
+  const contextBlock = buildContextBlock(result.contextHints)
   parts.push(
     '',
+    ...(contextBlock ? [contextBlock] : []),
     `<instructions>`,
     result.instructions,
     `</instructions>`,
@@ -70,6 +80,9 @@ function buildPromptForAnalysis(result: RecipeComplete, dataFiles: Map<string, s
     parts.push(`- ${stepId}: ${filePath}`)
   }
   parts.push('')
+
+  const contextBlock = buildContextBlock(result.contextHints)
+  if (contextBlock) parts.push(contextBlock)
 
   if (result.analysis?.instructions) {
     parts.push(`<instructions>`, result.analysis.instructions, `</instructions>`, '')
@@ -125,6 +138,26 @@ function spawnAgent(
   })
 }
 
+/** Parse JSON from agent text output, handling code fences and bare JSON. */
+function parseAgentJson(text: string, stepId: string, adapterName: string): Record<string, unknown> {
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
+    if (fenceMatch) {
+      return JSON.parse(fenceMatch[1]) as Record<string, unknown>
+    }
+    const braceMatch = text.match(/\{[\s\S]*\}/)
+    if (braceMatch) {
+      return JSON.parse(braceMatch[0]) as Record<string, unknown>
+    }
+    throw new CliError(
+      `${adapterName} returned unparseable response for step "${stepId}". Raw output:\n${text.slice(0, 500)}`,
+      'AGENT_PARSE_FAILED',
+    )
+  }
+}
+
 /** Invoke the agent for an intermediate recipe step. Returns parsed JSON response. */
 export async function invokeAgentForStep(
   adapter: AgentAdapter,
@@ -151,28 +184,150 @@ export async function invokeAgentForStep(
 
     const stdout = await spawnAgent(adapter, invocation.args, invocation.env)
     const text = adapter.parseResult(stdout)
-
-    try {
-      return JSON.parse(text) as Record<string, unknown>
-    } catch {
-      // Try extracting JSON from code fences or first {...} block
-      const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
-      if (fenceMatch) {
-        return JSON.parse(fenceMatch[1]) as Record<string, unknown>
-      }
-      const braceMatch = text.match(/\{[\s\S]*\}/)
-      if (braceMatch) {
-        return JSON.parse(braceMatch[0]) as Record<string, unknown>
-      }
-      throw new CliError(
-        `${adapter.name} returned unparseable response for step "${result.step}". Raw output:\n${text.slice(0, 500)}`,
-        'AGENT_PARSE_FAILED',
-      )
-    }
+    return parseAgentJson(text, result.step, adapter.name)
   } finally {
     for (const file of dataFiles.values()) cleanupTempFile(file)
     if (schemaFile) cleanupTempFile(schemaFile)
   }
+}
+
+// -- Parallel agent execution --
+
+export interface ParallelAgentCallbacks {
+  onItemComplete?: (index: number, total: number, failed: boolean) => void
+}
+
+function buildPromptForParallelItem(
+  result: RecipeAwaitingAgent,
+  parallel: ParallelAgentMeta,
+  itemIndex: number,
+  dataFiles: Map<string, string>,
+): string {
+  const parts = [
+    `Read ALL of the AIXBT recipe data files below in parallel. Read every file — do not skip or sample.`,
+    '',
+    `This is item ${itemIndex + 1} of ${parallel.items.length}. Analyze this specific item only.`,
+    '',
+  ]
+
+  for (const [stepId, filePath] of dataFiles) {
+    parts.push(`- ${stepId}: ${filePath}`)
+  }
+
+  const contextBlock = buildContextBlock(result.contextHints)
+  parts.push(
+    '',
+    ...(contextBlock ? [contextBlock] : []),
+    `<instructions>`,
+    result.instructions,
+    `</instructions>`,
+    '',
+    `<returns>`,
+    `Respond with a JSON object matching this schema:`,
+    JSON.stringify(result.returns, null, 2),
+    `</returns>`,
+  )
+
+  return parts.join('\n')
+}
+
+/** Write data files for a single parallel agent invocation (one item). */
+function writeParallelItemFiles(
+  item: unknown,
+  itemIndex: number,
+  parallel: ParallelAgentMeta,
+  allData: Record<string, unknown>,
+): Map<string, string> {
+  const files = new Map<string, string>()
+
+  // Write the item itself
+  files.set('_item', writeTempFile('item', JSON.stringify(item, null, 2)))
+
+  // Per-item context: slice by position
+  for (const stepId of parallel.perItemContext) {
+    const stepData = allData[stepId]
+    if (Array.isArray(stepData) && itemIndex < stepData.length) {
+      files.set(stepId, writeTempFile(stepId, JSON.stringify(stepData[itemIndex], null, 2)))
+    }
+  }
+
+  // Shared context: write full data (use writeDataFiles chunking)
+  for (const stepId of parallel.sharedContext) {
+    const stepData = allData[stepId]
+    if (stepData !== undefined) {
+      files.set(stepId, writeTempFile(stepId, JSON.stringify(stepData, null, 2)))
+    }
+  }
+
+  // Fallback notes
+  if (allData._fallbackNotes) {
+    files.set('_fallbackNotes', writeTempFile('fallbackNotes', JSON.stringify(allData._fallbackNotes, null, 2)))
+  }
+
+  return files
+}
+
+/** Invoke parallel agents for a fan-out step. Returns array of results. */
+export async function invokeParallelAgents(
+  adapter: AgentAdapter,
+  result: RecipeAwaitingAgent,
+  opts?: { allowedTools?: string[]; callbacks?: ParallelAgentCallbacks },
+): Promise<Record<string, unknown>[]> {
+  const parallel = result.parallel!
+  const items = parallel.items
+  const concurrency = parallel.concurrency
+  const results: (Record<string, unknown> | { _error: true; index: number; error: string })[] = new Array(items.length)
+
+  let completed = 0
+
+  // Process items in batches
+  for (let offset = 0; offset < items.length; offset += concurrency) {
+    const batch = items.slice(offset, offset + concurrency)
+    const batchPromises = batch.map(async (item, batchIdx) => {
+      const itemIndex = offset + batchIdx
+      const itemFiles = writeParallelItemFiles(item, itemIndex, parallel, result.data)
+      let schemaFile: string | undefined
+
+      try {
+        const prompt = buildPromptForParallelItem(result, parallel, itemIndex, itemFiles)
+
+        if (adapter.supportsJsonSchema) {
+          schemaFile = writeTempFile('schema', JSON.stringify(result.returns))
+        }
+
+        const invocation = adapter.buildInvocation({
+          dataFile: '',
+          prompt,
+          systemPrompt: `${AGENT_SYSTEM_PROMPT} Follow the instructions precisely. Return only valid JSON.`,
+          jsonSchemaFile: schemaFile,
+          allowedTools: opts?.allowedTools,
+        })
+
+        const stdout = await spawnAgent(adapter, invocation.args, invocation.env)
+        const text = adapter.parseResult(stdout)
+        const parsed = parseAgentJson(text, `${result.step}[${itemIndex}]`, adapter.name)
+
+        completed++
+        opts?.callbacks?.onItemComplete?.(completed, items.length, false)
+        return { index: itemIndex, result: parsed }
+      } catch (err) {
+        completed++
+        opts?.callbacks?.onItemComplete?.(completed, items.length, true)
+        const error = err instanceof Error ? err.message : String(err)
+        return { index: itemIndex, result: { _error: true as const, index: itemIndex, error } }
+      } finally {
+        for (const file of itemFiles.values()) cleanupTempFile(file)
+        if (schemaFile) cleanupTempFile(schemaFile)
+      }
+    })
+
+    const batchResults = await Promise.all(batchPromises)
+    for (const { index, result: itemResult } of batchResults) {
+      results[index] = itemResult
+    }
+  }
+
+  return results as Record<string, unknown>[]
 }
 
 // Target ~30KB per file — small enough for a single Read call

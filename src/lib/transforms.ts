@@ -235,16 +235,28 @@ export function applySample(items: unknown[], config: SampleTransform): unknown[
 
 // -- Combined transform pipeline --
 
-export function applyTransforms(data: unknown, transform: TransformBlock): unknown {
+export interface TransformMeta {
+  sampled?: { before: number; after: number; weightedBy: string }
+}
+
+export function applyTransforms(data: unknown, transform: TransformBlock): unknown
+export function applyTransforms(data: unknown, transform: TransformBlock, opts: { meta: true }): { data: unknown; meta: TransformMeta }
+export function applyTransforms(data: unknown, transform: TransformBlock, opts?: { meta: true }): unknown | { data: unknown; meta: TransformMeta } {
   const isArray = Array.isArray(data)
   let items: unknown[] = isArray ? data : [data]
+  const meta: TransformMeta = {}
 
   // Filter out error markers before applying transforms
   items = items.filter((item) => !isErrorMarker(item))
 
   // Sample runs first to preserve access to weight fields
   if (transform.sample) {
+    const before = items.length
     items = applySample(items, transform.sample)
+    if (items.length < before) {
+      const weightedBy = transform.sample.weight_by ?? 'recency and reinforcement count'
+      meta.sampled = { before, after: items.length, weightedBy }
+    }
   }
 
   // Select runs second on potentially sampled data
@@ -252,5 +264,6 @@ export function applyTransforms(data: unknown, transform: TransformBlock): unkno
     items = applySelect(items, transform.select)
   }
 
-  return isArray ? items : items[0]
+  const result = isArray ? items : items[0]
+  return opts?.meta ? { data: result, meta } : result
 }

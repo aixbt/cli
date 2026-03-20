@@ -33,8 +33,14 @@ function pruneWindow(tracker: ProviderRateTracker): void {
   }
 }
 
+/**
+ * Record a request and return ms to wait before sending it.
+ * Checks the window BEFORE recording so concurrent callers
+ * don't all sneak past the limit simultaneously.
+ */
 export function recordRequest(tracker: ProviderRateTracker): number {
   pruneWindow(tracker)
+
   tracker.timestamps.push(Date.now())
 
   if (tracker.timestamps.length >= tracker.maxPerMinute) {
@@ -58,6 +64,23 @@ export function deriveProviderConcurrency(tracker: ProviderRateTracker): number 
   if (remaining <= 10) return 2
   if (remaining <= 20) return 3
   return 5
+}
+
+/**
+ * If the rate window is nearly full, return ms to wait before the
+ * oldest timestamp expires. Returns 0 if there's capacity.
+ * Use as a pre-flight gate before starting a new foreach item.
+ */
+export function waitForCapacity(tracker: ProviderRateTracker, buffer = 2): number {
+  pruneWindow(tracker)
+  if (tracker.timestamps.length + buffer >= tracker.maxPerMinute) {
+    const oldestInWindow = tracker.timestamps[0]
+    if (oldestInWindow !== undefined) {
+      const waitMs = oldestInWindow + 60_000 - Date.now()
+      if (waitMs > 0) return waitMs
+    }
+  }
+  return 0
 }
 
 export function resetAllTrackers(): void {
