@@ -109,7 +109,7 @@ export function registerProviderCommand(program: Command): void {
 
       // Probe unless skipped
       if (!skipVerify) {
-        const probeActions = tier === 'free' ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
+        const probeActions = provider.tiers[tier]?.keyless ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
         const probeAction = probeActions[name]
         if (probeAction) {
           await output.withSpinner(
@@ -235,7 +235,7 @@ export function registerProviderCommand(program: Command): void {
       const resolved = resolveProviderKey(provider)
       const tier = resolved?.tier ?? 'free'
 
-      const probeActions = tier === 'free' ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
+      const probeActions = provider.tiers[tier]?.keyless ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
       const probeAction = probeActions[name]
 
       if (!probeAction) {

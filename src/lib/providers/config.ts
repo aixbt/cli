@@ -10,6 +10,11 @@ const PROVIDER_ENV_VARS: Record<string, { key: string; tier: string }> = {
 
 const warnedProviders = new Set<string>()
 
+/** Clear the warning dedup set. Useful in tests. */
+export function resetProviderWarnings(): void {
+  warnedProviders.clear()
+}
+
 function lowestKeyedTier(provider: Provider): string {
   const sorted = getSortedTiers(provider)
   const first = sorted.find(([, def]) => !def.keyless)
@@ -46,33 +51,23 @@ export function resolveProviderKey(
     const envValue = process.env[envConfig.key]
     if (envValue) {
       const tierValue = process.env[envConfig.tier]
-      if (tierValue) {
-        // Validate the tier value against provider's keyed tiers
-        const keyed = getKeyedTiers(provider)
-        if (keyed.includes(tierValue)) {
-          return { apiKey: envValue, tier: tierValue, source: 'env' }
-        }
-        // Invalid tier value -- warn and default
-        if (!warnedProviders.has(providerName)) {
-          warnedProviders.add(providerName)
-          console.error(
-            `warning: ${envConfig.tier}="${tierValue}" is not a valid tier for ${provider.displayName}. ` +
-            `Valid tiers: ${keyed.join(', ')}. Defaulting to "${lowestKeyedTier(provider)}".`,
-          )
-        }
-        return { apiKey: envValue, tier: lowestKeyedTier(provider), source: 'env' }
+      const keyed = getKeyedTiers(provider)
+      const defaultTier = lowestKeyedTier(provider)
+
+      let tier: string
+      if (tierValue && keyed.includes(tierValue)) {
+        tier = tierValue
       } else {
-        // No companion tier env var -- default and warn
-        const defaultTier = lowestKeyedTier(provider)
+        tier = defaultTier
         if (!warnedProviders.has(providerName)) {
           warnedProviders.add(providerName)
-          console.error(
-            `warning: ${envConfig.key} set without ${envConfig.tier} — defaulting to "${defaultTier}". ` +
-            `Set ${envConfig.tier} to suppress this warning.`,
-          )
+          const detail = tierValue
+            ? `${envConfig.tier}="${tierValue}" is not a valid tier for ${provider.displayName}. Valid tiers: ${keyed.join(', ')}. Defaulting to "${defaultTier}".`
+            : `${envConfig.key} set without ${envConfig.tier} — defaulting to "${defaultTier}". Set ${envConfig.tier} to suppress this warning.`
+          console.error(`warning: ${detail}`)
         }
-        return { apiKey: envValue, tier: defaultTier, source: 'env' }
       }
+      return { apiKey: envValue, tier, source: 'env' }
     }
   }
 

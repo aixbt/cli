@@ -13,6 +13,7 @@ import {
   resolveProviderKey,
   saveProviderKey,
   removeProviderKey,
+  resetProviderWarnings,
 } from '../../../src/lib/providers/config.js'
 
 import type { Provider, ProviderTierDef } from '../../../src/lib/providers/types.js'
@@ -68,6 +69,7 @@ describe('provider config', () => {
     rmSync(tempDir, { recursive: true, force: true })
     setConfigPath(join(tmpdir(), 'aixbt-prov-test-reset-nonexistent', 'config.json'))
     consoleErrorSpy.mockRestore()
+    resetProviderWarnings()
 
     // Clean up env vars that tests may have set
     delete process.env.COINGECKO_API_KEY
@@ -181,20 +183,20 @@ describe('provider config', () => {
       })
 
       it('should warn when env var is set without companion tier', () => {
-        // Note: the warnedProviders set is module-level and persists across tests.
-        // Earlier tests already trigger env var resolution for coingecko/defillama/goplus,
-        // so we verify the warning fires on the first call within this test by checking
-        // console.error was called (the first env-var test for each provider triggers it).
-        // This test uses defillama since it may not have been warned yet.
         process.env.DEFILLAMA_API_KEY = 'env-key'
 
         resolveProviderKey(defillamaProvider)
 
-        // Warning deduplication means we may or may not see it here depending on test order.
-        // What we CAN verify: the tier defaults correctly even when warning is deduped.
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('DEFILLAMA_API_KEY set without DEFILLAMA_TIER'),
+        )
+
+        // Second call should NOT warn again (deduplication)
         const result = resolveProviderKey(defillamaProvider)
         expect(result!.tier).toBe('paid')
         expect(result!.source).toBe('env')
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
       })
 
       it('should use companion tier env var when valid', () => {
@@ -212,6 +214,11 @@ describe('provider config', () => {
 
         const result = resolveProviderKey(goplusProvider)
         expect(result!.tier).toBe('paid') // falls back to lowest keyed tier
+
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('GOPLUS_TIER="enterprise" is not a valid tier'),
+        )
       })
 
       it('should resolve CoinGecko tier to "demo" when COINGECKO_TIER=demo', () => {

@@ -1,5 +1,3 @@
-export type ProviderTier = string
-
 export interface ProviderTierDef {
   /** Rank for tier ordering. Higher rank = more capable. */
   rank: number
@@ -31,7 +29,7 @@ export interface ResolveContext {
   /** Routing hint from dotted source syntax (e.g. "coingecko" from "market.coingecko") */
   hint?: string
   /** Effective API key tier for the current provider */
-  tier: ProviderTier
+  tier: string
   /** Make a sub-request to the current or another provider (for multi-step resolves like pool lookup) */
   request: (opts: { provider?: string; action: string; params: Params }) => Promise<ProviderResponse>
 }
