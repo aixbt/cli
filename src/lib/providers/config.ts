@@ -13,6 +13,8 @@ const warnedProviders = new Set<string>()
 function lowestKeyedTier(provider: Provider): string {
   const sorted = getSortedTiers(provider)
   const first = sorted.find(([, def]) => !def.keyless)
+  // Fallback 'free' is defensive — unreachable for providers in PROVIDER_ENV_VARS
+  // (all have keyed tiers) and provider add rejects keyless-only providers.
   return first ? first[0] : 'free'
 }
 

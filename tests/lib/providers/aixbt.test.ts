@@ -67,7 +67,7 @@ describe('aixbtProvider', () => {
       expect(aixbtProvider.baseUrl.default).toBe('https://api.aixbt.tech')
     })
 
-    it('should have a single free keyless tier with no rate limit', () => {
+    it('should have a single free keyless tier', () => {
       expect(aixbtProvider.tiers).toEqual({
         free: { rank: 0, keyless: true },
       })
