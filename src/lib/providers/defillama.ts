@@ -55,7 +55,7 @@ const actions: Record<string, ActionDefinition> = {
     params: [
       { name: 'coingeckoId', required: true, description: 'CoinGecko ID for the protocol', inPath: true },
     ],
-    minTier: 'pro',
+    minTier: 'paid',
   },
   yields: {
     method: 'GET',
@@ -63,7 +63,7 @@ const actions: Record<string, ActionDefinition> = {
     description: 'Get yield/APY data for DeFi pools',
     hint: 'You need yield farming APY data across DeFi protocols and pools',
     params: [],
-    minTier: 'pro',
+    minTier: 'paid',
   },
 }
 
@@ -74,15 +74,13 @@ export const defillamaProvider: Provider = {
   baseUrl: {
     byTier: {
       free: 'https://api.llama.fi',
-      pro: 'https://pro-api.llama.fi/{apiKey}',
+      paid: 'https://pro-api.llama.fi/{apiKey}',
     },
     default: 'https://api.llama.fi',
   },
-  rateLimits: {
-    perMinute: {
-      free: 500,
-      pro: 1000,
-    },
+  tiers: {
+    free: { rank: 0, ratePerMinute: 500, keyless: true },
+    paid: { rank: 1, ratePerMinute: 1000 },
   },
   mapParams: (params: Params) => {
     const chain = params.chain

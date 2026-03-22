@@ -61,7 +61,7 @@ const mockProvider: Provider = {
     },
   },
   baseUrl: { byTier: { free: 'https://test.api' }, default: 'https://test.api' },
-  rateLimits: { perMinute: { free: 30 } },
+  tiers: { free: { rank: 0, ratePerMinute: 30, keyless: true } },
   normalize: (body) => body,
 }
 

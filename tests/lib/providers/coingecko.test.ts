@@ -30,8 +30,8 @@ describe('coingeckoProvider', () => {
       )
     })
 
-    it('should have pro tier pointing to CoinGecko Pro API', () => {
-      expect(coingeckoProvider.baseUrl.byTier.pro).toBe(
+    it('should have paid tier pointing to CoinGecko Pro API', () => {
+      expect(coingeckoProvider.baseUrl.byTier.paid).toBe(
         'https://pro-api.coingecko.com/api/v3',
       )
     })
@@ -45,17 +45,17 @@ describe('coingeckoProvider', () => {
 
   // -- Rate limits --
 
-  describe('rateLimits', () => {
+  describe('tiers', () => {
     it('should have free tier rate limit of 10 per minute', () => {
-      expect(coingeckoProvider.rateLimits.perMinute.free).toBe(10)
+      expect(coingeckoProvider.tiers.free.ratePerMinute).toBe(10)
     })
 
     it('should have demo tier rate limit of 30 per minute', () => {
-      expect(coingeckoProvider.rateLimits.perMinute.demo).toBe(30)
+      expect(coingeckoProvider.tiers.demo.ratePerMinute).toBe(30)
     })
 
-    it('should have pro tier rate limit of 500 per minute', () => {
-      expect(coingeckoProvider.rateLimits.perMinute.pro).toBe(500)
+    it('should have paid tier rate limit of 500 per minute', () => {
+      expect(coingeckoProvider.tiers.paid.ratePerMinute).toBe(500)
     })
   })
 
@@ -155,7 +155,7 @@ describe('coingeckoProvider', () => {
 
     // -- GeckoTerminal actions: pathByTier overrides --
 
-    it('should have pathByTier with pro override for GeckoTerminal actions', () => {
+    it('should have pathByTier with paid override for GeckoTerminal actions', () => {
       for (const name of GECKOTERMINAL_ACTIONS) {
         const action = coingeckoProvider.actions[name]
         expect(
@@ -163,18 +163,18 @@ describe('coingeckoProvider', () => {
           `action "${name}" should have pathByTier`,
         ).toBeDefined()
         expect(
-          action.pathByTier!.pro,
-          `action "${name}" pathByTier should have pro key`,
+          action.pathByTier!.paid,
+          `action "${name}" pathByTier should have paid key`,
         ).toBeDefined()
       }
     })
 
-    it('should have GeckoTerminal pathByTier pro paths starting with /onchain', () => {
+    it('should have GeckoTerminal pathByTier paid paths starting with /onchain', () => {
       for (const name of GECKOTERMINAL_ACTIONS) {
         const action = coingeckoProvider.actions[name]
         expect(
-          action.pathByTier!.pro,
-          `action "${name}" pathByTier.pro should start with /onchain`,
+          action.pathByTier!.paid,
+          `action "${name}" pathByTier.paid should start with /onchain`,
         ).toMatch(/^\/onchain/)
       }
     })
@@ -411,8 +411,8 @@ describe('coingeckoProvider', () => {
       })
     })
 
-    it('should return pro API key header for pro tier', () => {
-      expect(resolveAuth('my-pro-key', 'pro')).toEqual({
+    it('should return pro API key header for paid tier', () => {
+      expect(resolveAuth('my-pro-key', 'paid')).toEqual({
         'x-cg-pro-api-key': 'my-pro-key',
       })
     })
@@ -427,7 +427,7 @@ describe('coingeckoProvider', () => {
       expect(resolveAuth(key, 'demo')).toEqual({
         'x-cg-demo-api-key': 'CG-AbCdEfGh12345',
       })
-      expect(resolveAuth(key, 'pro')).toEqual({
+      expect(resolveAuth(key, 'paid')).toEqual({
         'x-cg-pro-api-key': 'CG-AbCdEfGh12345',
       })
     })

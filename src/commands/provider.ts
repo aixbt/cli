@@ -1,6 +1,5 @@
-import { type Command, Option } from 'commander'
-import type { ProviderTier } from '../lib/providers/types.js'
-import { isConcreteProvider } from '../lib/providers/types.js'
+import { type Command } from 'commander'
+import { isConcreteProvider, getKeyedTiers } from '../lib/providers/types.js'
 import { resolveFormat } from '../lib/config.js'
 import { getProviderNames, getProvider } from '../lib/providers/registry.js'
 import { resolveProviderKey, saveProviderKey, removeProviderKey } from '../lib/providers/config.js'
@@ -25,17 +24,6 @@ function validateConcreteProviderName(name: string): void {
       `Unknown provider "${name}". Providers with API keys: ${validNames.join(', ')}`,
       'UNKNOWN_PROVIDER',
     )
-  }
-}
-
-// -- Tier inference --
-
-function inferTier(providerName: string, apiKey: string): ProviderTier {
-  switch (providerName) {
-    case 'coingecko': return apiKey.startsWith('CG-') ? 'demo' : 'pro'
-    case 'defillama': return 'pro'
-    case 'goplus': return 'free'
-    default: return 'free'
   }
 }
 
@@ -75,7 +63,7 @@ export function registerProviderCommand(program: Command): void {
     .command('add <name>')
     .description('Add or update a provider API key')
     .requiredOption('--provider-key <key>', 'API key for the provider')
-    .addOption(new Option('--tier <tier>', 'Key tier').choices(['free', 'demo', 'pro']))
+    .option('--tier <tier>', 'Key tier (provider-specific)')
     .option('--skip-verify', 'Skip API key verification probe')
     .action(async (name: string, opts: Record<string, unknown>, cmd: Command) => {
       const globalOpts = cmd.optsWithGlobals()
@@ -83,19 +71,47 @@ export function registerProviderCommand(program: Command): void {
 
       validateConcreteProviderName(name)
 
+      const provider = getProvider(name)
+      const keyedTiers = getKeyedTiers(provider)
+
+      // Reject keyless-only providers
+      if (keyedTiers.length === 0) {
+        throw new CliError(
+          `${provider.displayName} does not accept API keys — it is fully keyless.`,
+          'PROVIDER_KEYLESS',
+        )
+      }
+
       const apiKey = opts.providerKey as string
-      const tierFlag = opts.tier as ProviderTier | undefined
+      const tierFlag = opts.tier as string | undefined
       const skipVerify = opts.skipVerify as boolean | undefined
 
-      // Infer or use provided tier
-      const tier: ProviderTier = tierFlag ?? inferTier(name, apiKey)
+      // Validate --tier flag if provided
+      if (tierFlag && !keyedTiers.includes(tierFlag)) {
+        throw new CliError(
+          `Invalid tier "${tierFlag}" for ${provider.displayName}. Valid tiers: ${keyedTiers.join(', ')}`,
+          'INVALID_TIER',
+        )
+      }
+
+      // Auto-select when --tier is omitted
+      let tier: string
+      if (tierFlag) {
+        tier = tierFlag
+      } else if (keyedTiers.length === 1) {
+        tier = keyedTiers[0]
+      } else {
+        throw new CliError(
+          `${provider.displayName} has multiple tiers. Specify one with --tier: ${keyedTiers.join(', ')}`,
+          'TIER_REQUIRED',
+        )
+      }
 
       // Probe unless skipped
       if (!skipVerify) {
-        const probeActions = tier === 'free' ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
+        const probeActions = provider.tiers[tier]?.keyless ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
         const probeAction = probeActions[name]
         if (probeAction) {
-          const provider = getProvider(name)
           await output.withSpinner(
             `Verifying ${provider.displayName} API key...`,
             fmt,
@@ -137,7 +153,7 @@ export function registerProviderCommand(program: Command): void {
 
       const providers = getExternalProviderNames().map(n => getProvider(n))
       const rows = providers.map(p => {
-        const resolved = resolveProviderKey(p.name)
+        const resolved = resolveProviderKey(p)
         return {
           name: p.name,
           displayName: p.displayName,
@@ -216,10 +232,10 @@ export function registerProviderCommand(program: Command): void {
       validateConcreteProviderName(name)
 
       const provider = getProvider(name)
-      const resolved = resolveProviderKey(name)
-      const tier: ProviderTier = resolved?.tier ?? 'free'
+      const resolved = resolveProviderKey(provider)
+      const tier = resolved?.tier ?? 'free'
 
-      const probeActions = tier === 'free' ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
+      const probeActions = provider.tiers[tier]?.keyless ? FREE_PROBE_ACTIONS : PROBE_ACTIONS
       const probeAction = probeActions[name]
 
       if (!probeAction) {

@@ -29,7 +29,7 @@ function makeTestProvider(name: string): Provider {
       },
     },
     baseUrl: { byTier: {}, default: 'https://test.example.com' },
-    rateLimits: { perMinute: { free: 30 } },
+    tiers: { free: { rank: 0, ratePerMinute: 30, keyless: true } },
     normalize: (body: unknown) => body,
   }
 }
@@ -133,6 +133,51 @@ describe('provider registry', () => {
       const names2 = getProviderNames()
       expect(names1).not.toBe(names2)
       expect(names1).toEqual(names2)
+    })
+  })
+
+  // -- Tier cross-reference validation --
+
+  describe('tier cross-references', () => {
+    it('every action.minTier should be a key in provider.tiers', () => {
+      for (const provider of getAllProviders()) {
+        const tierKeys = Object.keys(provider.tiers)
+        if (tierKeys.length === 0) continue // virtual providers have no tiers
+        for (const [actionName, action] of Object.entries(provider.actions)) {
+          expect(
+            tierKeys,
+            `${provider.name}.${actionName}.minTier="${action.minTier}" is not in provider.tiers [${tierKeys.join(', ')}]`,
+          ).toContain(action.minTier)
+        }
+      }
+    })
+
+    it('every action.pathByTier key should be a key in provider.tiers', () => {
+      for (const provider of getAllProviders()) {
+        const tierKeys = Object.keys(provider.tiers)
+        for (const [actionName, action] of Object.entries(provider.actions)) {
+          if (!action.pathByTier) continue
+          for (const tierKey of Object.keys(action.pathByTier)) {
+            expect(
+              tierKeys,
+              `${provider.name}.${actionName}.pathByTier has key "${tierKey}" not in provider.tiers [${tierKeys.join(', ')}]`,
+            ).toContain(tierKey)
+          }
+        }
+      }
+    })
+
+    it('every baseUrl.byTier key should be a key in provider.tiers', () => {
+      for (const provider of getAllProviders()) {
+        if (!provider.baseUrl) continue
+        const tierKeys = Object.keys(provider.tiers)
+        for (const tierKey of Object.keys(provider.baseUrl.byTier)) {
+          expect(
+            tierKeys,
+            `${provider.name}.baseUrl.byTier has key "${tierKey}" not in provider.tiers [${tierKeys.join(', ')}]`,
+          ).toContain(tierKey)
+        }
+      }
     })
   })
 })

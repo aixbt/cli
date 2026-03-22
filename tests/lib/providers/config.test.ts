@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -13,31 +13,78 @@ import {
   resolveProviderKey,
   saveProviderKey,
   removeProviderKey,
+  resetProviderWarnings,
 } from '../../../src/lib/providers/config.js'
+
+import type { Provider, ProviderTierDef } from '../../../src/lib/providers/types.js'
+
+// -- Helpers --
+
+function makeTestProvider(
+  name: string,
+  tiers: Record<string, ProviderTierDef>,
+): Provider {
+  return {
+    name,
+    displayName: name.charAt(0).toUpperCase() + name.slice(1),
+    actions: {},
+    tiers,
+    baseUrl: { byTier: {}, default: 'https://test.example.com' },
+  }
+}
+
+// Pre-built providers matching actual provider tier definitions
+const coingeckoProvider = makeTestProvider('coingecko', {
+  free: { rank: 0, ratePerMinute: 10, keyless: true },
+  demo: { rank: 1, ratePerMinute: 30 },
+  paid: { rank: 2, ratePerMinute: 500 },
+})
+
+const defillamaProvider = makeTestProvider('defillama', {
+  free: { rank: 0, ratePerMinute: 500, keyless: true },
+  paid: { rank: 1, ratePerMinute: 1000 },
+})
+
+const goplusProvider = makeTestProvider('goplus', {
+  free: { rank: 0, ratePerMinute: 30, keyless: true },
+  paid: { rank: 1, ratePerMinute: 120 },
+})
+
+// Provider with no keyed tiers (all keyless)
+const keylessProvider = makeTestProvider('unknown-provider', {
+  free: { rank: 0, keyless: true },
+})
 
 describe('provider config', () => {
   let tempDir: string
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'aixbt-prov-test-'))
     setConfigPath(join(tempDir, 'config.json'))
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true })
     setConfigPath(join(tmpdir(), 'aixbt-prov-test-reset-nonexistent', 'config.json'))
+    consoleErrorSpy.mockRestore()
+    resetProviderWarnings()
 
     // Clean up env vars that tests may have set
     delete process.env.COINGECKO_API_KEY
+    delete process.env.COINGECKO_TIER
     delete process.env.DEFILLAMA_API_KEY
+    delete process.env.DEFILLAMA_TIER
     delete process.env.GOPLUS_ACCESS_TOKEN
+    delete process.env.GOPLUS_TIER
   })
 
   // -- resolveProviderKey --
 
   describe('resolveProviderKey', () => {
     it('should return null when no key is configured anywhere', () => {
-      const result = resolveProviderKey('coingecko')
+      const result = resolveProviderKey(coingeckoProvider)
       expect(result).toBeNull()
     })
 
@@ -45,7 +92,7 @@ describe('provider config', () => {
 
     describe('flag key (layer 1)', () => {
       it('should use flag key with source "flag"', () => {
-        const result = resolveProviderKey('coingecko', 'flag-key-123')
+        const result = resolveProviderKey(coingeckoProvider, 'flag-key-123')
 
         expect(result).not.toBeNull()
         expect(result!.apiKey).toBe('flag-key-123')
@@ -53,44 +100,44 @@ describe('provider config', () => {
       })
 
       it('should use flagTier when provided', () => {
-        const result = resolveProviderKey('coingecko', 'flag-key', 'pro')
+        const result = resolveProviderKey(coingeckoProvider, 'flag-key', 'paid')
 
-        expect(result!.tier).toBe('pro')
+        expect(result!.tier).toBe('paid')
       })
 
-      it('should use default tier for known provider when flagTier is omitted', () => {
-        // coingecko default tier is 'demo'
-        const result = resolveProviderKey('coingecko', 'flag-key')
+      it('should default to lowest keyed tier when flagTier is omitted', () => {
+        // coingecko lowest keyed tier is 'demo' (free is keyless)
+        const result = resolveProviderKey(coingeckoProvider, 'flag-key')
         expect(result!.tier).toBe('demo')
 
-        // defillama default tier is 'pro'
-        const result2 = resolveProviderKey('defillama', 'flag-key')
-        expect(result2!.tier).toBe('pro')
+        // defillama lowest keyed tier is 'paid' (free is keyless)
+        const result2 = resolveProviderKey(defillamaProvider, 'flag-key')
+        expect(result2!.tier).toBe('paid')
 
-        // goplus default tier is 'free'
-        const result3 = resolveProviderKey('goplus', 'flag-key')
-        expect(result3!.tier).toBe('free')
+        // goplus lowest keyed tier is 'paid' (free is keyless)
+        const result3 = resolveProviderKey(goplusProvider, 'flag-key')
+        expect(result3!.tier).toBe('paid')
       })
 
-      it('should fall back to "free" tier for unknown provider when flagTier is omitted', () => {
-        const result = resolveProviderKey('unknown-provider', 'flag-key')
+      it('should fall back to "free" tier for provider with no keyed tiers when flagTier is omitted', () => {
+        const result = resolveProviderKey(keylessProvider, 'flag-key')
         expect(result!.tier).toBe('free')
       })
 
       it('should take priority over env var', () => {
         process.env.COINGECKO_API_KEY = 'env-key'
 
-        const result = resolveProviderKey('coingecko', 'flag-key')
+        const result = resolveProviderKey(coingeckoProvider, 'flag-key')
         expect(result!.apiKey).toBe('flag-key')
         expect(result!.source).toBe('flag')
       })
 
       it('should take priority over config file', () => {
         writeConfig({
-          providers: { coingecko: { apiKey: 'config-key', tier: 'pro' } },
+          providers: { coingecko: { apiKey: 'config-key', tier: 'paid' } },
         })
 
-        const result = resolveProviderKey('coingecko', 'flag-key')
+        const result = resolveProviderKey(coingeckoProvider, 'flag-key')
         expect(result!.apiKey).toBe('flag-key')
         expect(result!.source).toBe('flag')
       })
@@ -102,7 +149,7 @@ describe('provider config', () => {
       it('should pick up COINGECKO_API_KEY from environment', () => {
         process.env.COINGECKO_API_KEY = 'env-cg-key'
 
-        const result = resolveProviderKey('coingecko')
+        const result = resolveProviderKey(coingeckoProvider)
         expect(result).not.toBeNull()
         expect(result!.apiKey).toBe('env-cg-key')
         expect(result!.source).toBe('env')
@@ -111,7 +158,7 @@ describe('provider config', () => {
       it('should pick up DEFILLAMA_API_KEY from environment', () => {
         process.env.DEFILLAMA_API_KEY = 'env-dl-key'
 
-        const result = resolveProviderKey('defillama')
+        const result = resolveProviderKey(defillamaProvider)
         expect(result!.apiKey).toBe('env-dl-key')
         expect(result!.source).toBe('env')
       })
@@ -119,36 +166,94 @@ describe('provider config', () => {
       it('should pick up GOPLUS_ACCESS_TOKEN from environment', () => {
         process.env.GOPLUS_ACCESS_TOKEN = 'env-gp-key'
 
-        const result = resolveProviderKey('goplus')
+        const result = resolveProviderKey(goplusProvider)
         expect(result!.apiKey).toBe('env-gp-key')
         expect(result!.source).toBe('env')
       })
 
-      it('should use default tier for provider from env', () => {
+      it('should default to lowest keyed tier when env var is set without companion tier', () => {
         process.env.COINGECKO_API_KEY = 'env-key'
-        expect(resolveProviderKey('coingecko')!.tier).toBe('demo')
+        expect(resolveProviderKey(coingeckoProvider)!.tier).toBe('demo')
 
         process.env.DEFILLAMA_API_KEY = 'env-key'
-        expect(resolveProviderKey('defillama')!.tier).toBe('pro')
+        expect(resolveProviderKey(defillamaProvider)!.tier).toBe('paid')
 
         process.env.GOPLUS_ACCESS_TOKEN = 'env-key'
-        expect(resolveProviderKey('goplus')!.tier).toBe('free')
+        expect(resolveProviderKey(goplusProvider)!.tier).toBe('paid')
+      })
+
+      it('should warn when env var is set without companion tier', () => {
+        process.env.DEFILLAMA_API_KEY = 'env-key'
+
+        resolveProviderKey(defillamaProvider)
+
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('DEFILLAMA_API_KEY set without DEFILLAMA_TIER'),
+        )
+
+        // Second call should NOT warn again (deduplication)
+        const result = resolveProviderKey(defillamaProvider)
+        expect(result!.tier).toBe('paid')
+        expect(result!.source).toBe('env')
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+      })
+
+      it('should use companion tier env var when valid', () => {
+        process.env.GOPLUS_ACCESS_TOKEN = 'env-key'
+        process.env.GOPLUS_TIER = 'paid'
+
+        const result = resolveProviderKey(goplusProvider)
+        expect(result!.tier).toBe('paid')
+        expect(result!.source).toBe('env')
+      })
+
+      it('should warn and default when companion tier env var is invalid', () => {
+        process.env.GOPLUS_ACCESS_TOKEN = 'env-key'
+        process.env.GOPLUS_TIER = 'enterprise'
+
+        const result = resolveProviderKey(goplusProvider)
+        expect(result!.tier).toBe('paid') // falls back to lowest keyed tier
+
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('GOPLUS_TIER="enterprise" is not a valid tier'),
+        )
+      })
+
+      it('should resolve CoinGecko tier to "demo" when COINGECKO_TIER=demo', () => {
+        process.env.COINGECKO_API_KEY = 'cg-env-key'
+        process.env.COINGECKO_TIER = 'demo'
+
+        const result = resolveProviderKey(coingeckoProvider)
+        expect(result).not.toBeNull()
+        expect(result!.tier).toBe('demo')
+        expect(result!.source).toBe('env')
+      })
+
+      it('should resolve CoinGecko tier to "paid" when COINGECKO_TIER=paid', () => {
+        process.env.COINGECKO_API_KEY = 'cg-env-key'
+        process.env.COINGECKO_TIER = 'paid'
+
+        const result = resolveProviderKey(coingeckoProvider)
+        expect(result).not.toBeNull()
+        expect(result!.tier).toBe('paid')
+        expect(result!.source).toBe('env')
       })
 
       it('should take priority over config file', () => {
         process.env.COINGECKO_API_KEY = 'env-key'
         writeConfig({
-          providers: { coingecko: { apiKey: 'config-key', tier: 'pro' } },
+          providers: { coingecko: { apiKey: 'config-key', tier: 'paid' } },
         })
 
-        const result = resolveProviderKey('coingecko')
+        const result = resolveProviderKey(coingeckoProvider)
         expect(result!.apiKey).toBe('env-key')
         expect(result!.source).toBe('env')
       })
 
-      it('should return null for unknown provider with no env var mapping', () => {
-        // 'unknown-provider' has no entry in PROVIDER_ENV_VARS
-        const result = resolveProviderKey('unknown-provider')
+      it('should return null for provider with no env var mapping', () => {
+        const result = resolveProviderKey(keylessProvider)
         expect(result).toBeNull()
       })
     })
@@ -158,26 +263,26 @@ describe('provider config', () => {
     describe('config file (layer 3)', () => {
       it('should use config file key when no flag or env is set', () => {
         writeConfig({
-          providers: { coingecko: { apiKey: 'config-key', tier: 'pro' } },
+          providers: { coingecko: { apiKey: 'config-key', tier: 'paid' } },
         })
 
-        const result = resolveProviderKey('coingecko')
+        const result = resolveProviderKey(coingeckoProvider)
         expect(result).not.toBeNull()
         expect(result!.apiKey).toBe('config-key')
-        expect(result!.tier).toBe('pro')
+        expect(result!.tier).toBe('paid')
         expect(result!.source).toBe('config')
       })
 
-      it('should fallback to free tier when tier is missing from config', () => {
+      it('should fallback to lowest keyed tier when tier is missing from config', () => {
         // Simulate manually edited config with missing tier
         writeConfig({
           providers: { defillama: { apiKey: 'dl-key' } as unknown as Record<string, { apiKey: string; tier: string }>[string] },
         })
 
-        const result = resolveProviderKey('defillama')
+        const result = resolveProviderKey(defillamaProvider)
         expect(result).not.toBeNull()
         expect(result!.apiKey).toBe('dl-key')
-        expect(result!.tier).toBe('free')
+        expect(result!.tier).toBe('paid')
         expect(result!.source).toBe('config')
       })
     })
@@ -187,23 +292,23 @@ describe('provider config', () => {
     describe('priority: flag > env > config', () => {
       it('should resolve flag over env over config', () => {
         writeConfig({
-          providers: { coingecko: { apiKey: 'config-key', tier: 'pro' } },
+          providers: { coingecko: { apiKey: 'config-key', tier: 'paid' } },
         })
         process.env.COINGECKO_API_KEY = 'env-key'
 
         // All three present: flag wins
-        const withFlag = resolveProviderKey('coingecko', 'flag-key')
+        const withFlag = resolveProviderKey(coingeckoProvider, 'flag-key')
         expect(withFlag!.apiKey).toBe('flag-key')
         expect(withFlag!.source).toBe('flag')
 
         // No flag: env wins over config
-        const withEnv = resolveProviderKey('coingecko')
+        const withEnv = resolveProviderKey(coingeckoProvider)
         expect(withEnv!.apiKey).toBe('env-key')
         expect(withEnv!.source).toBe('env')
 
         // No flag, no env: config wins
         delete process.env.COINGECKO_API_KEY
-        const configOnly = resolveProviderKey('coingecko')
+        const configOnly = resolveProviderKey(coingeckoProvider)
         expect(configOnly!.apiKey).toBe('config-key')
         expect(configOnly!.source).toBe('config')
       })
@@ -228,10 +333,10 @@ describe('provider config', () => {
         providers: { coingecko: { apiKey: 'old-key', tier: 'free' } },
       })
 
-      saveProviderKey('coingecko', { apiKey: 'new-key', tier: 'pro' })
+      saveProviderKey('coingecko', { apiKey: 'new-key', tier: 'paid' })
 
       const config = readConfig()
-      expect(config.providers!.coingecko).toEqual({ apiKey: 'new-key', tier: 'pro' })
+      expect(config.providers!.coingecko).toEqual({ apiKey: 'new-key', tier: 'paid' })
     })
 
     it('should preserve other config fields', () => {
@@ -250,11 +355,11 @@ describe('provider config', () => {
         providers: { coingecko: { apiKey: 'cg-key', tier: 'demo' } },
       })
 
-      saveProviderKey('defillama', { apiKey: 'dl-key', tier: 'pro' })
+      saveProviderKey('defillama', { apiKey: 'dl-key', tier: 'paid' })
 
       const config = readConfig()
       expect(config.providers!.coingecko).toEqual({ apiKey: 'cg-key', tier: 'demo' })
-      expect(config.providers!.defillama).toEqual({ apiKey: 'dl-key', tier: 'pro' })
+      expect(config.providers!.defillama).toEqual({ apiKey: 'dl-key', tier: 'paid' })
     })
   })
 
@@ -270,7 +375,7 @@ describe('provider config', () => {
 
     it('should return false when providers field exists but provider is not in it', () => {
       writeConfig({
-        providers: { defillama: { apiKey: 'dl-key', tier: 'pro' } },
+        providers: { defillama: { apiKey: 'dl-key', tier: 'paid' } },
       })
 
       const result = removeProviderKey('coingecko')
@@ -281,7 +386,7 @@ describe('provider config', () => {
       writeConfig({
         providers: {
           coingecko: { apiKey: 'cg-key', tier: 'demo' },
-          defillama: { apiKey: 'dl-key', tier: 'pro' },
+          defillama: { apiKey: 'dl-key', tier: 'paid' },
         },
       })
 
@@ -290,7 +395,7 @@ describe('provider config', () => {
 
       const config = readConfig()
       expect(config.providers!.coingecko).toBeUndefined()
-      expect(config.providers!.defillama).toEqual({ apiKey: 'dl-key', tier: 'pro' })
+      expect(config.providers!.defillama).toEqual({ apiKey: 'dl-key', tier: 'paid' })
     })
 
     it('should clean up empty providers object after last provider is removed', () => {

@@ -1,6 +1,6 @@
 import type { ExecutionContext } from '../../types.js'
-import { TIER_RANK } from './types.js'
-import type { Provider, ProviderTier, Params, ResolveContext, ProviderResponse } from './types.js'
+import { isTierSufficient } from './types.js'
+import type { Provider, Params, ResolveContext, ProviderResponse } from './types.js'
 import type { ProviderRateTracker } from './rate-limit.js'
 import { resolveProviderKey } from './config.js'
 import { getProvider, parseSource } from './registry.js'
@@ -17,7 +17,7 @@ export interface ProviderRequestOptions {
   actionName: string
   params: Params
   apiKeyOverride?: string
-  tierOverride?: ProviderTier
+  tierOverride?: string
   /** Routing hint from dotted source syntax (e.g. "coingecko" from "market.coingecko") */
   hint?: string
 }
@@ -39,12 +39,12 @@ export async function providerRequest(
   }
 
   const resolvedKey = resolveProviderKey(
-    provider.name,
+    provider,
     apiKeyOverride,
     tierOverride,
   )
 
-  const effectiveTier: ProviderTier = resolvedKey?.tier ?? 'free'
+  const effectiveTier = resolvedKey?.tier ?? 'free'
 
   // Meta-action: resolve to a concrete action and recurse
   if (action.resolve) {
@@ -90,7 +90,7 @@ export async function providerRequest(
     )
   }
 
-  if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
+  if (!isTierSufficient(provider, effectiveTier, action.minTier)) {
     throw new CliError(
       `Action "${provider.name}:${actionName}" requires "${action.minTier}" tier, but current tier is "${effectiveTier}". ` +
       `Run: aixbt provider add ${provider.name} --provider-key <key> --tier ${action.minTier}`,
@@ -152,7 +152,7 @@ export async function providerRequest(
     }
   }
 
-  const rateLimit = provider.rateLimits?.perMinute[effectiveTier]
+  const rateLimit = provider.tiers[effectiveTier]?.ratePerMinute
   const tracker = rateLimit ? getTracker(provider.name, rateLimit) : null
 
   const { body, status } = await executeProviderRequest(

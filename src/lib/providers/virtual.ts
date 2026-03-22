@@ -85,6 +85,7 @@ export const marketProvider: Provider = {
   name: 'market',
   displayName: 'Market',
   actions: marketActions,
+  tiers: {},
 }
 
 // ---------------------------------------------------------------------------
