@@ -31,7 +31,7 @@ export function createAliasProvider(
     }
   }
 
-  return { name, displayName, actions }
+  return { name, displayName, actions, tiers: {} }
 }
 
 /**

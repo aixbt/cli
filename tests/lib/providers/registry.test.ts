@@ -29,7 +29,7 @@ function makeTestProvider(name: string): Provider {
       },
     },
     baseUrl: { byTier: {}, default: 'https://test.example.com' },
-    rateLimits: { perMinute: { free: 30 } },
+    tiers: { free: { rank: 0, ratePerMinute: 30, keyless: true } },
     normalize: (body: unknown) => body,
   }
 }

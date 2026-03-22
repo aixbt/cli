@@ -46,13 +46,13 @@ describe('goplusProvider', () => {
 
   // -- Rate limits --
 
-  describe('rate limits', () => {
+  describe('tiers', () => {
     it('should have free tier rate limit of 30 per minute', () => {
-      expect(goplusProvider.rateLimits.perMinute.free).toBe(30)
+      expect(goplusProvider.tiers.free.ratePerMinute).toBe(30)
     })
 
-    it('should have pro tier rate limit of 120 per minute', () => {
-      expect(goplusProvider.rateLimits.perMinute.pro).toBe(120)
+    it('should have paid tier rate limit of 120 per minute', () => {
+      expect(goplusProvider.tiers.paid.ratePerMinute).toBe(120)
     })
   })
 

@@ -1,4 +1,4 @@
-import type { Provider, ActionDefinition, ProviderTier, Params } from './types.js'
+import type { Provider, ActionDefinition, Params } from './types.js'
 import { flattenJsonApiResponse } from './normalize.js'
 import { hasValue } from './utils.js'
 import { toGeckoTerminalNetwork } from './chains.js'
@@ -97,7 +97,7 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/simple/networks/{network}/token_price/{addresses}',
     pathByTier: {
-      pro: '/onchain/simple/networks/{network}/token_price/{addresses}',
+      paid: '/onchain/simple/networks/{network}/token_price/{addresses}',
     },
     description: 'Get on-chain token price by contract address and network',
     hint: 'You have a token contract address and need its current price from on-chain DEX data',
@@ -111,7 +111,7 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/pools/{address}',
     pathByTier: {
-      pro: '/onchain/networks/{network}/pools/{address}',
+      paid: '/onchain/networks/{network}/pools/{address}',
     },
     description: 'Get details for a specific DEX liquidity pool',
     hint: 'You have a pool/pair address and need its liquidity, volume, and token details',
@@ -125,7 +125,7 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/tokens/{address}/pools',
     pathByTier: {
-      pro: '/onchain/networks/{network}/tokens/{address}/pools',
+      paid: '/onchain/networks/{network}/tokens/{address}/pools',
     },
     description: 'List DEX pools for a specific token',
     hint: 'You need to find liquidity pools (trading pairs) for a token on a specific chain',
@@ -140,7 +140,7 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/trending_pools',
     pathByTier: {
-      pro: '/onchain/networks/trending_pools',
+      paid: '/onchain/networks/trending_pools',
     },
     description: 'Get trending DEX pools across all networks',
     hint: 'You need to see which liquidity pools are currently trending by volume or transactions',
@@ -153,7 +153,7 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
     pathByTier: {
-      pro: '/onchain/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
+      paid: '/onchain/networks/{network}/tokens/{address}/ohlcv/{timeframe}',
     },
     description: 'Get on-chain OHLCV candlestick data for a token by contract address',
     hint: 'You have a token contract address and need historical price candles (OHLCV) from DEX trading data',
@@ -168,8 +168,8 @@ const actions: Record<string, ActionDefinition> = {
     ],
     minTier: 'free',
     resolve: async (params, ctx) => {
-      // Pro tier has native token-level OHLCV — skip pool lookup
-      if (ctx.tier === 'pro') return null
+      // Paid tier has native token-level OHLCV — skip pool lookup
+      if (ctx.tier === 'paid') return null
       return resolveTokenOhlcvViaPool(params, ctx.request)
     },
   },
@@ -177,7 +177,7 @@ const actions: Record<string, ActionDefinition> = {
     method: 'GET',
     path: '/networks/{network}/pools/{address}/ohlcv/{timeframe}',
     pathByTier: {
-      pro: '/onchain/networks/{network}/pools/{address}/ohlcv/{timeframe}',
+      paid: '/onchain/networks/{network}/pools/{address}/ohlcv/{timeframe}',
     },
     description: 'Get on-chain OHLCV candlestick data for a specific DEX pool',
     hint: 'You have a pool address and need historical price candles (OHLCV) from DEX trading data',
@@ -242,20 +242,18 @@ export const coingeckoProvider: Provider = {
     byTier: {
       free: 'https://api.geckoterminal.com/api/v2',
       demo: 'https://api.coingecko.com/api/v3',
-      pro: 'https://pro-api.coingecko.com/api/v3',
+      paid: 'https://pro-api.coingecko.com/api/v3',
     },
     default: 'https://api.geckoterminal.com/api/v2',
   },
-  rateLimits: {
-    perMinute: {
-      free: 10,
-      demo: 30,
-      pro: 500,
-    },
+  tiers: {
+    free: { rank: 0, ratePerMinute: 10, keyless: true },
+    demo: { rank: 1, ratePerMinute: 30 },
+    paid: { rank: 2, ratePerMinute: 500 },
   },
-  resolveBaseUrl: (actionName: string, tier: ProviderTier): string | undefined => {
-    // On-chain actions use GeckoTerminal on free/demo (CoinGecko /onchain/ is pro-only)
-    if (GECKOTERMINAL_ACTIONS.has(actionName) && tier !== 'pro') {
+  resolveBaseUrl: (actionName: string, tier: string): string | undefined => {
+    // On-chain actions use GeckoTerminal on free/demo (CoinGecko /onchain/ is paid-only)
+    if (GECKOTERMINAL_ACTIONS.has(actionName) && tier !== 'paid') {
       return 'https://api.geckoterminal.com/api/v2'
     }
     // CoinGecko market actions work keyless — route to CoinGecko on free tier
@@ -264,9 +262,10 @@ export const coingeckoProvider: Provider = {
     }
     return undefined
   },
-  resolveAuth: (apiKey: string, tier: ProviderTier): Record<string, string> => {
+  resolveAuth: (apiKey: string, tier: string): Record<string, string> => {
     if (tier === 'free') return {}
     if (tier === 'demo') return { 'x-cg-demo-api-key': apiKey }
+    // paid tier (and any future paid tiers) use the pro API key header
     return { 'x-cg-pro-api-key': apiKey }
   },
   mapParams: (params: Params, actionName: string) => {
