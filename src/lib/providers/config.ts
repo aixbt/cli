@@ -18,9 +18,7 @@ export function resetProviderWarnings(): void {
 function lowestKeyedTier(provider: Provider): string {
   const sorted = getSortedTiers(provider)
   const first = sorted.find(([, def]) => !def.keyless)
-  // Fallback 'free' is defensive — unreachable for providers in PROVIDER_ENV_VARS
-  // (all have keyed tiers) and provider add rejects keyless-only providers.
-  return first ? first[0] : 'free'
+  return first ? first[0] : sorted[0]?.[0] ?? 'free'
 }
 
 export interface ResolvedProviderKey {
