@@ -112,7 +112,7 @@ export function registerProjectsCommand(program: Command): void {
     .option('--tickers <tickers>', 'Filter by tickers (comma-separated)')
     .option('--chain <chain>', 'Filter by chain')
     .option('--address <address>', 'Filter by token address')
-    .option('--min-momentum <score>', 'Minimum momentum score')
+    .option('--min-momentum-score <score>', 'Minimum momentum score')
     .option('--sort-by <field>', 'Sort by field (momentumScore, popularityScore, createdAt, reinforcedAt)', 'momentumScore')
     .option('--has-token [bool]', 'Filter projects with/without tokens')
     .option('--exclude-stables', 'Exclude stablecoins')
@@ -159,7 +159,7 @@ async function handleProjectList(cmd: Command): Promise<void> {
     tickers: opts.tickers as string | undefined,
     chain: opts.chain as string | undefined,
     address: opts.address as string | undefined,
-    minMomentum: opts.minMomentum as string | undefined,
+    minMomentumScore: opts.minMomentumScore as string | undefined,
     sortBy: opts.sortBy as string,
     hasToken: opts.hasToken as string | undefined,
     excludeStables: opts.excludeStables ? 'true' : undefined,
