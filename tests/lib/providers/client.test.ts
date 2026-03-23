@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import type { Provider, ProviderTier } from '../../../src/lib/providers/types.js'
+import type { Provider } from '../../../src/lib/providers/types.js'
 import { CliError, ApiError, NetworkError, RateLimitError } from '../../../src/lib/errors.js'
 import { resetAllTrackers } from '../../../src/lib/providers/rate-limit.js'
 
@@ -55,11 +55,14 @@ function makeProvider(overrides?: Partial<Provider>): Provider {
         description: 'Pro only',
         hint: 'test',
         params: [],
-        minTier: 'pro' as const,
+        minTier: 'paid' as const,
       },
     },
     baseUrl: { byTier: {}, default: 'https://api.testprov.com' },
-    rateLimits: { perMinute: { free: 30 } },
+    tiers: {
+      free: { rank: 0, ratePerMinute: 30, keyless: true },
+      paid: { rank: 1, ratePerMinute: 120 },
+    },
     normalize: (body: unknown) => body,
     ...overrides,
   }
@@ -189,13 +192,13 @@ describe('providerRequest', () => {
     it('should use tier-specific base URL when configured', async () => {
       vi.mocked(resolveProviderKey).mockReturnValue({
         apiKey: 'key123',
-        tier: 'pro',
+        tier: 'paid',
         source: 'config',
       })
 
       const provider = makeProvider({
         baseUrl: {
-          byTier: { pro: 'https://pro-api.testprov.com' },
+          byTier: { paid: 'https://pro-api.testprov.com' },
           default: 'https://api.testprov.com',
         },
         actions: {
@@ -220,7 +223,7 @@ describe('providerRequest', () => {
     it('should interpolate {apiKey} in base URL', async () => {
       vi.mocked(resolveProviderKey).mockReturnValue({
         apiKey: 'secret-key',
-        tier: 'pro',
+        tier: 'paid',
         source: 'config',
       })
 
@@ -276,7 +279,7 @@ describe('providerRequest', () => {
     it('should use pathByTier for effective tier when defined', async () => {
       vi.mocked(resolveProviderKey).mockReturnValue({
         apiKey: 'key123',
-        tier: 'pro',
+        tier: 'paid',
         source: 'config',
       })
 
@@ -289,7 +292,7 @@ describe('providerRequest', () => {
             hint: 'test',
             params: [],
             minTier: 'free' as const,
-            pathByTier: { pro: '/api/pro-data' },
+            pathByTier: { paid: '/api/pro-data' },
           },
         },
       })
@@ -309,6 +312,11 @@ describe('providerRequest', () => {
       })
 
       const provider = makeProvider({
+        tiers: {
+          free: { rank: 0, ratePerMinute: 30, keyless: true },
+          demo: { rank: 1, ratePerMinute: 60 },
+          paid: { rank: 2, ratePerMinute: 120 },
+        },
         actions: {
           'get-data': {
             method: 'GET' as const,
@@ -317,7 +325,7 @@ describe('providerRequest', () => {
             hint: 'test',
             params: [],
             minTier: 'free' as const,
-            pathByTier: { pro: '/api/pro-data' },
+            pathByTier: { paid: '/api/pro-data' },
           },
         },
       })
@@ -336,7 +344,7 @@ describe('providerRequest', () => {
     it('should allow action when tier meets requirement', async () => {
       vi.mocked(resolveProviderKey).mockReturnValue({
         apiKey: 'key123',
-        tier: 'pro',
+        tier: 'paid',
         source: 'config',
       })
 
@@ -413,11 +421,11 @@ describe('providerRequest', () => {
     it('should use resolveAuth when provided, overriding authHeader', async () => {
       vi.mocked(resolveProviderKey).mockReturnValue({
         apiKey: 'my-api-key',
-        tier: 'pro',
+        tier: 'paid',
         source: 'config',
       })
 
-      const resolveAuth = vi.fn((apiKey: string, tier: ProviderTier) => ({
+      const resolveAuth = vi.fn((apiKey: string, tier: string) => ({
         'x-custom-header': `${tier}:${apiKey}`,
       }))
 
@@ -430,7 +438,7 @@ describe('providerRequest', () => {
       await providerRequest({ provider, actionName: 'get-data', params: {} })
 
       const calledHeaders = mockFetch.mock.calls[0][1].headers
-      expect(calledHeaders['x-custom-header']).toBe('pro:my-api-key')
+      expect(calledHeaders['x-custom-header']).toBe('paid:my-api-key')
       // authHeader should NOT be set when resolveAuth is used
       expect(calledHeaders).not.toHaveProperty('x-api-key')
     })

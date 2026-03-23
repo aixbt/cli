@@ -57,8 +57,8 @@ export const dexpaprikaProvider: Provider = {
     byTier: {},
     default: 'https://api.dexpaprika.com',
   },
-  rateLimits: {
-    perMinute: {},
+  tiers: {
+    free: { rank: 0, keyless: true },
   },
   mapParams: (params: Params, actionName: string) => {
     if (actionName !== 'pool-ohlcv') return params

@@ -111,67 +111,115 @@ describe('provider commands', () => {
       )
 
       expect(mockSaveProviderKey).toHaveBeenCalledTimes(1)
-      expect(mockSaveProviderKey).toHaveBeenCalledWith('defillama', { apiKey: 'test-key-abc', tier: 'pro' })
+      expect(mockSaveProviderKey).toHaveBeenCalledWith('defillama', { apiKey: 'test-key-abc', tier: 'paid' })
 
       const jsonOutput = logs.find(l => l.includes('"status"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.status).toBe('added')
       expect(parsed.provider).toBe('defillama')
-      expect(parsed.tier).toBe('pro')
+      expect(parsed.tier).toBe('paid')
       expect(parsed.verified).toBe(true)
     })
 
-    it('should infer demo tier for CoinGecko keys starting with CG-', async () => {
-      mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'coingecko', action: 'trending' })
+    it('should auto-select single keyed tier for DeFiLlama without --tier', async () => {
+      mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'defillama', action: 'chains' })
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'CG-demo-key-123'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'defillama', '--provider-key', 'key-123'],
         { from: 'node' },
       )
 
-      expect(mockSaveProviderKey).toHaveBeenCalledWith('coingecko', { apiKey: 'CG-demo-key-123', tier: 'demo' })
-
-      const jsonOutput = logs.find(l => l.includes('"status"'))
-      const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.tier).toBe('demo')
+      // DeFiLlama has only one keyed tier: 'paid'
+      expect(mockSaveProviderKey).toHaveBeenCalledWith('defillama', { apiKey: 'key-123', tier: 'paid' })
     })
 
-    it('should infer pro tier for CoinGecko keys not starting with CG-', async () => {
-      mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'coingecko', action: 'trending' })
-
-      const program = makeProgram()
-      await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'pro-key-xyz'],
-        { from: 'node' },
-      )
-
-      expect(mockSaveProviderKey).toHaveBeenCalledWith('coingecko', { apiKey: 'pro-key-xyz', tier: 'pro' })
-    })
-
-    it('should infer free tier for goplus', async () => {
+    it('should auto-select single keyed tier for GoPlus without --tier', async () => {
       mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'goplus', action: 'supported-chains' })
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'goplus', '--provider-key', 'goplus-key'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'goplus', '--provider-key', 'gp-key'],
         { from: 'node' },
       )
 
-      expect(mockSaveProviderKey).toHaveBeenCalledWith('goplus', { apiKey: 'goplus-key', tier: 'free' })
+      // GoPlus has only one keyed tier: 'paid'
+      expect(mockSaveProviderKey).toHaveBeenCalledWith('goplus', { apiKey: 'gp-key', tier: 'paid' })
     })
 
-    it('should use explicit --tier flag over inferred tier', async () => {
+    it('should error when CoinGecko has multiple keyed tiers and --tier is not specified', async () => {
+      const program = makeProgram()
+
+      let thrownError: Error | undefined
+      try {
+        await program.parseAsync(
+          ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'key'],
+          { from: 'node' },
+        )
+      } catch (err) {
+        thrownError = err as Error
+      }
+
+      expect(thrownError).toBeDefined()
+      // The error message should mention available tiers
+      const allErrorOutput = [
+        thrownError?.message ?? '',
+        ...errors,
+      ].join('\n')
+      expect(allErrorOutput).toContain('demo')
+      expect(allErrorOutput).toContain('paid')
+      expect(mockSaveProviderKey).not.toHaveBeenCalled()
+    })
+
+    it('should accept explicit --tier for CoinGecko', async () => {
       mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'coingecko', action: 'trending' })
 
       const program = makeProgram()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'CG-demo-key', '--tier', 'pro'],
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'CG-demo-key', '--tier', 'demo'],
         { from: 'node' },
       )
 
-      expect(mockSaveProviderKey).toHaveBeenCalledWith('coingecko', { apiKey: 'CG-demo-key', tier: 'pro' })
+      expect(mockSaveProviderKey).toHaveBeenCalledWith('coingecko', { apiKey: 'CG-demo-key', tier: 'demo' })
+    })
+
+    it('should use explicit --tier flag over auto-select', async () => {
+      mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'coingecko', action: 'trending' })
+
+      const program = makeProgram()
+      await program.parseAsync(
+        ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'CG-demo-key', '--tier', 'paid'],
+        { from: 'node' },
+      )
+
+      expect(mockSaveProviderKey).toHaveBeenCalledWith('coingecko', { apiKey: 'CG-demo-key', tier: 'paid' })
+    })
+
+    it('should reject keyless-only provider with --provider-key', async () => {
+      const program = makeProgram()
+
+      await expect(
+        program.parseAsync(
+          ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'dexpaprika', '--provider-key', 'key'],
+          { from: 'node' },
+        ),
+      ).rejects.toThrow(/keyless|does not accept/)
+
+      expect(mockSaveProviderKey).not.toHaveBeenCalled()
+    })
+
+    it('should reject invalid --tier value for a provider', async () => {
+      const program = makeProgram()
+
+      await expect(
+        program.parseAsync(
+          ['node', 'aixbt', '--format', 'json', 'provider', 'add', 'coingecko', '--provider-key', 'key', '--tier', 'enterprise'],
+          { from: 'node' },
+        ),
+      ).rejects.toThrow(/Invalid tier/)
+
+      expect(mockSaveProviderKey).not.toHaveBeenCalled()
     })
 
     it('should error for unknown provider names', async () => {
@@ -240,8 +288,8 @@ describe('provider commands', () => {
     })
 
     it('should show configured status when a provider key exists', async () => {
-      mockResolveProviderKey.mockImplementation((name: string) => {
-        if (name === 'defillama') return { apiKey: 'key', tier: 'pro', source: 'config' }
+      mockResolveProviderKey.mockImplementation((provider: { name: string }) => {
+        if (provider.name === 'defillama') return { apiKey: 'key', tier: 'paid', source: 'config' }
         return null
       })
 
@@ -255,7 +303,7 @@ describe('provider commands', () => {
       const parsed = JSON.parse(jsonOutput!)
       const defillama = parsed.find((r: Record<string, unknown>) => r.name === 'defillama')
       expect(defillama.configured).toBe(true)
-      expect(defillama.tier).toBe('pro')
+      expect(defillama.tier).toBe('paid')
       expect(defillama.source).toBe('config')
 
       const coingecko = parsed.find((r: Record<string, unknown>) => r.name === 'coingecko')
@@ -359,7 +407,7 @@ describe('provider commands', () => {
 
   describe('provider test', () => {
     it('should probe the API and report success in JSON mode', async () => {
-      mockResolveProviderKey.mockReturnValue({ apiKey: 'test-key', tier: 'pro', source: 'config' })
+      mockResolveProviderKey.mockReturnValue({ apiKey: 'test-key', tier: 'paid', source: 'config' })
       mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'defillama', action: 'chains' })
 
       const program = makeProgram()
@@ -376,7 +424,7 @@ describe('provider commands', () => {
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.status).toBe('ok')
       expect(parsed.provider).toBe('defillama')
-      expect(parsed.tier).toBe('pro')
+      expect(parsed.tier).toBe('paid')
       expect(parsed.source).toBe('config')
     })
 
@@ -394,8 +442,8 @@ describe('provider commands', () => {
       expect(callOpts.actionName).toBe('trending-pools')
     })
 
-    it('should use pro probe action when tier is not free', async () => {
-      mockResolveProviderKey.mockReturnValue({ apiKey: 'key', tier: 'pro', source: 'config' })
+    it('should use paid probe action when tier is not free', async () => {
+      mockResolveProviderKey.mockReturnValue({ apiKey: 'key', tier: 'paid', source: 'config' })
       mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'coingecko', action: 'trending' })
 
       const program = makeProgram()
@@ -409,7 +457,7 @@ describe('provider commands', () => {
     })
 
     it('should display human-readable output on success', async () => {
-      mockResolveProviderKey.mockReturnValue({ apiKey: 'key', tier: 'pro', source: 'config' })
+      mockResolveProviderKey.mockReturnValue({ apiKey: 'key', tier: 'paid', source: 'config' })
       mockProviderRequest.mockResolvedValueOnce({ data: {}, status: 200, provider: 'defillama', action: 'chains' })
 
       const program = makeProgram()

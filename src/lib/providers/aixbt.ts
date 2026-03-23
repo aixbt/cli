@@ -108,8 +108,8 @@ export const aixbtProvider: Provider = {
     },
     default: 'https://api.aixbt.tech',
   },
-  rateLimits: {
-    perMinute: {},
+  tiers: {
+    free: { rank: 0, keyless: true },
   },
   authHeader: 'X-API-Key',
   normalize: (body: unknown): unknown => {

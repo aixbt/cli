@@ -18,8 +18,7 @@ import { dispatchProviderStep } from '../providers/client.js'
 import { getProvider, parseSource } from '../providers/registry.js'
 import { resolveProviderKey } from '../providers/config.js'
 import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
-import { TIER_RANK } from '../providers/types.js'
-import type { ProviderTier } from '../providers/types.js'
+import { isTierSufficient } from '../providers/types.js'
 import type { ForeachResult } from '../../types.js'
 import { estimateTokenCount } from './output.js'
 
@@ -193,15 +192,18 @@ function emitTierWarnings(recipe: Recipe): void {
     const { providerName: source } = parseSource(rawSource)
 
     let provider
-    try { provider = getProvider(source) } catch { continue }
+    try { provider = getProvider(source) } catch (err) {
+      if (err instanceof CliError && err.code === 'UNKNOWN_PROVIDER') continue
+      throw err
+    }
 
     const action = provider.actions[step.action]
     if (!action || action.minTier === 'free') continue
 
-    const resolved = resolveProviderKey(source)
-    const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
+    const resolved = resolveProviderKey(provider)
+    const effectiveTier = resolved?.tier ?? 'free'
 
-    if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
+    if (!isTierSufficient(provider, effectiveTier, action.minTier)) {
       const suffix = step.fallback ? ' (has fallback, will degrade gracefully)' : ''
       console.error(
         `warning: step "${step.id}" uses ${source}:${step.action} (requires ${action.minTier} tier, current: ${effectiveTier})${suffix}`,
@@ -384,9 +386,9 @@ async function executeStep(
         const provider = getProvider(providerName)
         const action = provider.actions[step.action]
         if (action && action.minTier !== 'free') {
-          const resolved = resolveProviderKey(providerName)
-          const effectiveTier: ProviderTier = resolved?.tier ?? 'free'
-          if (TIER_RANK[effectiveTier] < TIER_RANK[action.minTier]) {
+          const resolved = resolveProviderKey(provider)
+          const effectiveTier = resolved?.tier ?? 'free'
+          if (!isTierSufficient(provider, effectiveTier, action.minTier)) {
             if (step.fallback) {
               const resolvedFallback = resolveValue(step.fallback, ctx) as string
               console.error(`warning: step "${step.id}" skipped (TIER_INSUFFICIENT), using fallback`)
@@ -396,8 +398,12 @@ async function executeStep(
             return buildFallbackResult(step.id, '', step.source, startedAt)
           }
         }
-      } catch {
-        // Provider not found — let executeForeach handle it
+      } catch (err) {
+        if (err instanceof CliError && err.code === 'UNKNOWN_PROVIDER') {
+          // Provider not found — let executeForeach handle it
+        } else {
+          throw err
+        }
       }
     }
 

@@ -37,8 +37,8 @@ describe('defillamaProvider', () => {
       )
     })
 
-    it('should have pro tier URL pointing to pro-api.llama.fi with apiKey placeholder', () => {
-      expect(defillamaProvider.baseUrl.byTier.pro).toBe(
+    it('should have paid tier URL pointing to pro-api.llama.fi with apiKey placeholder', () => {
+      expect(defillamaProvider.baseUrl.byTier.paid).toBe(
         'https://pro-api.llama.fi/{apiKey}',
       )
     })
@@ -46,13 +46,13 @@ describe('defillamaProvider', () => {
 
   // -- Rate limits --
 
-  describe('rate limits', () => {
+  describe('tiers', () => {
     it('should have free tier rate limit of 500 per minute', () => {
-      expect(defillamaProvider.rateLimits.perMinute.free).toBe(500)
+      expect(defillamaProvider.tiers.free.ratePerMinute).toBe(500)
     })
 
-    it('should have pro tier rate limit of 1000 per minute', () => {
-      expect(defillamaProvider.rateLimits.perMinute.pro).toBe(1000)
+    it('should have paid tier rate limit of 1000 per minute', () => {
+      expect(defillamaProvider.tiers.paid.ratePerMinute).toBe(1000)
     })
   })
 
@@ -180,8 +180,8 @@ describe('defillamaProvider', () => {
         )
       })
 
-      it('should have minTier "pro"', () => {
-        expect(defillamaProvider.actions.emissions.minTier).toBe('pro')
+      it('should have minTier "paid"', () => {
+        expect(defillamaProvider.actions.emissions.minTier).toBe('paid')
       })
 
       it('should have coingeckoId param that is required with inPath true', () => {
@@ -199,8 +199,8 @@ describe('defillamaProvider', () => {
         expect(defillamaProvider.actions.yields.path).toBe('/yields/pools')
       })
 
-      it('should have minTier "pro"', () => {
-        expect(defillamaProvider.actions.yields.minTier).toBe('pro')
+      it('should have minTier "paid"', () => {
+        expect(defillamaProvider.actions.yields.minTier).toBe('paid')
       })
 
       it('should have empty params array', () => {
@@ -217,11 +217,11 @@ describe('defillamaProvider', () => {
       expect(freeActions).toHaveLength(5)
     })
 
-    it('should have exactly 2 pro-tier actions', () => {
-      const proActions = Object.entries(defillamaProvider.actions).filter(
-        ([, a]) => a.minTier === 'pro',
+    it('should have exactly 2 paid-tier actions', () => {
+      const paidActions = Object.entries(defillamaProvider.actions).filter(
+        ([, a]) => a.minTier === 'paid',
       )
-      expect(proActions).toHaveLength(2)
+      expect(paidActions).toHaveLength(2)
     })
   })
 

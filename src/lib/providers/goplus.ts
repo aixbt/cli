@@ -144,11 +144,9 @@ export const goplusProvider: Provider = {
     },
     default: 'https://api.gopluslabs.io',
   },
-  rateLimits: {
-    perMinute: {
-      free: 30,
-      pro: 120,
-    },
+  tiers: {
+    free: { rank: 0, ratePerMinute: 30, keyless: true },
+    paid: { rank: 1, ratePerMinute: 120 },
   },
   authHeader: 'Authorization',
   buildAuthValue: (apiKey: string) => `Bearer ${apiKey}`,
