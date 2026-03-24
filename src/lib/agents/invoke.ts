@@ -108,7 +108,8 @@ function buildPromptForAnalysis(result: RecipeComplete, dataFiles: Map<string, s
   return parts.join('\n')
 }
 
-function buildInlinePromptForAnalysis(result: RecipeComplete): string {
+/** @internal Exported for testing. */
+export function buildInlinePromptForAnalysis(result: RecipeComplete): string {
   const parts = [
     `Analyze the following AIXBT recipe data. All data is provided inline below.`,
     '',
@@ -392,7 +393,8 @@ function writeDataFile(dir: string, name: string, data: string): string {
  * Write recipe data as files into a single temp directory, chunking large
  * arrays by size so each file is small enough for a single Read call.
  */
-function writeDataFiles(data: Record<string, unknown>): { dir: string; files: Map<string, string> } {
+/** @internal Exported for testing. */
+export function writeDataFiles(data: Record<string, unknown>): { dir: string; files: Map<string, string> } {
   const dir = mkdtempSync(join(tmpdir(), 'aixbt-'))
   const files = new Map<string, string>()
 
@@ -435,8 +437,8 @@ function writeDataFiles(data: Record<string, unknown>): { dir: string; files: Ma
 /** Steps to skip for the observer — reference data, not actionable. */
 const OBSERVER_SKIP_STEPS = new Set(['clusters'])
 
-/** Determine which steps should be observed by haiku. */
-function getObservableSteps(
+/** @internal Exported for testing. */
+export function getObservableSteps(
   data: Record<string, unknown>,
   steps: RecipeStep[],
 ): Array<{ stepId: string; data: unknown }> {
@@ -600,7 +602,8 @@ export async function captureAgentAnalysis(
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
-function fmtTokens(input: number, output: number, thinking?: number): string {
+/** @internal Exported for testing. */
+export function fmtTokens(input: number, output: number, thinking?: number): string {
   const f = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
   const parts: string[] = []
   if (input > 0) parts.push(`${f(input)} in`)
@@ -609,8 +612,8 @@ function fmtTokens(input: number, output: number, thinking?: number): string {
   return parts.join(' · ')
 }
 
-/** Mutable state shared between stream event handlers and the display loop. */
-interface StreamState {
+/** @internal Exported for testing. */
+export interface StreamState {
   phase: 'waiting' | 'processing' | 'output'
   msgTextBuffer: string
   totalInput: number
@@ -622,8 +625,8 @@ interface StreamState {
   thinkingBulletsShown: number
 }
 
-/** Process a Claude stream-json event line. */
-function processClaudeEvent(
+/** @internal Exported for testing. */
+export function processClaudeEvent(
   event: Record<string, unknown>,
   state: StreamState,
   showStatusBullet: (text: string) => void,
