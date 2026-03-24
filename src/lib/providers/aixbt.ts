@@ -24,7 +24,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'tickers', required: false, description: 'Comma-separated ticker symbols' },
       { name: 'chain', required: false, description: 'Filter by blockchain (e.g., ethereum, solana)' },
       { name: 'address', required: false, description: 'Filter by token contract address' },
-      { name: 'minMomentum', required: false, description: 'Minimum momentum score (0-100)' },
+      { name: 'minMomentumScore', required: false, description: 'Minimum momentum score (0-100)' },
       { name: 'sortBy', required: false, description: 'Sort field (momentumScore, popularityScore, detectedAt, reinforcedAt)' },
       { name: 'hasToken', required: false, description: 'Filter to projects with a token (true/false)' },
       { name: 'excludeStables', required: false, description: 'Exclude stablecoins (true/false)' },

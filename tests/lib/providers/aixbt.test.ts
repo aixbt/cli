@@ -106,14 +106,14 @@ describe('aixbtProvider', () => {
     // -- projects action --
 
     describe('projects action', () => {
-      it('should have params including page, limit, chain, and minMomentum', () => {
+      it('should have params including page, limit, chain, and minMomentumScore', () => {
         const paramNames = aixbtProvider.actions.projects.params.map(
           (p) => p.name,
         )
         expect(paramNames).toContain('page')
         expect(paramNames).toContain('limit')
         expect(paramNames).toContain('chain')
-        expect(paramNames).toContain('minMomentum')
+        expect(paramNames).toContain('minMomentumScore')
       })
 
       it('should have no required params', () => {
