@@ -23,6 +23,9 @@ importers:
       ora:
         specifier: ^8.1.0
         version: 8.2.0
+      tinyglobby:
+        specifier: ^0.2.15
+        version: 0.2.15
       yaml:
         specifier: ^2.7.0
         version: 2.8.2

@@ -1,12 +1,14 @@
-import { spawn } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
 import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentAdapter } from './types.js'
-import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta } from '../../types.js'
+import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta, RecipeStep } from '../../types.js'
+import { isAgentStep, isTransformStep } from '../../types.js'
 import { CliError } from '../errors.js'
 import { getConfigDir } from '../config.js'
-import { fmt } from '../output.js'
+import { fmt, wrapIndented } from '../output.js'
 
 const AGENT_SYSTEM_PROMPT = [
   'You are analyzing AIXBT recipe output.',
@@ -16,11 +18,23 @@ const AGENT_SYSTEM_PROMPT = [
   'Once all tool calls are complete and you begin your final response, go straight into the analysis.',
   'No preamble, no "here is the analysis", no summary of what you just read — just the analysis itself.',
   'Never use em-dashes. Use commas, periods, or restructure the sentence.',
+  'Do not mention all-time high (ATH) prices unless the asset has recently broken its ATH. Most assets are well below ATH, so commenting on the distance from ATH is not insightful.',
 ].join(' ')
+
+
 
 function buildContextBlock(contextHints?: string[]): string {
   if (!contextHints || contextHints.length === 0) return ''
   return ['<context>', ...contextHints, '</context>', ''].join('\n')
+}
+
+/**
+ * Create a temp working directory for agent sessions.
+ * Using a cwd under ~/.aixbt/tmp/ prevents Claude Code from
+ * inheriting the user's project CLAUDE.md (different path).
+ */
+function createAgentWorkdir(): string {
+  return mkdtempSync(join(tmpdir(), 'aixbt-agent-'))
 }
 
 const BRAND_PURPLE = '#b07de3'
@@ -80,6 +94,42 @@ function buildPromptForAnalysis(result: RecipeComplete, dataFiles: Map<string, s
     parts.push(`- ${stepId}: ${filePath}`)
   }
   parts.push('')
+
+  const contextBlock = buildContextBlock(result.contextHints)
+  if (contextBlock) parts.push(contextBlock)
+
+  if (result.analysis?.instructions) {
+    parts.push(`<instructions>`, result.analysis.instructions, `</instructions>`, '')
+  }
+
+  if (result.analysis?.output) {
+    parts.push(`<output-format>`, result.analysis.output, `</output-format>`, '')
+  }
+
+  return parts.join('\n')
+}
+
+/** @internal Exported for testing. */
+export function buildInlinePromptForAnalysis(result: RecipeComplete): string {
+  const parts = [
+    `Analyze the following AIXBT recipe data. All data is provided inline below.`,
+    '',
+  ]
+
+  for (const [stepId, stepData] of Object.entries(result.data)) {
+    if (stepId === '_fallbackNotes') continue
+    parts.push(`<data step="${stepId}">`)
+    parts.push(JSON.stringify(stepData, null, 2))
+    parts.push(`</data>`)
+    parts.push('')
+  }
+
+  if (result.data._fallbackNotes) {
+    parts.push(`<fallback-notes>`)
+    parts.push(JSON.stringify(result.data._fallbackNotes, null, 2))
+    parts.push(`</fallback-notes>`)
+    parts.push('')
+  }
 
   const contextBlock = buildContextBlock(result.contextHints)
   if (contextBlock) parts.push(contextBlock)
@@ -164,7 +214,7 @@ export async function invokeAgentForStep(
   result: RecipeAwaitingAgent,
   opts?: { allowedTools?: string[] },
 ): Promise<Record<string, unknown>> {
-  const dataFiles = writeDataFiles(result.data)
+  const { files: dataFiles } = writeDataFiles(result.data)
   let schemaFile: string | undefined
 
   try {
@@ -175,7 +225,7 @@ export async function invokeAgentForStep(
     }
 
     const invocation = adapter.buildInvocation({
-      dataFile: '', // per-step files listed in prompt
+      dataFile: '',
       prompt,
       systemPrompt: `${AGENT_SYSTEM_PROMPT} Follow the instructions precisely. Return only valid JSON.`,
       jsonSchemaFile: schemaFile,
@@ -333,22 +383,25 @@ export async function invokeParallelAgents(
 // Target ~30KB per file — small enough for a single Read call
 const CHUNK_BYTES = 30_000
 
+/** Write a JSON file into an existing directory. */
+function writeDataFile(dir: string, name: string, data: string): string {
+  const file = join(dir, `${name}.json`)
+  writeFileSync(file, data, { mode: 0o600 })
+  return file
+}
+
 /**
- * Write recipe data as files, chunking large arrays by size so each file
- * is small enough for the agent to read in a single tool call.
+ * Write recipe data as files into a single temp directory, chunking large
+ * arrays by size so each file is small enough for a single Read call.
  */
-function writeDataFiles(data: Record<string, unknown>): Map<string, string> {
+/** @internal Exported for testing. */
+export function writeDataFiles(data: Record<string, unknown>): { dir: string; files: Map<string, string> } {
+  const dir = mkdtempSync(join(tmpdir(), 'aixbt-'))
   const files = new Map<string, string>()
 
   for (const [stepId, stepData] of Object.entries(data)) {
     if (!Array.isArray(stepData)) {
-      const json = JSON.stringify(stepData, null, 2)
-      if (json.length <= CHUNK_BYTES) {
-        files.set(stepId, writeTempFile(stepId, json))
-      } else {
-        // Large non-array object — write as-is (can't meaningfully split)
-        files.set(stepId, writeTempFile(stepId, json))
-      }
+      files.set(stepId, writeDataFile(dir, stepId, JSON.stringify(stepData, null, 2)))
       continue
     }
 
@@ -361,7 +414,7 @@ function writeDataFiles(data: Record<string, unknown>): Map<string, string> {
       const itemJson = JSON.stringify(item)
       if (chunk.length > 0 && chunkBytes + itemJson.length > CHUNK_BYTES) {
         const idx = String(chunkIdx++).padStart(3, '0')
-        files.set(`${stepId}/${idx}`, writeTempFile(`${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
+        files.set(`${stepId}/${idx}`, writeDataFile(dir, `${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
         chunk = []
         chunkBytes = 0
       }
@@ -371,40 +424,154 @@ function writeDataFiles(data: Record<string, unknown>): Map<string, string> {
 
     if (chunk.length > 0) {
       if (chunkIdx === 1) {
-        // Never chunked — single file
-        files.set(stepId, writeTempFile(stepId, JSON.stringify(chunk, null, 2)))
+        files.set(stepId, writeDataFile(dir, stepId, JSON.stringify(chunk, null, 2)))
       } else {
         const idx = String(chunkIdx).padStart(3, '0')
-        files.set(`${stepId}/${idx}`, writeTempFile(`${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
+        files.set(`${stepId}/${idx}`, writeDataFile(dir, `${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
       }
     }
   }
 
-  return files
+  return { dir, files }
+}
+
+/** Steps to skip for the observer — reference data, not actionable. */
+const OBSERVER_SKIP_STEPS = new Set(['clusters'])
+
+/** @internal Exported for testing. */
+export function getObservableSteps(
+  data: Record<string, unknown>,
+  steps: RecipeStep[],
+): Array<{ stepId: string; data: unknown }> {
+  const stepMap = new Map(steps.map(s => [s.id, s]))
+  const observable: Array<{ stepId: string; data: unknown }> = []
+
+  for (const [stepId, stepData] of Object.entries(data)) {
+    if (stepId === '_fallbackNotes') continue
+
+    // Skip known reference steps
+    const step = stepMap.get(stepId)
+    if (step && OBSERVER_SKIP_STEPS.has(stepId)) continue
+    if (step && (isAgentStep(step) || isTransformStep(step))) continue
+
+    // Skip fallback results
+    if (typeof stepData === 'object' && stepData !== null && (stepData as Record<string, unknown>)._fallback) continue
+
+    observable.push({ stepId, data: stepData })
+  }
+
+  return observable
+}
+
+/**
+ * Spawn parallel haiku calls to observe recipe data sections.
+ * Each section gets its own independent haiku call with inline data.
+ * Observations are pushed into the provided array as they complete.
+ * Failures are silently ignored (the observer is non-critical).
+ */
+function spawnObserverCalls(
+  data: Record<string, unknown>,
+  steps: RecipeStep[],
+  bullets: string[],
+  cwd?: string,
+): Promise<void> {
+  const sections = getObservableSteps(data, steps)
+  if (sections.length === 0) return Promise.resolve()
+
+  // Observer always uses claude/haiku — skip if claude isn't available
+  try { execSync('which claude', { stdio: 'ignore' }) } catch { return Promise.resolve() }
+
+  const systemPrompt = 'You are scanning AIXBT crypto intelligence data. Respond with ONE short sentence (max 100 characters). Focus on: what projects or signals stand out, risk events (exploits, hacks, whale exits), or unusual patterns. Ignore momentum scores and price data. No preamble, no labels, no step names.'
+
+  const promises = sections.map(({ stepId, data: sectionData }) => {
+    return new Promise<void>((resolve) => {
+      const json = JSON.stringify(sectionData, null, 2)
+      const prompt = `<data step="${stepId}">\n${json}\n</data>\n\nOne-line observation about this ${stepId} data:`
+
+      const args = [
+        '-p',
+        '--model', 'haiku',
+        '--output-format', 'json',
+        '--tools', '',
+        '--append-system-prompt', systemPrompt,
+      ]
+
+      const child = spawn('claude', args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env },
+        ...(cwd ? { cwd } : {}),
+      })
+
+      // Pipe prompt via stdin
+      if (child.stdin) {
+        child.stdin.write(prompt)
+        child.stdin.end()
+      }
+
+      let stdout = ''
+      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+
+      child.on('close', () => {
+        try {
+          const parsed = JSON.parse(stdout) as { result?: string }
+          const text = (parsed.result ?? stdout).trim()
+          if (text) {
+            // Strip stepId prefix that haiku sometimes echoes back (e.g. "market_context: ...")
+            const cleaned = text.replace(new RegExp(`^${stepId}:\\s*`, 'i'), '')
+            bullets.push(cleaned.length > 400 ? cleaned.slice(0, 400) : cleaned)
+          }
+        } catch { /* ignore parse failures */ }
+        resolve()
+      })
+      child.on('error', () => resolve())
+    })
+  })
+
+  return Promise.all(promises).then(() => {})
 }
 
 /** Invoke the agent for final analysis. Streams output to stdout. */
 export async function invokeAgentForAnalysis(
   adapter: AgentAdapter,
   result: RecipeComplete,
-  opts?: { allowedTools?: string[] },
+  opts?: { allowedTools?: string[]; recipeSteps?: RecipeStep[]; observe?: boolean },
 ): Promise<void> {
-  const dataFiles = writeDataFiles(result.data)
+  // Write temp files into a single directory for retrospection
+  const { dir: dataDir, files: dataFiles } = writeDataFiles(result.data)
+
+  // Show DATA label with path
+  process.stderr.write(`  ${chalk.dim('↓')}\n`)
+  process.stderr.write(`${chalk.hex('#5ba8a0')('DATA')} ${chalk.dim(dataDir)}\n`)
+
+  // Create isolated workdir with AIXBT CLAUDE.md (avoids inheriting user's project CLAUDE.md)
+  const agentWorkdir = createAgentWorkdir()
+
+  const useStdin = adapter.supportsStdin
+
+  // Build prompt: inline via stdin if supported, otherwise file-read prompt
+  const stdinData = useStdin ? buildInlinePromptForAnalysis(result) : undefined
+  const fileReadPrompt = useStdin ? '' : buildPromptForAnalysis(result, dataFiles)
+
+  // Spawn parallel haiku observer calls (non-blocking, fire-and-forget)
+  const observerBullets: string[] = []
+  const observerDone = (opts?.observe !== false && opts?.recipeSteps)
+    ? spawnObserverCalls(result.data, opts.recipeSteps, observerBullets, agentWorkdir)
+    : Promise.resolve()
 
   try {
-    const prompt = buildPromptForAnalysis(result, dataFiles)
-
     const invocation = adapter.buildInvocation({
-      dataFile: '', // no single file — per-step files listed in prompt
-      prompt,
+      dataFile: '',
+      prompt: fileReadPrompt,
       streaming: true,
       systemPrompt: AGENT_SYSTEM_PROMPT,
       allowedTools: opts?.allowedTools,
+      useStdin,
     })
 
-    await streamAgentAnalysis(adapter, invocation.args, invocation.env)
+    const env = { ...invocation.env }
+    await streamAgentAnalysis(adapter, invocation.args, env, observerBullets, stdinData, agentWorkdir)
   } finally {
-    for (const file of dataFiles.values()) cleanupTempFile(file)
+    await observerDone
   }
 }
 
@@ -413,8 +580,8 @@ export async function captureAgentAnalysis(
   adapter: AgentAdapter,
   result: RecipeComplete,
   opts?: { allowedTools?: string[] },
-): Promise<string> {
-  const dataFiles = writeDataFiles(result.data)
+): Promise<{ text: string; dataDir: string }> {
+  const { dir: dataDir, files: dataFiles } = writeDataFiles(result.data)
 
   try {
     const prompt = buildPromptForAnalysis(result, dataFiles)
@@ -427,35 +594,39 @@ export async function captureAgentAnalysis(
     })
 
     const stdout = await spawnAgent(adapter, invocation.args, invocation.env)
-    return adapter.parseResult(stdout)
-  } finally {
+    return { text: adapter.parseResult(stdout), dataDir }
+  } catch (err) {
+    // Clean up on failure only — on success, caller owns the files
     for (const file of dataFiles.values()) cleanupTempFile(file)
+    throw err
   }
 }
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
-function fmtTokens(input: number, output: number): string {
+/** @internal Exported for testing. */
+export function fmtTokens(input: number, output: number, thinking?: number): string {
   const f = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
   const parts: string[] = []
   if (input > 0) parts.push(`${f(input)} in`)
+  if (thinking && thinking > 0) parts.push(`${f(thinking)} thinking`)
   if (output > 0) parts.push(`${f(output)} out`)
   return parts.join(' · ')
 }
 
-/** Mutable state shared between stream event handlers and the display loop. */
-interface StreamState {
+/** @internal Exported for testing. */
+export interface StreamState {
   phase: 'waiting' | 'processing' | 'output'
   msgTextBuffer: string
   totalInput: number
   totalOutput: number
+  totalThinking: number
 }
 
-/** Process a Claude stream-json event line. */
-function processClaudeEvent(
+/** @internal Exported for testing. */
+export function processClaudeEvent(
   event: Record<string, unknown>,
   state: StreamState,
-  showStatusBullet: (text: string) => void,
 ): void {
   // Final result event — accurate totals
   if (event.type === 'result') {
@@ -482,28 +653,17 @@ function processClaudeEvent(
         + (usage.cache_creation_input_tokens ?? 0)
         + (usage.cache_read_input_tokens ?? 0)
     }
-    if (state.msgTextBuffer) {
-      showStatusBullet(state.msgTextBuffer)
-      state.msgTextBuffer = ''
-    }
   }
   if (inner.type === 'message_delta') {
     const usage = inner.usage as { output_tokens?: number } | undefined
     if (usage?.output_tokens) state.totalOutput += usage.output_tokens
   }
 
-  // Text before tool_use = status bullet; text without = final output
-  if (inner.type === 'content_block_start') {
-    const block = inner.content_block as Record<string, unknown> | undefined
-    if (block?.type === 'tool_use' && state.msgTextBuffer) {
-      showStatusBullet(state.msgTextBuffer)
-      state.msgTextBuffer = ''
-    }
-  }
-
   if (inner.type === 'content_block_delta') {
     const delta = inner.delta as Record<string, unknown> | undefined
-    if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+    if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+      state.totalThinking += delta.thinking.length
+    } else if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
       if (state.phase === 'output') {
         process.stdout.write(delta.text)
       } else {
@@ -517,7 +677,6 @@ function processClaudeEvent(
 function processCodexEvent(
   event: Record<string, unknown>,
   state: StreamState,
-  showStatusBullet: (text: string) => void,
 ): void {
   if (event.type === 'turn.completed') {
     const usage = event.usage as Record<string, number> | undefined
@@ -529,25 +688,11 @@ function processCodexEvent(
     return
   }
 
-  // Agent message completed — buffer it; flush previous as status if a command follows
+  // Buffer latest agent message text (last one becomes final output)
   if (event.type === 'item.completed') {
     const item = event.item as Record<string, unknown> | undefined
     if (item?.type === 'agent_message' && typeof item.text === 'string') {
-      // Previous message was pre-tool status — show as bullet
-      if (state.msgTextBuffer) {
-        showStatusBullet(state.msgTextBuffer)
-      }
       state.msgTextBuffer = item.text
-    }
-    return
-  }
-
-  // Command starting — flush any buffered message as status
-  if (event.type === 'item.started') {
-    const item = event.item as Record<string, unknown> | undefined
-    if (item?.type === 'command_execution' && state.msgTextBuffer) {
-      showStatusBullet(state.msgTextBuffer)
-      state.msgTextBuffer = ''
     }
   }
 }
@@ -556,12 +701,21 @@ function streamAgentAnalysis(
   adapter: AgentAdapter,
   args: string[],
   env?: Record<string, string>,
+  observerBullets?: string[],
+  stdinData?: string,
+  cwd?: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(adapter.binary, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [stdinData ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       env: { ...process.env, ...env },
+      ...(cwd ? { cwd } : {}),
     })
+
+    if (stdinData && child.stdin) {
+      child.stdin.write(stdinData)
+      child.stdin.end()
+    }
 
     // Show arrow connector + agent name (AIXBT line already shown by caller)
     const agentColor = AGENT_COLORS[adapter.binary] ?? '#888888'
@@ -574,27 +728,40 @@ function streamAgentAnalysis(
       msgTextBuffer: '',
       totalInput: 0,
       totalOutput: 0,
+      totalThinking: 0,
     }
     let stderrOutput = ''
 
     const processEvent = adapter.streamFormat === 'codex' ? processCodexEvent : processClaudeEvent
 
     let frame = 0
+    let observerDrained = 0
     const spinner = setInterval(() => {
       if (state.phase === 'waiting' || state.phase === 'processing') {
-        const tokens = fmtTokens(state.totalInput, state.totalOutput)
+        // Drain any observer bullets that have arrived
+        if (observerBullets) {
+          while (observerDrained < observerBullets.length) {
+            showStatusBullet(observerBullets[observerDrained++])
+          }
+        }
+        // Estimate thinking tokens (~4 chars per token)
+        const thinkingTokens = state.totalThinking > 0 ? Math.ceil(state.totalThinking / 4) : 0
+        const tokens = fmtTokens(state.totalInput, state.totalOutput, thinkingTokens)
         const suffix = tokens ? ` ${chalk.dim(tokens)}` : ''
-        process.stderr.write(`\r  ${SPINNER_FRAMES[frame++ % SPINNER_FRAMES.length]} thinking...${suffix}`)
+        const label = state.totalThinking > 0 ? 'reasoning...' : 'thinking...'
+        process.stderr.write(`\r  ${SPINNER_FRAMES[frame++ % SPINNER_FRAMES.length]} ${label}${suffix}`)
       }
     }, 80)
 
     function showStatusBullet(text: string) {
-      let line = text.trim()
+      const line = text.trim().replace(/:$/, '')
       if (!line) return
       process.stderr.write('\r\x1b[K')
-      line = line.replace(/:$/, '')
-      if (line.length > 120) line = line.slice(0, 117) + '...'
-      process.stderr.write(`  ${chalk.dim('•')} ${chalk.dim(line)}\n`)
+      const cols = process.stderr.columns || 80
+      const prefix = '  • '
+      const indent = '    '
+      const wrapped = wrapIndented(chalk.dim(line), indent, prefix.length, cols)
+      process.stderr.write(`  ${chalk.dim('•')} ${wrapped}\n`)
       state.phase = 'processing'
     }
 
@@ -608,7 +775,7 @@ function streamAgentAnalysis(
         if (!line.trim()) continue
         try {
           const event = JSON.parse(line) as Record<string, unknown>
-          processEvent(event, state, showStatusBullet)
+          processEvent(event, state)
         } catch {
           // skip unparseable lines
         }
@@ -627,15 +794,18 @@ function streamAgentAnalysis(
 
     child.on('close', (code) => {
       clearInterval(spinner)
-
-      // Remaining buffered text is the final output
+      // Remaining buffered text is the final output.
       if (state.msgTextBuffer && state.phase !== 'output') {
-        process.stderr.write('\r\x1b[K')
-        const tokens = fmtTokens(state.totalInput, state.totalOutput)
-        const tokenSuffix = tokens ? ` ${chalk.dim(tokens)}` : ''
-        process.stderr.write(`\n${fmt.tag('OUTPUT', BRAND_PURPLE)}${tokenSuffix}\n\n`)
-        process.stdout.write(state.msgTextBuffer)
-        state.phase = 'output'
+        const text = state.msgTextBuffer.trim()
+        if (text) {
+          process.stderr.write('\r\x1b[K')
+          const thinkingTokens = state.totalThinking > 0 ? Math.ceil(state.totalThinking / 4) : 0
+          const tokens = fmtTokens(state.totalInput, state.totalOutput, thinkingTokens)
+          const tokenSuffix = tokens ? ` ${chalk.dim(tokens)}` : ''
+          process.stderr.write(`\n${fmt.tag('OUTPUT', BRAND_PURPLE)}${tokenSuffix}\n\n`)
+          process.stdout.write(state.msgTextBuffer)
+          state.phase = 'output'
+        }
       }
 
       if (state.phase === 'output') process.stdout.write('\n')

@@ -6,6 +6,7 @@ export const codexAdapter: AgentAdapter = {
   binary: 'codex',
   streamFormat: 'codex',
   supportsJsonSchema: true,
+  supportsStdin: false,
 
   checkAvailable(): boolean {
     try {

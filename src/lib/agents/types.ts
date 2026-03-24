@@ -12,6 +12,8 @@ export interface InvokeOpts {
   streaming?: boolean
   /** Allowed tools for the agent session. */
   allowedTools?: string[]
+  /** When true, prompt will be piped via stdin instead of -p arg. */
+  useStdin?: boolean
 }
 
 /** Result of building an agent invocation command. */
@@ -40,4 +42,6 @@ export interface AgentAdapter {
   parseResult(stdout: string): string
   /** Whether the agent supports native JSON schema enforcement. */
   supportsJsonSchema: boolean
+  /** Whether the agent supports receiving the prompt via stdin. */
+  supportsStdin: boolean
 }
