@@ -174,13 +174,13 @@ describe('projects commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'projects', '--chain', 'ethereum', '--min-momentum', '50', '--limit', '10'],
+        ['node', 'aixbt', '--format', 'json', 'projects', '--chain', 'ethereum', '--min-momentum-score', '50', '--limit', '10'],
         { from: 'node' },
       )
 
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
       expect(callUrl.searchParams.get('chain')).toBe('ethereum')
-      expect(callUrl.searchParams.get('minMomentum')).toBe('50')
+      expect(callUrl.searchParams.get('minMomentumScore')).toBe('50')
       expect(callUrl.searchParams.get('limit')).toBe('10')
     })
 
