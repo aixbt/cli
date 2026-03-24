@@ -9,6 +9,7 @@ export const claudeAdapter: AgentAdapter = {
   binary: 'claude',
   streamFormat: 'claude',
   supportsJsonSchema: true,
+  supportsStdin: true,
 
   checkAvailable(): boolean {
     try {

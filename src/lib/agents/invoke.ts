@@ -1,5 +1,6 @@
-import { spawn } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
 import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentAdapter } from './types.js'
@@ -32,9 +33,7 @@ function buildContextBlock(contextHints?: string[]): string {
  * inheriting the user's project CLAUDE.md (different path).
  */
 function createAgentWorkdir(): string {
-  const tmpBase = join(getConfigDir(), 'tmp')
-  mkdirSync(tmpBase, { recursive: true, mode: 0o700 })
-  return mkdtempSync(join(tmpBase, 'agent-'))
+  return mkdtempSync(join(tmpdir(), 'aixbt-agent-'))
 }
 
 const BRAND_PURPLE = '#b07de3'
@@ -213,7 +212,7 @@ export async function invokeAgentForStep(
   result: RecipeAwaitingAgent,
   opts?: { allowedTools?: string[] },
 ): Promise<Record<string, unknown>> {
-  const dataFiles = writeDataFiles(result.data)
+  const { files: dataFiles } = writeDataFiles(result.data)
   let schemaFile: string | undefined
 
   try {
@@ -224,7 +223,7 @@ export async function invokeAgentForStep(
     }
 
     const invocation = adapter.buildInvocation({
-      dataFile: '', // per-step files listed in prompt
+      dataFile: '',
       prompt,
       systemPrompt: `${AGENT_SYSTEM_PROMPT} Follow the instructions precisely. Return only valid JSON.`,
       jsonSchemaFile: schemaFile,
@@ -382,22 +381,24 @@ export async function invokeParallelAgents(
 // Target ~30KB per file — small enough for a single Read call
 const CHUNK_BYTES = 30_000
 
+/** Write a JSON file into an existing directory. */
+function writeDataFile(dir: string, name: string, data: string): string {
+  const file = join(dir, `${name}.json`)
+  writeFileSync(file, data, { mode: 0o600 })
+  return file
+}
+
 /**
- * Write recipe data as files, chunking large arrays by size so each file
- * is small enough for the agent to read in a single tool call.
+ * Write recipe data as files into a single temp directory, chunking large
+ * arrays by size so each file is small enough for a single Read call.
  */
-function writeDataFiles(data: Record<string, unknown>): Map<string, string> {
+function writeDataFiles(data: Record<string, unknown>): { dir: string; files: Map<string, string> } {
+  const dir = mkdtempSync(join(tmpdir(), 'aixbt-'))
   const files = new Map<string, string>()
 
   for (const [stepId, stepData] of Object.entries(data)) {
     if (!Array.isArray(stepData)) {
-      const json = JSON.stringify(stepData, null, 2)
-      if (json.length <= CHUNK_BYTES) {
-        files.set(stepId, writeTempFile(stepId, json))
-      } else {
-        // Large non-array object — write as-is (can't meaningfully split)
-        files.set(stepId, writeTempFile(stepId, json))
-      }
+      files.set(stepId, writeDataFile(dir, stepId, JSON.stringify(stepData, null, 2)))
       continue
     }
 
@@ -410,7 +411,7 @@ function writeDataFiles(data: Record<string, unknown>): Map<string, string> {
       const itemJson = JSON.stringify(item)
       if (chunk.length > 0 && chunkBytes + itemJson.length > CHUNK_BYTES) {
         const idx = String(chunkIdx++).padStart(3, '0')
-        files.set(`${stepId}/${idx}`, writeTempFile(`${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
+        files.set(`${stepId}/${idx}`, writeDataFile(dir, `${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
         chunk = []
         chunkBytes = 0
       }
@@ -420,16 +421,15 @@ function writeDataFiles(data: Record<string, unknown>): Map<string, string> {
 
     if (chunk.length > 0) {
       if (chunkIdx === 1) {
-        // Never chunked — single file
-        files.set(stepId, writeTempFile(stepId, JSON.stringify(chunk, null, 2)))
+        files.set(stepId, writeDataFile(dir, stepId, JSON.stringify(chunk, null, 2)))
       } else {
         const idx = String(chunkIdx).padStart(3, '0')
-        files.set(`${stepId}/${idx}`, writeTempFile(`${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
+        files.set(`${stepId}/${idx}`, writeDataFile(dir, `${stepId}-${idx}`, JSON.stringify(chunk, null, 2)))
       }
     }
   }
 
-  return files
+  return { dir, files }
 }
 
 /** Steps to skip for the observer — reference data, not actionable. */
@@ -474,6 +474,9 @@ function spawnObserverCalls(
 ): Promise<void> {
   const sections = getObservableSteps(data, steps)
   if (sections.length === 0) return Promise.resolve()
+
+  // Observer always uses claude/haiku — skip if claude isn't available
+  try { execSync('which claude', { stdio: 'ignore' }) } catch { return Promise.resolve() }
 
   const systemPrompt = 'You are scanning AIXBT crypto intelligence data. Respond with a single one-line observation about what stands out. Focus on: how many independent clusters detected the same signal (convergence breadth), momentum score spikes or decays, risk signals (exploits, hacks, whale exits), and unusual category concentrations. Do not comment on price vs ATH — most assets are below ATH. One line only, no preamble.'
 
@@ -529,14 +532,21 @@ export async function invokeAgentForAnalysis(
   result: RecipeComplete,
   opts?: { allowedTools?: string[]; recipeSteps?: RecipeStep[]; observe?: boolean },
 ): Promise<void> {
-  // Write temp files for retrospection (one per step, no chunking)
-  const dataFiles = writeDataFiles(result.data)
+  // Write temp files into a single directory for retrospection
+  const { dir: dataDir, files: dataFiles } = writeDataFiles(result.data)
+
+  // Show DATA label with path
+  process.stderr.write(`  ${chalk.dim('↓')}\n`)
+  process.stderr.write(`${fmt.tag('DATA', BRAND_PURPLE)} ${chalk.dim(dataDir)}\n`)
 
   // Create isolated workdir with AIXBT CLAUDE.md (avoids inheriting user's project CLAUDE.md)
   const agentWorkdir = createAgentWorkdir()
 
-  // Build inline prompt — all data embedded, no file reads needed
-  const inlinePrompt = buildInlinePromptForAnalysis(result)
+  const useStdin = adapter.supportsStdin
+
+  // Build prompt: inline via stdin if supported, otherwise file-read prompt
+  const stdinData = useStdin ? buildInlinePromptForAnalysis(result) : undefined
+  const fileReadPrompt = useStdin ? '' : buildPromptForAnalysis(result, dataFiles)
 
   // Spawn parallel haiku observer calls (non-blocking, fire-and-forget)
   const observerBullets: string[] = []
@@ -547,20 +557,17 @@ export async function invokeAgentForAnalysis(
   try {
     const invocation = adapter.buildInvocation({
       dataFile: '',
-      prompt: '', // prompt piped via stdin
+      prompt: fileReadPrompt,
       streaming: true,
       systemPrompt: AGENT_SYSTEM_PROMPT,
       allowedTools: opts?.allowedTools,
-      useStdin: true,
+      useStdin,
     })
 
     const env = { ...invocation.env }
-    await streamAgentAnalysis(adapter, invocation.args, env, observerBullets, inlinePrompt, agentWorkdir)
+    await streamAgentAnalysis(adapter, invocation.args, env, observerBullets, stdinData, agentWorkdir)
   } finally {
     await observerDone
-    for (const file of dataFiles.values()) cleanupTempFile(file)
-    // Clean up agent workdir
-    try { unlinkSync(agentWorkdir) } catch { /* ignore */ }
   }
 }
 
@@ -569,8 +576,8 @@ export async function captureAgentAnalysis(
   adapter: AgentAdapter,
   result: RecipeComplete,
   opts?: { allowedTools?: string[] },
-): Promise<string> {
-  const dataFiles = writeDataFiles(result.data)
+): Promise<{ text: string; dataDir: string }> {
+  const { dir: dataDir, files: dataFiles } = writeDataFiles(result.data)
 
   try {
     const prompt = buildPromptForAnalysis(result, dataFiles)
@@ -583,9 +590,11 @@ export async function captureAgentAnalysis(
     })
 
     const stdout = await spawnAgent(adapter, invocation.args, invocation.env)
-    return adapter.parseResult(stdout)
-  } finally {
+    return { text: adapter.parseResult(stdout), dataDir }
+  } catch (err) {
+    // Clean up on failure only — on success, caller owns the files
     for (const file of dataFiles.values()) cleanupTempFile(file)
+    throw err
   }
 }
 

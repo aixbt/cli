@@ -1044,10 +1044,10 @@ export function registerRecipeCommand(program: Command): void {
           try {
             agentResponse = await invokeAgentForStep(adapter, awaiting, { allowedTools: agentAllowedTools })
             clearInterval(stepTick)
-            process.stderr.write(`\r${agentLabel} ${output.fmt.dim('✓')} ${chalk.dim(`step: ${awaiting.step}`)}\n`)
+            process.stderr.write(`\r\x1b[K${agentLabel} ${output.fmt.dim('✓')} ${chalk.dim(`step: ${awaiting.step}`)}\n`)
           } catch (err) {
             clearInterval(stepTick)
-            process.stderr.write(`\r${agentLabel} ${output.fmt.red('✗')} ${chalk.dim(`step: ${awaiting.step}`)}\n`)
+            process.stderr.write(`\r\x1b[K${agentLabel} ${output.fmt.red('✗')} ${chalk.dim(`step: ${awaiting.step}`)}\n`)
             throw err
           }
         }
@@ -1103,8 +1103,8 @@ export function registerRecipeCommand(program: Command): void {
         await invokeAgentForAnalysis(adapter, result, { allowedTools: agentAllowedTools, recipeSteps, observe })
         console.error('')
       } else if (result.analysis && structured) {
-        const analysisText = await captureAgentAnalysis(adapter, result, { allowedTools: agentAllowedTools })
-        output.outputStructured({ ...result, analysis_result: analysisText }, recipeFormat)
+        const { text: analysisText, dataDir } = await captureAgentAnalysis(adapter, result, { allowedTools: agentAllowedTools })
+        output.outputStructured({ ...result, analysis_result: analysisText, meta: { dataDir } }, recipeFormat)
       } else {
         output.outputStructured(result, recipeFormat)
       }

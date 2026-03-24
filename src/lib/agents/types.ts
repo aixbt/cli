@@ -42,4 +42,6 @@ export interface AgentAdapter {
   parseResult(stdout: string): string
   /** Whether the agent supports native JSON schema enforcement. */
   supportsJsonSchema: boolean
+  /** Whether the agent supports receiving the prompt via stdin. */
+  supportsStdin: boolean
 }
