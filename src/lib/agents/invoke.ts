@@ -3,7 +3,8 @@ import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentAdapter } from './types.js'
-import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta } from '../../types.js'
+import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta, RecipeStep } from '../../types.js'
+import { isAgentStep, isTransformStep } from '../../types.js'
 import { CliError } from '../errors.js'
 import { getConfigDir } from '../config.js'
 import { fmt } from '../output.js'
@@ -18,9 +19,22 @@ const AGENT_SYSTEM_PROMPT = [
   'Never use em-dashes. Use commas, periods, or restructure the sentence.',
 ].join(' ')
 
+
+
 function buildContextBlock(contextHints?: string[]): string {
   if (!contextHints || contextHints.length === 0) return ''
   return ['<context>', ...contextHints, '</context>', ''].join('\n')
+}
+
+/**
+ * Create a temp working directory for agent sessions.
+ * Using a cwd under ~/.aixbt/tmp/ prevents Claude Code from
+ * inheriting the user's project CLAUDE.md (different path).
+ */
+function createAgentWorkdir(): string {
+  const tmpBase = join(getConfigDir(), 'tmp')
+  mkdirSync(tmpBase, { recursive: true, mode: 0o700 })
+  return mkdtempSync(join(tmpBase, 'agent-'))
 }
 
 const BRAND_PURPLE = '#b07de3'
@@ -80,6 +94,41 @@ function buildPromptForAnalysis(result: RecipeComplete, dataFiles: Map<string, s
     parts.push(`- ${stepId}: ${filePath}`)
   }
   parts.push('')
+
+  const contextBlock = buildContextBlock(result.contextHints)
+  if (contextBlock) parts.push(contextBlock)
+
+  if (result.analysis?.instructions) {
+    parts.push(`<instructions>`, result.analysis.instructions, `</instructions>`, '')
+  }
+
+  if (result.analysis?.output) {
+    parts.push(`<output-format>`, result.analysis.output, `</output-format>`, '')
+  }
+
+  return parts.join('\n')
+}
+
+function buildInlinePromptForAnalysis(result: RecipeComplete): string {
+  const parts = [
+    `Analyze the following AIXBT recipe data. All data is provided inline below.`,
+    '',
+  ]
+
+  for (const [stepId, stepData] of Object.entries(result.data)) {
+    if (stepId === '_fallbackNotes') continue
+    parts.push(`<data step="${stepId}">`)
+    parts.push(JSON.stringify(stepData, null, 2))
+    parts.push(`</data>`)
+    parts.push('')
+  }
+
+  if (result.data._fallbackNotes) {
+    parts.push(`<fallback-notes>`)
+    parts.push(JSON.stringify(result.data._fallbackNotes, null, 2))
+    parts.push(`</fallback-notes>`)
+    parts.push('')
+  }
 
   const contextBlock = buildContextBlock(result.contextHints)
   if (contextBlock) parts.push(contextBlock)
@@ -383,28 +432,135 @@ function writeDataFiles(data: Record<string, unknown>): Map<string, string> {
   return files
 }
 
+/** Steps to skip for the observer — reference data, not actionable. */
+const OBSERVER_SKIP_STEPS = new Set(['clusters'])
+
+/** Determine which steps should be observed by haiku. */
+function getObservableSteps(
+  data: Record<string, unknown>,
+  steps: RecipeStep[],
+): Array<{ stepId: string; data: unknown }> {
+  const stepMap = new Map(steps.map(s => [s.id, s]))
+  const observable: Array<{ stepId: string; data: unknown }> = []
+
+  for (const [stepId, stepData] of Object.entries(data)) {
+    if (stepId === '_fallbackNotes') continue
+
+    // Skip known reference steps
+    const step = stepMap.get(stepId)
+    if (step && OBSERVER_SKIP_STEPS.has(stepId)) continue
+    if (step && (isAgentStep(step) || isTransformStep(step))) continue
+
+    // Skip fallback results
+    if (typeof stepData === 'object' && stepData !== null && (stepData as Record<string, unknown>)._fallback) continue
+
+    observable.push({ stepId, data: stepData })
+  }
+
+  return observable
+}
+
+/**
+ * Spawn parallel haiku calls to observe recipe data sections.
+ * Each section gets its own independent haiku call with inline data.
+ * Observations are pushed into the provided array as they complete.
+ * Failures are silently ignored (the observer is non-critical).
+ */
+function spawnObserverCalls(
+  data: Record<string, unknown>,
+  steps: RecipeStep[],
+  bullets: string[],
+  cwd?: string,
+): Promise<void> {
+  const sections = getObservableSteps(data, steps)
+  if (sections.length === 0) return Promise.resolve()
+
+  const systemPrompt = 'You are scanning AIXBT crypto intelligence data. Respond with a single one-line observation about what stands out. Focus on: how many independent clusters detected the same signal (convergence breadth), momentum score spikes or decays, risk signals (exploits, hacks, whale exits), and unusual category concentrations. Do not comment on price vs ATH — most assets are below ATH. One line only, no preamble.'
+
+  const promises = sections.map(({ stepId, data: sectionData }) => {
+    return new Promise<void>((resolve) => {
+      const json = JSON.stringify(sectionData, null, 2)
+      const prompt = `<data step="${stepId}">\n${json}\n</data>\n\nOne-line observation about this ${stepId} data:`
+
+      const args = [
+        '-p',
+        '--model', 'haiku',
+        '--output-format', 'json',
+        '--tools', '',
+        '--append-system-prompt', systemPrompt,
+      ]
+
+      const child = spawn('claude', args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env },
+        ...(cwd ? { cwd } : {}),
+      })
+
+      // Pipe prompt via stdin
+      if (child.stdin) {
+        child.stdin.write(prompt)
+        child.stdin.end()
+      }
+
+      let stdout = ''
+      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+
+      child.on('close', () => {
+        try {
+          const parsed = JSON.parse(stdout) as { result?: string }
+          const text = (parsed.result ?? stdout).trim()
+          if (text) {
+            const line = text.length > 150 ? text.slice(0, 147) + '...' : text
+            bullets.push(line)
+          }
+        } catch { /* ignore parse failures */ }
+        resolve()
+      })
+      child.on('error', () => resolve())
+    })
+  })
+
+  return Promise.all(promises).then(() => {})
+}
+
 /** Invoke the agent for final analysis. Streams output to stdout. */
 export async function invokeAgentForAnalysis(
   adapter: AgentAdapter,
   result: RecipeComplete,
-  opts?: { allowedTools?: string[] },
+  opts?: { allowedTools?: string[]; recipeSteps?: RecipeStep[]; observe?: boolean },
 ): Promise<void> {
+  // Write temp files for retrospection (one per step, no chunking)
   const dataFiles = writeDataFiles(result.data)
 
-  try {
-    const prompt = buildPromptForAnalysis(result, dataFiles)
+  // Create isolated workdir with AIXBT CLAUDE.md (avoids inheriting user's project CLAUDE.md)
+  const agentWorkdir = createAgentWorkdir()
 
+  // Build inline prompt — all data embedded, no file reads needed
+  const inlinePrompt = buildInlinePromptForAnalysis(result)
+
+  // Spawn parallel haiku observer calls (non-blocking, fire-and-forget)
+  const observerBullets: string[] = []
+  const observerDone = (opts?.observe !== false && opts?.recipeSteps)
+    ? spawnObserverCalls(result.data, opts.recipeSteps, observerBullets, agentWorkdir)
+    : Promise.resolve()
+
+  try {
     const invocation = adapter.buildInvocation({
-      dataFile: '', // no single file — per-step files listed in prompt
-      prompt,
+      dataFile: '',
+      prompt: '', // prompt piped via stdin
       streaming: true,
       systemPrompt: AGENT_SYSTEM_PROMPT,
       allowedTools: opts?.allowedTools,
+      useStdin: true,
     })
 
-    await streamAgentAnalysis(adapter, invocation.args, invocation.env)
+    const env = { ...invocation.env }
+    await streamAgentAnalysis(adapter, invocation.args, env, observerBullets, inlinePrompt, agentWorkdir)
   } finally {
+    await observerDone
     for (const file of dataFiles.values()) cleanupTempFile(file)
+    // Clean up agent workdir
+    try { unlinkSync(agentWorkdir) } catch { /* ignore */ }
   }
 }
 
@@ -435,10 +591,11 @@ export async function captureAgentAnalysis(
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
-function fmtTokens(input: number, output: number): string {
+function fmtTokens(input: number, output: number, thinking?: number): string {
   const f = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
   const parts: string[] = []
   if (input > 0) parts.push(`${f(input)} in`)
+  if (thinking && thinking > 0) parts.push(`${f(thinking)} thinking`)
   if (output > 0) parts.push(`${f(output)} out`)
   return parts.join(' · ')
 }
@@ -449,6 +606,11 @@ interface StreamState {
   msgTextBuffer: string
   totalInput: number
   totalOutput: number
+  totalThinking: number
+  /** Buffer for accumulating thinking text to extract status bullets. */
+  thinkingBuffer: string
+  /** Number of thinking bullets already shown (to avoid flooding). */
+  thinkingBulletsShown: number
 }
 
 /** Process a Claude stream-json event line. */
@@ -503,11 +665,57 @@ function processClaudeEvent(
 
   if (inner.type === 'content_block_delta') {
     const delta = inner.delta as Record<string, unknown> | undefined
-    if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+    if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+      state.totalThinking += delta.thinking.length
+      state.thinkingBuffer += delta.thinking
+      // Extract complete sentences from thinking as status bullets
+      // Show at most one bullet per ~500 chars of thinking to avoid flooding
+      const nextThreshold = (state.thinkingBulletsShown + 1) * 500
+      if (state.totalThinking >= nextThreshold) {
+        // Find the last complete sentence in the buffer
+        const sentenceEnd = state.thinkingBuffer.search(/[.!?]\s/)
+        if (sentenceEnd > 0) {
+          const sentence = state.thinkingBuffer.slice(0, sentenceEnd + 1).trim()
+          // Only show non-trivial sentences (skip meta-commentary like "Let me think...")
+          if (sentence.length > 20 && !sentence.startsWith('Let me') && !sentence.startsWith('I need to') && !sentence.startsWith('I should')) {
+            showStatusBullet(sentence)
+          }
+          state.thinkingBuffer = state.thinkingBuffer.slice(sentenceEnd + 2)
+          state.thinkingBulletsShown++
+        }
+      }
+    } else if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
       if (state.phase === 'output') {
         process.stdout.write(delta.text)
       } else {
         state.msgTextBuffer += delta.text
+        // Detect observation bullet lines (• or -) in the buffer and flush them
+        // as status bullets before the main analysis begins streaming.
+        // Only scan if we haven't switched to output mode and the buffer has newlines.
+        if (state.msgTextBuffer.includes('\n')) {
+          const lines = state.msgTextBuffer.split('\n')
+          // Process complete lines (all but the last, which may be incomplete)
+          let flushed = 0
+          for (let i = 0; i < lines.length - 1; i++) {
+            const line = lines[i].trim()
+            if (line.startsWith('•') || line.startsWith('- ') || line.startsWith('* ')) {
+              // Strip the bullet prefix — showStatusBullet adds its own
+              const stripped = line.replace(/^[•\-*]\s*/, '')
+              showStatusBullet(stripped)
+              flushed = i + 1
+            } else if (line === '') {
+              // Skip blank lines (between bullets or before content)
+              flushed = i + 1
+            } else if (flushed > 0) {
+              // Non-bullet, non-empty line after we've seen bullets — analysis starting
+              state.msgTextBuffer = lines.slice(i).join('\n')
+              return
+            }
+          }
+          if (flushed > 0) {
+            state.msgTextBuffer = lines.slice(flushed).join('\n')
+          }
+        }
       }
     }
   }
@@ -556,12 +764,21 @@ function streamAgentAnalysis(
   adapter: AgentAdapter,
   args: string[],
   env?: Record<string, string>,
+  observerBullets?: string[],
+  stdinData?: string,
+  cwd?: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(adapter.binary, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [stdinData ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       env: { ...process.env, ...env },
+      ...(cwd ? { cwd } : {}),
     })
+
+    if (stdinData && child.stdin) {
+      child.stdin.write(stdinData)
+      child.stdin.end()
+    }
 
     // Show arrow connector + agent name (AIXBT line already shown by caller)
     const agentColor = AGENT_COLORS[adapter.binary] ?? '#888888'
@@ -574,17 +791,30 @@ function streamAgentAnalysis(
       msgTextBuffer: '',
       totalInput: 0,
       totalOutput: 0,
+      totalThinking: 0,
+      thinkingBuffer: '',
+      thinkingBulletsShown: 0,
     }
     let stderrOutput = ''
 
     const processEvent = adapter.streamFormat === 'codex' ? processCodexEvent : processClaudeEvent
 
     let frame = 0
+    let observerDrained = 0
     const spinner = setInterval(() => {
       if (state.phase === 'waiting' || state.phase === 'processing') {
-        const tokens = fmtTokens(state.totalInput, state.totalOutput)
+        // Drain any observer bullets that have arrived
+        if (observerBullets) {
+          while (observerDrained < observerBullets.length) {
+            showStatusBullet(observerBullets[observerDrained++])
+          }
+        }
+        // Estimate thinking tokens (~4 chars per token)
+        const thinkingTokens = state.totalThinking > 0 ? Math.ceil(state.totalThinking / 4) : 0
+        const tokens = fmtTokens(state.totalInput, state.totalOutput, thinkingTokens)
         const suffix = tokens ? ` ${chalk.dim(tokens)}` : ''
-        process.stderr.write(`\r  ${SPINNER_FRAMES[frame++ % SPINNER_FRAMES.length]} thinking...${suffix}`)
+        const label = state.totalThinking > 0 ? 'reasoning...' : 'thinking...'
+        process.stderr.write(`\r  ${SPINNER_FRAMES[frame++ % SPINNER_FRAMES.length]} ${label}${suffix}`)
       }
     }, 80)
 
@@ -627,15 +857,36 @@ function streamAgentAnalysis(
 
     child.on('close', (code) => {
       clearInterval(spinner)
-
-      // Remaining buffered text is the final output
+      // Remaining buffered text is the final output.
+      // First, extract any leading bullet observations and show as status bullets.
       if (state.msgTextBuffer && state.phase !== 'output') {
-        process.stderr.write('\r\x1b[K')
-        const tokens = fmtTokens(state.totalInput, state.totalOutput)
-        const tokenSuffix = tokens ? ` ${chalk.dim(tokens)}` : ''
-        process.stderr.write(`\n${fmt.tag('OUTPUT', BRAND_PURPLE)}${tokenSuffix}\n\n`)
-        process.stdout.write(state.msgTextBuffer)
-        state.phase = 'output'
+        let text = state.msgTextBuffer
+        const lines = text.split('\n')
+        let firstNonBulletLine = 0
+        for (let i = 0; i < lines.length; i++) {
+          const trimmed = lines[i].trim()
+          if (trimmed.startsWith('•') || trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+            const stripped = trimmed.replace(/^[•\-*]\s*/, '')
+            showStatusBullet(stripped)
+            firstNonBulletLine = i + 1
+          } else if (trimmed === '') {
+            // Skip blank lines between/around bullets
+            if (firstNonBulletLine > 0) firstNonBulletLine = i + 1
+          } else {
+            break
+          }
+        }
+        text = lines.slice(firstNonBulletLine).join('\n')
+
+        if (text.trim()) {
+          process.stderr.write('\r\x1b[K')
+          const thinkingTokens = state.totalThinking > 0 ? Math.ceil(state.totalThinking / 4) : 0
+          const tokens = fmtTokens(state.totalInput, state.totalOutput, thinkingTokens)
+          const tokenSuffix = tokens ? ` ${chalk.dim(tokens)}` : ''
+          process.stderr.write(`\n${fmt.tag('OUTPUT', BRAND_PURPLE)}${tokenSuffix}\n\n`)
+          process.stdout.write(text)
+          state.phase = 'output'
+        }
       }
 
       if (state.phase === 'output') process.stdout.write('\n')

@@ -829,6 +829,7 @@ export function registerRecipeCommand(program: Command): void {
     .option('--input <json>', 'Agent step result JSON (used with --resume-from)')
     .option('--output-dir <path>', 'Write segment data to files instead of stdout')
     .option('--agent <target>', 'Spawn an agent for inference steps: claude, codex')
+    .option('--no-observe', 'Disable the background observer that shows data insights while the agent analyzes')
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
       const { clientOpts: clientOptions } = getClientOptions(cmd)
@@ -1097,7 +1098,9 @@ export function registerRecipeCommand(program: Command): void {
 
       // Recipe complete — handle final analysis
       if (result.analysis && !structured) {
-        await invokeAgentForAnalysis(adapter, result, { allowedTools: agentAllowedTools })
+        const recipeSteps = parseRecipe(yaml).steps
+        const observe = opts.observe !== false
+        await invokeAgentForAnalysis(adapter, result, { allowedTools: agentAllowedTools, recipeSteps, observe })
         console.error('')
       } else if (result.analysis && structured) {
         const analysisText = await captureAgentAnalysis(adapter, result, { allowedTools: agentAllowedTools })

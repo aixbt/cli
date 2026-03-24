@@ -23,10 +23,15 @@ export const claudeAdapter: AgentAdapter = {
     const useJson = !!opts.jsonSchemaFile
     let outputFormat = useJson ? 'json' : 'text'
     const tools = opts.allowedTools ?? DEFAULT_ALLOWED_TOOLS
-    const args: string[] = [
-      '-p', opts.prompt,
-      '--allowedTools', ...tools,
-    ]
+    const args: string[] = []
+
+    if (opts.useStdin) {
+      args.push('-p')
+    } else {
+      args.push('-p', opts.prompt)
+    }
+
+    args.push('--allowedTools', ...tools)
 
     if (opts.streaming && !useJson) {
       outputFormat = 'stream-json'

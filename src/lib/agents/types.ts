@@ -12,6 +12,8 @@ export interface InvokeOpts {
   streaming?: boolean
   /** Allowed tools for the agent session. */
   allowedTools?: string[]
+  /** When true, prompt will be piped via stdin instead of -p arg. */
+  useStdin?: boolean
 }
 
 /** Result of building an agent invocation command. */
