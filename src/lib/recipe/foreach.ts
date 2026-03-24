@@ -142,7 +142,7 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
   let latestRateLimit = currentRateLimit
   const results: unknown[] = []
   const rateLimitTracker: RateLimitTracker = { paused: false, waitedMs: 0 }
-  const fallbackCounts = new Map<string, number>()
+  const fallbackCounts = new Map<string, { count: number; names: string[] }>()
   let completedCount = 0
   let providerWaitMs = 0
   let providerWaitCount = 0
@@ -190,7 +190,12 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
       }
     } else {
       if (step.fallback) {
-        fallbackCounts.set(result.error, (fallbackCounts.get(result.error) ?? 0) + 1)
+        const entry = fallbackCounts.get(result.error) ?? { count: 0, names: [] }
+        entry.count++
+        const src = result.item && typeof result.item === 'object' ? result.item as Record<string, unknown> : null
+        const name = (src?.name ?? src?.symbol ?? src?.slug) as string | undefined
+        if (name) entry.names.push(name)
+        fallbackCounts.set(result.error, entry)
         const fallbackEntry: Record<string, unknown> = { _fallback: true }
         if (result.item && typeof result.item === 'object') {
           const src = result.item as Record<string, unknown>
@@ -295,11 +300,12 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
 
   if (fallbackCounts.size > 0) {
     process.stderr.write('\n')
-    for (const [error, count] of fallbackCounts) {
-      console.error(`${fmt.dim('⚠')} ${fmt.dim(step.id)}: ${count}/${items.length} used fallback ${fmt.dim(`(${error})`)}`)
+    for (const [error, { count, names }] of fallbackCounts) {
+      const namesSuffix = names.length > 0 ? ` [${names.join(', ')}]` : ''
+      console.error(`${fmt.dim('⚠')} ${fmt.dim(step.id)}: ${count}/${items.length} used fallback${fmt.dim(namesSuffix)} ${fmt.dim(`(${error})`)}`)
     }
     if (step.fallback) {
-      const totalFallbacks = [...fallbackCounts.values()].reduce((a, b) => a + b, 0)
+      const totalFallbacks = [...fallbackCounts.values()].reduce((sum, { count }) => sum + count, 0)
       let fallbackText = step.fallback.replace(/\.$/, '').toLowerCase()
       if (totalFallbacks > 1) {
         fallbackText = fallbackText.replace(/\bthis project\b/, 'these projects').replace(/\bthis chain\b/, 'these chains')

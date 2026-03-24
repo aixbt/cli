@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import {
   writeDataFiles,
@@ -253,16 +253,12 @@ describe('processClaudeEvent', () => {
       totalInput: 0,
       totalOutput: 0,
       totalThinking: 0,
-      thinkingBuffer: '',
-      thinkingBulletsShown: 0,
       ...overrides,
     }
   }
 
   it('tracks input tokens from message_start', () => {
     const state = makeState()
-    const bullets: string[] = []
-    const showBullet = (t: string) => bullets.push(t)
 
     processClaudeEvent({
       type: 'stream_event',
@@ -272,14 +268,13 @@ describe('processClaudeEvent', () => {
           usage: { input_tokens: 1000, cache_read_input_tokens: 500 },
         },
       },
-    }, state, showBullet)
+    }, state)
 
     expect(state.totalInput).toBe(1500)
   })
 
   it('tracks thinking delta characters', () => {
     const state = makeState()
-    const showBullet = vi.fn()
 
     processClaudeEvent({
       type: 'stream_event',
@@ -287,15 +282,13 @@ describe('processClaudeEvent', () => {
         type: 'content_block_delta',
         delta: { type: 'thinking_delta', thinking: 'Let me analyze this data carefully.' },
       },
-    }, state, showBullet)
+    }, state)
 
     expect(state.totalThinking).toBe(35)
-    expect(state.thinkingBuffer).toBe('Let me analyze this data carefully.')
   })
 
   it('accumulates text_delta in buffer when not in output phase', () => {
     const state = makeState({ phase: 'waiting' })
-    const showBullet = vi.fn()
 
     processClaudeEvent({
       type: 'stream_event',
@@ -303,47 +296,28 @@ describe('processClaudeEvent', () => {
         type: 'content_block_delta',
         delta: { type: 'text_delta', text: 'Reading signals' },
       },
-    }, state, showBullet)
+    }, state)
 
     expect(state.msgTextBuffer).toBe('Reading signals')
   })
 
-  it('flushes text buffer as status bullet on tool_use', () => {
-    const state = makeState({ phase: 'waiting', msgTextBuffer: 'Reading signals data' })
-    const bullets: string[] = []
-    const showBullet = (t: string) => bullets.push(t)
-
-    processClaudeEvent({
-      type: 'stream_event',
-      event: {
-        type: 'content_block_start',
-        content_block: { type: 'tool_use' },
-      },
-    }, state, showBullet)
-
-    expect(bullets).toEqual(['Reading signals data'])
-    expect(state.msgTextBuffer).toBe('')
-  })
-
-  it('extracts bullet lines from text buffer', () => {
+  it('does not extract bullets from text buffer', () => {
     const state = makeState({ phase: 'waiting' })
-    const bullets: string[] = []
-    const showBullet = (t: string) => bullets.push(t)
 
     processClaudeEvent({
       type: 'stream_event',
       event: {
         type: 'content_block_delta',
-        delta: { type: 'text_delta', text: '• First observation\n• Second observation\n' },
+        delta: { type: 'text_delta', text: '• First observation\n- List item\n' },
       },
-    }, state, showBullet)
+    }, state)
 
-    expect(bullets).toEqual(['First observation', 'Second observation'])
+    // All text stays in buffer — no bullet extraction from opus
+    expect(state.msgTextBuffer).toBe('• First observation\n- List item\n')
   })
 
   it('updates totals from result event', () => {
     const state = makeState()
-    const showBullet = vi.fn()
 
     processClaudeEvent({
       type: 'result',
@@ -352,7 +326,7 @@ describe('processClaudeEvent', () => {
         cache_read_input_tokens: 150000,
         output_tokens: 2000,
       },
-    }, state, showBullet)
+    }, state)
 
     expect(state.totalInput).toBe(155000)
     expect(state.totalOutput).toBe(2000)
@@ -360,11 +334,9 @@ describe('processClaudeEvent', () => {
 
   it('ignores non-stream events', () => {
     const state = makeState()
-    const showBullet = vi.fn()
 
-    processClaudeEvent({ type: 'unknown_event' }, state, showBullet)
+    processClaudeEvent({ type: 'unknown_event' }, state)
 
     expect(state.totalInput).toBe(0)
-    expect(showBullet).not.toHaveBeenCalled()
   })
 })

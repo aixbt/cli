@@ -8,7 +8,7 @@ import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta, RecipeStep
 import { isAgentStep, isTransformStep } from '../../types.js'
 import { CliError } from '../errors.js'
 import { getConfigDir } from '../config.js'
-import { fmt } from '../output.js'
+import { fmt, wrapIndented } from '../output.js'
 
 const AGENT_SYSTEM_PROMPT = [
   'You are analyzing AIXBT recipe output.',
@@ -18,6 +18,7 @@ const AGENT_SYSTEM_PROMPT = [
   'Once all tool calls are complete and you begin your final response, go straight into the analysis.',
   'No preamble, no "here is the analysis", no summary of what you just read — just the analysis itself.',
   'Never use em-dashes. Use commas, periods, or restructure the sentence.',
+  'Do not mention all-time high (ATH) prices unless the asset has recently broken its ATH. Most assets are well below ATH, so commenting on the distance from ATH is not insightful.',
 ].join(' ')
 
 
@@ -480,7 +481,7 @@ function spawnObserverCalls(
   // Observer always uses claude/haiku — skip if claude isn't available
   try { execSync('which claude', { stdio: 'ignore' }) } catch { return Promise.resolve() }
 
-  const systemPrompt = 'You are scanning AIXBT crypto intelligence data. Respond with a single one-line observation about what stands out. Focus on: how many independent clusters detected the same signal (convergence breadth), momentum score spikes or decays, risk signals (exploits, hacks, whale exits), and unusual category concentrations. Do not comment on price vs ATH — most assets are below ATH. One line only, no preamble.'
+  const systemPrompt = 'You are scanning AIXBT crypto intelligence data. Respond with ONE short sentence (max 100 characters). Focus on: what projects or signals stand out, risk events (exploits, hacks, whale exits), or unusual patterns. Ignore momentum scores and price data. No preamble, no labels, no step names.'
 
   const promises = sections.map(({ stepId, data: sectionData }) => {
     return new Promise<void>((resolve) => {
@@ -515,8 +516,9 @@ function spawnObserverCalls(
           const parsed = JSON.parse(stdout) as { result?: string }
           const text = (parsed.result ?? stdout).trim()
           if (text) {
-            const line = text.length > 150 ? text.slice(0, 147) + '...' : text
-            bullets.push(line)
+            // Strip stepId prefix that haiku sometimes echoes back (e.g. "market_context: ...")
+            const cleaned = text.replace(new RegExp(`^${stepId}:\\s*`, 'i'), '')
+            bullets.push(cleaned.length > 400 ? cleaned.slice(0, 400) : cleaned)
           }
         } catch { /* ignore parse failures */ }
         resolve()
@@ -539,7 +541,7 @@ export async function invokeAgentForAnalysis(
 
   // Show DATA label with path
   process.stderr.write(`  ${chalk.dim('↓')}\n`)
-  process.stderr.write(`${fmt.tag('DATA', BRAND_PURPLE)} ${chalk.dim(dataDir)}\n`)
+  process.stderr.write(`${chalk.hex('#5ba8a0')('DATA')} ${chalk.dim(dataDir)}\n`)
 
   // Create isolated workdir with AIXBT CLAUDE.md (avoids inheriting user's project CLAUDE.md)
   const agentWorkdir = createAgentWorkdir()
@@ -619,17 +621,12 @@ export interface StreamState {
   totalInput: number
   totalOutput: number
   totalThinking: number
-  /** Buffer for accumulating thinking text to extract status bullets. */
-  thinkingBuffer: string
-  /** Number of thinking bullets already shown (to avoid flooding). */
-  thinkingBulletsShown: number
 }
 
 /** @internal Exported for testing. */
 export function processClaudeEvent(
   event: Record<string, unknown>,
   state: StreamState,
-  showStatusBullet: (text: string) => void,
 ): void {
   // Final result event — accurate totals
   if (event.type === 'result') {
@@ -656,78 +653,21 @@ export function processClaudeEvent(
         + (usage.cache_creation_input_tokens ?? 0)
         + (usage.cache_read_input_tokens ?? 0)
     }
-    if (state.msgTextBuffer) {
-      showStatusBullet(state.msgTextBuffer)
-      state.msgTextBuffer = ''
-    }
   }
   if (inner.type === 'message_delta') {
     const usage = inner.usage as { output_tokens?: number } | undefined
     if (usage?.output_tokens) state.totalOutput += usage.output_tokens
   }
 
-  // Text before tool_use = status bullet; text without = final output
-  if (inner.type === 'content_block_start') {
-    const block = inner.content_block as Record<string, unknown> | undefined
-    if (block?.type === 'tool_use' && state.msgTextBuffer) {
-      showStatusBullet(state.msgTextBuffer)
-      state.msgTextBuffer = ''
-    }
-  }
-
   if (inner.type === 'content_block_delta') {
     const delta = inner.delta as Record<string, unknown> | undefined
     if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
       state.totalThinking += delta.thinking.length
-      state.thinkingBuffer += delta.thinking
-      // Extract complete sentences from thinking as status bullets
-      // Show at most one bullet per ~500 chars of thinking to avoid flooding
-      const nextThreshold = (state.thinkingBulletsShown + 1) * 500
-      if (state.totalThinking >= nextThreshold) {
-        // Find the last complete sentence in the buffer
-        const sentenceEnd = state.thinkingBuffer.search(/[.!?]\s/)
-        if (sentenceEnd > 0) {
-          const sentence = state.thinkingBuffer.slice(0, sentenceEnd + 1).trim()
-          // Only show non-trivial sentences (skip meta-commentary like "Let me think...")
-          if (sentence.length > 20 && !sentence.startsWith('Let me') && !sentence.startsWith('I need to') && !sentence.startsWith('I should')) {
-            showStatusBullet(sentence)
-          }
-          state.thinkingBuffer = state.thinkingBuffer.slice(sentenceEnd + 2)
-          state.thinkingBulletsShown++
-        }
-      }
     } else if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
       if (state.phase === 'output') {
         process.stdout.write(delta.text)
       } else {
         state.msgTextBuffer += delta.text
-        // Detect observation bullet lines (• or -) in the buffer and flush them
-        // as status bullets before the main analysis begins streaming.
-        // Only scan if we haven't switched to output mode and the buffer has newlines.
-        if (state.msgTextBuffer.includes('\n')) {
-          const lines = state.msgTextBuffer.split('\n')
-          // Process complete lines (all but the last, which may be incomplete)
-          let flushed = 0
-          for (let i = 0; i < lines.length - 1; i++) {
-            const line = lines[i].trim()
-            if (line.startsWith('•') || line.startsWith('- ') || line.startsWith('* ')) {
-              // Strip the bullet prefix — showStatusBullet adds its own
-              const stripped = line.replace(/^[•\-*]\s*/, '')
-              showStatusBullet(stripped)
-              flushed = i + 1
-            } else if (line === '') {
-              // Skip blank lines (between bullets or before content)
-              flushed = i + 1
-            } else if (flushed > 0) {
-              // Non-bullet, non-empty line after we've seen bullets — analysis starting
-              state.msgTextBuffer = lines.slice(i).join('\n')
-              return
-            }
-          }
-          if (flushed > 0) {
-            state.msgTextBuffer = lines.slice(flushed).join('\n')
-          }
-        }
       }
     }
   }
@@ -737,7 +677,6 @@ export function processClaudeEvent(
 function processCodexEvent(
   event: Record<string, unknown>,
   state: StreamState,
-  showStatusBullet: (text: string) => void,
 ): void {
   if (event.type === 'turn.completed') {
     const usage = event.usage as Record<string, number> | undefined
@@ -749,25 +688,11 @@ function processCodexEvent(
     return
   }
 
-  // Agent message completed — buffer it; flush previous as status if a command follows
+  // Buffer latest agent message text (last one becomes final output)
   if (event.type === 'item.completed') {
     const item = event.item as Record<string, unknown> | undefined
     if (item?.type === 'agent_message' && typeof item.text === 'string') {
-      // Previous message was pre-tool status — show as bullet
-      if (state.msgTextBuffer) {
-        showStatusBullet(state.msgTextBuffer)
-      }
       state.msgTextBuffer = item.text
-    }
-    return
-  }
-
-  // Command starting — flush any buffered message as status
-  if (event.type === 'item.started') {
-    const item = event.item as Record<string, unknown> | undefined
-    if (item?.type === 'command_execution' && state.msgTextBuffer) {
-      showStatusBullet(state.msgTextBuffer)
-      state.msgTextBuffer = ''
     }
   }
 }
@@ -804,8 +729,6 @@ function streamAgentAnalysis(
       totalInput: 0,
       totalOutput: 0,
       totalThinking: 0,
-      thinkingBuffer: '',
-      thinkingBulletsShown: 0,
     }
     let stderrOutput = ''
 
@@ -831,12 +754,14 @@ function streamAgentAnalysis(
     }, 80)
 
     function showStatusBullet(text: string) {
-      let line = text.trim()
+      const line = text.trim().replace(/:$/, '')
       if (!line) return
       process.stderr.write('\r\x1b[K')
-      line = line.replace(/:$/, '')
-      if (line.length > 120) line = line.slice(0, 117) + '...'
-      process.stderr.write(`  ${chalk.dim('•')} ${chalk.dim(line)}\n`)
+      const cols = process.stderr.columns || 80
+      const prefix = '  • '
+      const indent = '    '
+      const wrapped = wrapIndented(chalk.dim(line), indent, prefix.length, cols)
+      process.stderr.write(`  ${chalk.dim('•')} ${wrapped}\n`)
       state.phase = 'processing'
     }
 
@@ -850,7 +775,7 @@ function streamAgentAnalysis(
         if (!line.trim()) continue
         try {
           const event = JSON.parse(line) as Record<string, unknown>
-          processEvent(event, state, showStatusBullet)
+          processEvent(event, state)
         } catch {
           // skip unparseable lines
         }
@@ -870,33 +795,15 @@ function streamAgentAnalysis(
     child.on('close', (code) => {
       clearInterval(spinner)
       // Remaining buffered text is the final output.
-      // First, extract any leading bullet observations and show as status bullets.
       if (state.msgTextBuffer && state.phase !== 'output') {
-        let text = state.msgTextBuffer
-        const lines = text.split('\n')
-        let firstNonBulletLine = 0
-        for (let i = 0; i < lines.length; i++) {
-          const trimmed = lines[i].trim()
-          if (trimmed.startsWith('•') || trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
-            const stripped = trimmed.replace(/^[•\-*]\s*/, '')
-            showStatusBullet(stripped)
-            firstNonBulletLine = i + 1
-          } else if (trimmed === '') {
-            // Skip blank lines between/around bullets
-            if (firstNonBulletLine > 0) firstNonBulletLine = i + 1
-          } else {
-            break
-          }
-        }
-        text = lines.slice(firstNonBulletLine).join('\n')
-
-        if (text.trim()) {
+        const text = state.msgTextBuffer.trim()
+        if (text) {
           process.stderr.write('\r\x1b[K')
           const thinkingTokens = state.totalThinking > 0 ? Math.ceil(state.totalThinking / 4) : 0
           const tokens = fmtTokens(state.totalInput, state.totalOutput, thinkingTokens)
           const tokenSuffix = tokens ? ` ${chalk.dim(tokens)}` : ''
           process.stderr.write(`\n${fmt.tag('OUTPUT', BRAND_PURPLE)}${tokenSuffix}\n\n`)
-          process.stdout.write(text)
+          process.stdout.write(state.msgTextBuffer)
           state.phase = 'output'
         }
       }

@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
-import { readFileSync, existsSync, writeFileSync, mkdirSync, globSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { globSync } from 'tinyglobby'
 import { parse as parseYaml } from 'yaml'
 import type { Recipe, RecipeAwaitingAgent } from '../types.js'
 import { isAgentStep, isParallelAgentStep, isForeachStep, isTransformStep } from '../types.js'
@@ -182,11 +183,16 @@ function scanRecipeFiles(paths: string[]): LocalRecipe[] {
   return results
 }
 
+/** Check if a filename is a YAML recipe file. */
+function isYamlFile(f: string): boolean {
+  return f.endsWith('.yaml') || f.endsWith('.yml')
+}
+
 function resolveFilePaths(paths: string[]): string[] {
   const files: string[] = []
   for (const p of paths) {
     if (p.includes('*') || p.includes('?')) {
-      files.push(...globSync(p).filter(f => f.endsWith('.yaml') || f.endsWith('.yml')))
+      files.push(...globSync(p).filter(isYamlFile))
     } else if (existsSync(p)) {
       files.push(p)
     }

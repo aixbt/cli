@@ -108,5 +108,8 @@ export function resolveContextHints(
     )
   }
 
+  // Universal guidance
+  hints.push('Do not mention all-time high (ATH) prices unless the asset has recently broken its ATH. Most assets are well below ATH, so commenting on the distance from ATH is not insightful.')
+
   return hints
 }
