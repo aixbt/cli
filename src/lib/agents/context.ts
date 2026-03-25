@@ -110,7 +110,7 @@ export function resolveContextHints(
   }
 
   // Cluster reporting guidance
-  if (seen.has('clusters') || seen.has('momentum')) {
+  if (seen.has('clusters') || seen.has('momentum') || seen.has('signals') || seen.has('projects')) {
     hints.push('When discussing clusters: report structural patterns (count, diversity, trajectory direction, convergence rate). Do not list individual cluster names — the structural pattern matters, not which communities are involved.')
   }
 

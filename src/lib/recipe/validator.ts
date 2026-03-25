@@ -148,7 +148,7 @@ function validateSegmentBoundaries(
             const accessibleList = [...accessible].sort()
             issues.push({
               path: `steps.${step.id}.context`,
-              message: `Step "${step.id}" references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
+              message: `Step "${step.id}" (type: ${step.type}) references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
             })
           }
         }
@@ -170,7 +170,7 @@ function validateSegmentBoundaries(
             const accessibleList = [...accessible].sort()
             issues.push({
               path: `steps.${step.id}`,
-              message: `Step "${step.id}" references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
+              message: `Step "${step.id}" (type: ${step.type}) references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
             })
           }
         }
@@ -184,6 +184,7 @@ function validateSegmentBoundaries(
 function checkTemplateReferences(
   params: Record<string, unknown> | undefined,
   stepId: string,
+  stepType: string,
   allStepIds: Set<string>,
   paramNames: Set<string>,
   issues: ValidationIssue[],
@@ -203,7 +204,7 @@ function checkTemplateReferences(
         if (!paramNames.has(paramName)) {
           issues.push({
             path: `steps.${stepId}.params`,
-            message: `References undefined param "${paramName}"`,
+            message: `Step "${stepId}" (type: ${stepType}) references undefined param "${paramName}"`,
           })
         }
       }
@@ -213,7 +214,7 @@ function checkTemplateReferences(
     if (!allStepIds.has(prefix)) {
       issues.push({
         path: `steps.${stepId}.params`,
-        message: `References unknown step "${prefix}"`,
+        message: `Step "${stepId}" (type: ${stepType}) references unknown step "${prefix}"`,
       })
     }
   }
@@ -236,7 +237,7 @@ function validateVariableReferences(
       if (refId && !allStepIds.has(refId)) {
         issues.push({
           path: `steps.${step.id}.for`,
-          message: `References unknown step "${refId}"`,
+          message: `Step "${step.id}" (type: ${step.type}) for: references unknown step "${refId}"`,
         })
       }
       continue
@@ -250,14 +251,14 @@ function validateVariableReferences(
       if (refId && !allStepIds.has(refId)) {
         issues.push({
           path: `steps.${step.id}.for`,
-          message: `References unknown step "${refId}"`,
+          message: `Step "${step.id}" (type: ${step.type}) for: references unknown step "${refId}"`,
         })
       }
     }
 
     // Check param template references
     if (isApiStep(step)) {
-      checkTemplateReferences(step.params, step.id, allStepIds, paramNames, issues)
+      checkTemplateReferences(step.params, step.id, step.type, allStepIds, paramNames, issues)
 
       // Check action template references (e.g., action: /v2/projects/{{projects.id}})
       if (step.action) {
@@ -274,7 +275,7 @@ function validateVariableReferences(
               if (!paramNames.has(paramName)) {
                 issues.push({
                   path: `steps.${step.id}.action`,
-                  message: `References undefined param "${paramName}"`,
+                  message: `Step "${step.id}" (type: ${step.type}) action references undefined param "${paramName}"`,
                 })
               }
             }
@@ -284,7 +285,7 @@ function validateVariableReferences(
           if (!allStepIds.has(prefix)) {
             issues.push({
               path: `steps.${step.id}.action`,
-              message: `References unknown step "${prefix}"`,
+              message: `Step "${step.id}" (type: ${step.type}) action references unknown step "${prefix}"`,
             })
           }
         }

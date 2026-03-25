@@ -39,13 +39,6 @@ export function buildProgressAndRemaining(
   // Check if there are remaining segments after the current one
   const remainingSegments = ctx.segments.slice(ctx.currentSegmentIndex + 1)
 
-  if (remainingSegments.length === 0) {
-    return {
-      progress,
-      remaining: 'This is the final agent step. No remaining steps.',
-    }
-  }
-
   // Count remaining steps by type across all remaining segments
   let apiCount = 0
   let agentCount = 0
