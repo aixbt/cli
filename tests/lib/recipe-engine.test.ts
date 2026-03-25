@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { resolveValue, resolveActionPath, resolveRelativeTime, executeRecipe } from '../../src/lib/recipe/engine.js'
+import { resolveValue, resolveActionPath, executeRecipe } from '../../src/lib/recipe/engine.js'
 import type { ExecutionContext, StepResult } from '../../src/types.js'
 import { CliError, PaymentRequiredError } from '../../src/lib/errors.js'
 import * as apiClient from '../../src/lib/api-client.js'

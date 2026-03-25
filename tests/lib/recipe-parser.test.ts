@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { parseRecipe } from '../../src/lib/recipe/parser.js'
 import { RecipeValidationError } from '../../src/lib/errors.js'
 import { isAgentStep, isApiStep, hasForModifier, isParallelAgentStep } from '../../src/types.js'
-import type { AgentStep, ApiStep, RecipeStep } from '../../src/types.js'
+import type { AgentStep, ApiStep } from '../../src/types.js'
 
 // -- Helpers --
 
