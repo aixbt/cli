@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import chalk from 'chalk'
 import type { AgentAdapter } from './types.js'
 import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta, RecipeStep } from '../../types.js'
-import { isAgentStep, isTransformStep } from '../../types.js'
+import { isAgentStep } from '../../types.js'
 import { CliError } from '../errors.js'
 import { getConfigDir } from '../config.js'
 import { fmt, wrapIndented } from '../output.js'
@@ -452,7 +452,7 @@ export function getObservableSteps(
     // Skip known reference steps
     const step = stepMap.get(stepId)
     if (step && OBSERVER_SKIP_STEPS.has(stepId)) continue
-    if (step && (isAgentStep(step) || isTransformStep(step))) continue
+    if (step && isAgentStep(step)) continue
 
     // Skip fallback results
     if (typeof stepData === 'object' && stepData !== null && (stepData as Record<string, unknown>)._fallback) continue

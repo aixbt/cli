@@ -1,6 +1,6 @@
 import { RecipeValidationError } from '../errors.js'
 import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../../types.js'
-import { isAgentStep, isParallelAgentStep, isForeachStep, isTransformStep, TEMPLATE_REGEX } from '../../types.js'
+import { isAgentStep, isApiStep, isParallelAgentStep, hasForModifier, parseForStepRef, TEMPLATE_REGEX } from '../../types.js'
 import { getProviderNames, getProvider, parseSource } from '../providers/registry.js'
 
 export function extractTemplateRefs(str: string): string[] {
@@ -40,43 +40,32 @@ export function extractAllTemplateRefs(obj: unknown): string[] {
 export function extractStepReferences(step: RecipeStep): Set<string> {
   const refs = new Set<string>()
 
-  // Transform step: only reference is the input step
-  if (isTransformStep(step)) {
-    refs.add(step.input)
-    return refs
-  }
-
-  // Agent step with foreach (parallel agent)
+  // Agent step with for: modifier (parallel agent)
   if (isParallelAgentStep(step)) {
-    const foreachRef = step.foreach
-    const dotIndex = foreachRef.indexOf('.')
-    const stepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
-    if (stepId !== 'params' && stepId !== 'item') {
-      refs.add(stepId)
-    }
-    // Also add context refs
+    const refId = parseForStepRef(step['for'])
+    if (refId) refs.add(refId)
     for (const ref of step.context) {
       refs.add(ref)
     }
     return refs
   }
 
-  if (isForeachStep(step)) {
-    const foreachRef = step.foreach
-    const dotIndex = foreachRef.indexOf('.')
-    const stepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
-    if (stepId !== 'params' && stepId !== 'item') {
-      refs.add(stepId)
-    }
+  // Regular agent step — no template refs to extract beyond context
+  if (isAgentStep(step)) {
+    return refs
+  }
+
+  // API step — check for: modifier, params templates, and action templates
+  if (hasForModifier(step)) {
+    const refId = parseForStepRef(step['for'])
+    if (refId) refs.add(refId)
   }
 
   const allRefs: string[] = []
-
-  if (!isAgentStep(step)) {
-    if (step.params) {
-      allRefs.push(...extractAllTemplateRefs(step.params))
-    }
-    // Action paths may contain template refs (e.g., /v2/projects/{projects.id})
+  if (step.params) {
+    allRefs.push(...extractAllTemplateRefs(step.params))
+  }
+  if (step.action) {
     allRefs.push(...extractTemplateRefs(step.action))
   }
 
@@ -159,20 +148,18 @@ function validateSegmentBoundaries(
             const accessibleList = [...accessible].sort()
             issues.push({
               path: `steps.${step.id}.context`,
-              message: `Step "${step.id}" references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
+              message: `Step "${step.id}" (type: ${step.type}) references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
             })
           }
         }
-        // Validate foreach ref on parallel agent steps
+        // Validate for: ref on parallel agent steps
         if (isParallelAgentStep(step)) {
-          const foreachRef = step.foreach
-          const dotIndex = foreachRef.indexOf('.')
-          const refStepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
-          if (refStepId !== 'params' && refStepId !== 'item' && !accessible.has(refStepId)) {
+          const refStepId = parseForStepRef(step['for'])
+          if (refStepId && !accessible.has(refStepId)) {
             const accessibleList = [...accessible].sort()
             issues.push({
-              path: `steps.${step.id}.foreach`,
-              message: `Step "${step.id}" foreach references "${refStepId}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
+              path: `steps.${step.id}.for`,
+              message: `Step "${step.id}" (type: ${step.type}) for: references "${refStepId}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
             })
           }
         }
@@ -183,7 +170,7 @@ function validateSegmentBoundaries(
             const accessibleList = [...accessible].sort()
             issues.push({
               path: `steps.${step.id}`,
-              message: `Step "${step.id}" references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
+              message: `Step "${step.id}" (type: ${step.type}) references "${ref}" which is not accessible in this segment. Accessible steps: [${accessibleList.join(', ')}]`,
             })
           }
         }
@@ -197,6 +184,7 @@ function validateSegmentBoundaries(
 function checkTemplateReferences(
   params: Record<string, unknown> | undefined,
   stepId: string,
+  stepType: string,
   allStepIds: Set<string>,
   paramNames: Set<string>,
   issues: ValidationIssue[],
@@ -216,7 +204,7 @@ function checkTemplateReferences(
         if (!paramNames.has(paramName)) {
           issues.push({
             path: `steps.${stepId}.params`,
-            message: `References undefined param "${paramName}"`,
+            message: `Step "${stepId}" (type: ${stepType}) references undefined param "${paramName}"`,
           })
         }
       }
@@ -226,7 +214,7 @@ function checkTemplateReferences(
     if (!allStepIds.has(prefix)) {
       issues.push({
         path: `steps.${stepId}.params`,
-        message: `References unknown step "${prefix}"`,
+        message: `Step "${stepId}" (type: ${stepType}) references unknown step "${prefix}"`,
       })
     }
   }
@@ -242,21 +230,14 @@ function validateVariableReferences(
     recipe.params ? Object.keys(recipe.params) : [],
   )
 
-  const stepIdOrder = new Map<string, number>()
-  for (let i = 0; i < recipe.steps.length; i++) {
-    stepIdOrder.set(recipe.steps[i].id, i)
-  }
-
   for (const step of recipe.steps) {
-    // Parallel agent step: validate foreach reference
+    // Parallel agent step: validate for: reference
     if (isParallelAgentStep(step)) {
-      const foreachRef = step.foreach
-      const dotIndex = foreachRef.indexOf('.')
-      const stepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
-      if (stepId !== 'params' && stepId !== 'item' && !allStepIds.has(stepId)) {
+      const refId = parseForStepRef(step['for'])
+      if (refId && !allStepIds.has(refId)) {
         issues.push({
-          path: `steps.${step.id}.foreach`,
-          message: `References unknown step "${stepId}"`,
+          path: `steps.${step.id}.for`,
+          message: `Step "${step.id}" (type: ${step.type}) for: references unknown step "${refId}"`,
         })
       }
       continue
@@ -264,69 +245,49 @@ function validateVariableReferences(
 
     if (isAgentStep(step)) continue
 
-    // Transform step: validate input reference
-    if (isTransformStep(step)) {
-      if (!allStepIds.has(step.input)) {
+    // API step: check for: references
+    if (isApiStep(step) && hasForModifier(step)) {
+      const refId = parseForStepRef(step['for'])
+      if (refId && !allStepIds.has(refId)) {
         issues.push({
-          path: `steps.${step.id}.input`,
-          message: `References unknown step "${step.input}"`,
-        })
-      } else {
-        const inputIndex = stepIdOrder.get(step.input)!
-        const currentIndex = stepIdOrder.get(step.id)!
-        if (inputIndex >= currentIndex) {
-          issues.push({
-            path: `steps.${step.id}.input`,
-            message: `input must reference a step that appears earlier in the recipe (referenced "${step.input}")`,
-          })
-        }
-      }
-      continue
-    }
-
-    // Check foreach references
-    if (isForeachStep(step)) {
-      const foreachRef = step.foreach
-      const dotIndex = foreachRef.indexOf('.')
-      const stepId = dotIndex === -1 ? foreachRef : foreachRef.slice(0, dotIndex)
-      if (stepId !== 'params' && stepId !== 'item' && !allStepIds.has(stepId)) {
-        issues.push({
-          path: `steps.${step.id}.foreach`,
-          message: `References unknown step "${stepId}"`,
+          path: `steps.${step.id}.for`,
+          message: `Step "${step.id}" (type: ${step.type}) for: references unknown step "${refId}"`,
         })
       }
     }
 
     // Check param template references
-    checkTemplateReferences(step.params, step.id, allStepIds, paramNames, issues)
+    if (isApiStep(step)) {
+      checkTemplateReferences(step.params, step.id, step.type, allStepIds, paramNames, issues)
 
-    // Check action template references (e.g., action: /v2/projects/{{projects.id}})
-    if (step.action) {
-      const actionRefs = extractTemplateRefs(step.action)
-      for (const ref of actionRefs) {
-        const dotIndex = ref.indexOf('.')
-        const prefix = dotIndex === -1 ? ref : ref.slice(0, dotIndex)
+      // Check action template references (e.g., action: /v2/projects/{{projects.id}})
+      if (step.action) {
+        const actionRefs = extractTemplateRefs(step.action)
+        for (const ref of actionRefs) {
+          const dotIndex = ref.indexOf('.')
+          const prefix = dotIndex === -1 ? ref : ref.slice(0, dotIndex)
 
-        if (prefix === 'item') continue
+          if (prefix === 'item') continue
 
-        if (prefix === 'params') {
-          if (dotIndex !== -1) {
-            const paramName = ref.slice(dotIndex + 1)
-            if (!paramNames.has(paramName)) {
-              issues.push({
-                path: `steps.${step.id}.action`,
-                message: `References undefined param "${paramName}"`,
-              })
+          if (prefix === 'params') {
+            if (dotIndex !== -1) {
+              const paramName = ref.slice(dotIndex + 1)
+              if (!paramNames.has(paramName)) {
+                issues.push({
+                  path: `steps.${step.id}.action`,
+                  message: `Step "${step.id}" (type: ${step.type}) action references undefined param "${paramName}"`,
+                })
+              }
             }
+            continue
           }
-          continue
-        }
 
-        if (!allStepIds.has(prefix)) {
-          issues.push({
-            path: `steps.${step.id}.action`,
-            message: `References unknown step "${prefix}"`,
-          })
+          if (!allStepIds.has(prefix)) {
+            issues.push({
+              path: `steps.${step.id}.action`,
+              message: `Step "${step.id}" (type: ${step.type}) action references unknown step "${prefix}"`,
+            })
+          }
         }
       }
     }
@@ -343,7 +304,7 @@ export function validateProviderActions(
   const issues: ValidationIssue[] = []
 
   for (const step of recipe.steps) {
-    if (isAgentStep(step) || isTransformStep(step)) continue
+    if (isAgentStep(step)) continue
 
     const rawSource = step.source ?? 'aixbt'
     const { providerName: source } = parseSource(rawSource)

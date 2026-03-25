@@ -15,7 +15,6 @@ describe('CLI', () => {
     expect(commandNames).toContain('whoami')
     expect(commandNames).toContain('projects')
     expect(commandNames).toContain('signals')
-    expect(commandNames).toContain('clusters')
     expect(commandNames).toContain('recipe')
     expect(commandNames).toContain('provider')
     expect(commandNames).toContain('help')
@@ -40,7 +39,7 @@ describe('CLI', () => {
       const program = createProgram()
       const formatOpt = program.options.find((o) => o.long === '--format')
       expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toBe('Output format')
+      expect(formatOpt!.description).toBe('Output format: human (terminal display) | json (structured, scripting) | toon (compact structured, ~40% smaller — best for agents)')
     })
 
     it('should have --delayed option registered', () => {
@@ -320,15 +319,14 @@ describe('CLI', () => {
       expect(stripped).toContain('config')
       expect(stripped).toContain('projects')
       expect(stripped).toContain('signals')
-      expect(stripped).toContain('clusters')
       expect(stripped).toContain('recipe')
     })
   })
 
   describe('command count', () => {
-    it('should have exactly 12 registered commands', () => {
+    it('should have exactly 8 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(9)
+      expect(program.commands).toHaveLength(8)
     })
   })
 

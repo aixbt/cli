@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path'
 import { globSync } from 'tinyglobby'
 import { parse as parseYaml } from 'yaml'
 import type { Recipe, RecipeAwaitingAgent } from '../types.js'
-import { isAgentStep, isParallelAgentStep, isForeachStep, isTransformStep } from '../types.js'
+import { isAgentStep, isParallelAgentStep, hasForModifier } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { executeRecipe } from '../lib/recipe/engine.js'
 import { measureRecipe } from '../lib/recipe/measure.js'
@@ -125,6 +125,7 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
       version: recipe.version,
       stepCount: recipe.steps.length,
       paramCount: recipe.params ? Object.keys(recipe.params).length : 0,
+      hint: `Run 'aixbt recipe measure ${recipe.name}' to check context token usage`,
     }, outputFormat)
     return
   }
@@ -132,7 +133,7 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
   output.success(`${file} is valid`)
 
   const agentSteps = recipe.steps.filter(isAgentStep).map((s) => s.id)
-  const foreachSteps = recipe.steps.filter(isForeachStep).map((s) => s.id)
+  const forSteps = recipe.steps.filter(hasForModifier).map((s) => s.id)
   const paramCount = recipe.params ? Object.keys(recipe.params).length : 0
 
   output.keyValue('Recipe', recipe.name, 20)
@@ -143,12 +144,13 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
   if (agentSteps.length > 0) {
     output.keyValue('Agent steps', agentSteps.join(', '), 20)
   }
-  if (foreachSteps.length > 0) {
-    output.keyValue('Foreach steps', foreachSteps.join(', '), 20)
+  if (forSteps.length > 0) {
+    output.keyValue('Iterated steps', forSteps.join(', '), 20)
   }
   if (recipe.analysis?.instructions) {
     output.keyValue('Analysis', 'Yes', 20)
   }
+  output.hint(`Next: aixbt recipe measure ${recipe.name}`)
 }
 
 // -- Local recipe scanning --
@@ -238,15 +240,24 @@ export function registerRecipeCommand(program: Command): void {
   recipe.addHelpText('after', () => {
     return [
       '',
-      `  Recipes are multi-step analysis pipelines defined in YAML. They chain`,
-      `  API calls, assemble data, and produce structured prompts for LLM analysis.`,
+      `  Recipes are declarative YAML pipelines that chain API calls, iterate`,
+      `  over results, sample and transform data, and yield back to you for`,
+      `  inference. Clone from the registry, customize, or build your own.`,
       '',
-      `  As an agent, the most powerful way you can leverage AIXBT data is by`,
-      `  running existing recipes from the registry or constructing custom`,
-      `  pipelines for your user. Check the registry and guide to dive deeper.`,
+      `  ${output.fmt.boldWhite('Quick start')}`,
+      `  ${output.fmt.dim('Browse registry')}    aixbt recipe list`,
+      `  ${output.fmt.dim('Recipe details')}    aixbt recipe info <name>`,
+      `  ${output.fmt.dim('Run a recipe')}      aixbt recipe run <name> -f toon`,
       '',
-      `  ${output.fmt.dim('Registry')}  aixbt recipe list`,
-      `  ${output.fmt.dim('Docs')}      ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipes')}`,
+      `  ${output.fmt.boldWhite('Docs')}`,
+      `  ${output.fmt.dim('Recipe spec')}       ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipe-specification.mdx')}`,
+      `  ${output.fmt.dim('Building blocks')}   ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipe-building-blocks.mdx')}`,
+      `  ${output.fmt.dim('Guide')}             ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipes.mdx')}`,
+      '',
+      `  ${output.fmt.boldWhite('Notes')}`,
+      `  Recipes always return full data. Use ${output.fmt.dim('transform:')} on steps to control`,
+      `  output size. ${output.fmt.dim('-v')} has no effect on recipe output.`,
+      `  Use ${output.fmt.dim('-f toon')} for compact structured output (~40% smaller than json).`,
       '',
       `  ${output.fmt.boldWhite('Agent integration')}`,
       `  Use --agent to spawn an isolated inference session for recipe steps.`,
@@ -436,8 +447,11 @@ export function registerRecipeCommand(program: Command): void {
           updatedAt = detail.updatedAt
           resolvedSource = 'registry'
           fromRegistry = true
-        } catch {
-          // Not in registry — check user recipes dir
+        } catch (err) {
+          const isNotFound = err instanceof CliError && err.code === 'RECIPE_NOT_FOUND'
+          if (!isNotFound) {
+            console.error(`warning: could not reach recipe registry: ${err instanceof Error ? err.message : String(err)}`)
+          }
           const userFile = resolveUserRecipe(name)
           if (userFile) {
             yaml = readFileSync(userFile, 'utf-8')
@@ -466,16 +480,13 @@ export function registerRecipeCommand(program: Command): void {
 
       const steps = parsed.steps.map((step) => {
         if (isParallelAgentStep(step)) {
-          return { id: step.id, type: 'foreach' as const, action: 'agent', foreach: step.foreach, instructions: step.instructions }
+          return { id: step.id, type: 'agent' as const, for: step['for'], instructions: step.instructions }
         }
         if (isAgentStep(step)) {
           return { id: step.id, type: 'agent' as const, instructions: step.instructions }
         }
-        if (isForeachStep(step)) {
-          return { id: step.id, type: 'foreach' as const, action: step.action, source: step.source }
-        }
-        if (isTransformStep(step)) {
-          return { id: step.id, type: 'transform' as const, input: step.input }
+        if (hasForModifier(step)) {
+          return { id: step.id, type: 'api' as const, action: step.action, source: step.source, for: step['for'] }
         }
         return { id: step.id, type: 'api' as const, action: step.action, source: step.source }
       })
@@ -525,14 +536,12 @@ export function registerRecipeCommand(program: Command): void {
       for (const step of parsed.steps) {
         if (isParallelAgentStep(step)) {
           const ctxLabel = step.context.length > 0 ? ` ${output.fmt.dim(`[${step.context.join(', ')}]`)}` : ''
-          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} agent${ctxLabel}\n${output.fmt.dim(step.instructions.trim())}`, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim('for:')} ${output.fmt.dim(step['for'])}${ctxLabel}\n${output.fmt.dim(step.instructions.trim())}`, 20)
         } else if (isAgentStep(step)) {
           output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(step.instructions.trim())}`, 20)
-        } else if (isForeachStep(step)) {
+        } else if (hasForModifier(step)) {
           const label = step.source ? `${step.action} (${step.source})` : step.action
-          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} ${output.fmt.dim(label)}`, 20)
-        } else if (isTransformStep(step)) {
-          output.keyValue(step.id, `${output.fmt.cyan('transform')} ${output.fmt.dim(step.input)}`, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('api')} ${output.fmt.dim('for:')} ${output.fmt.dim(step['for'])} ${output.fmt.green('→')} ${output.fmt.dim(label)}`, 20)
         } else {
           const label = step.source ? `${step.action} (${step.source})` : step.action
           output.keyValue(step.id, `${output.fmt.cyan('api')} ${output.fmt.dim(label)}`, 20)
@@ -844,7 +853,7 @@ export function registerRecipeCommand(program: Command): void {
       const formatFlag = globalOpts.format as string | undefined
       if (formatFlag === 'human') {
         throw new CliError(
-          'Recipes do not support --format human. Use --format json or --format toon.',
+          'Recipes output structured data for agent consumption. Use -f json or -f toon (omit -f to default to json).',
           'INVALID_FORMAT',
         )
       }
@@ -885,7 +894,11 @@ export function registerRecipeCommand(program: Command): void {
           if (localFile) {
             console.error(output.fmt.dim(`using registry recipe "${source}" (local version at ${localFile} is overridden)`))
           }
-        } catch {
+        } catch (err) {
+          const isNotFound = err instanceof CliError && err.code === 'RECIPE_NOT_FOUND'
+          if (!isNotFound) {
+            console.error(`warning: could not reach recipe registry: ${err instanceof Error ? err.message : String(err)}`)
+          }
           const userFile = resolveUserRecipe(source)
           if (userFile) {
             yaml = readFileSync(userFile, 'utf-8')

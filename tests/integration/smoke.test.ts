@@ -142,7 +142,6 @@ describe('E2E smoke tests', () => {
         expect(stripped).toContain('login')
         expect(stripped).toContain('projects')
         expect(stripped).toContain('signals')
-        expect(stripped).toContain('clusters')
         expect(stripped).toContain('recipe')
         expect(stripped).toContain('--format')
         expect(stripped).toContain('--delayed')
@@ -253,6 +252,7 @@ version: "1.0"
 description: A recipe for smoke testing
 steps:
   - id: fetch_projects
+    type: api
     action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'valid-recipe.yaml')
@@ -277,6 +277,7 @@ steps:
 version: "1.0"
 steps:
   - id: fetch
+    type: api
     action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'invalid-recipe.yaml')
@@ -328,6 +329,7 @@ version: "1.0"
 description: Run smoke test
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'run-recipe.yaml')
@@ -508,6 +510,7 @@ version: "1.0"
 description: Testing JSON output
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'json-test.yaml')
@@ -537,6 +540,7 @@ steps:
 version: "1.0"
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const filePath = join(tempDir, 'invalid-json-test.yaml')

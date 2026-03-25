@@ -511,6 +511,70 @@ describe('projects commands', () => {
     })
   })
 
+  // -- date filters --
+
+  describe('date filters', () => {
+    it('should pass --created-after and --created-before as query params', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        ['node', 'aixbt', '--format', 'json', 'projects', '--created-after', '2026-01-01', '--created-before', '2026-03-01'],
+        { from: 'node' },
+      )
+
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.searchParams.get('createdAfter')).toBe('2026-01-01')
+      expect(callUrl.searchParams.get('createdBefore')).toBe('2026-03-01')
+    })
+
+    it('should resolve relative time for --created-after', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-03-25T12:00:00.000Z'))
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        ['node', 'aixbt', '--format', 'json', 'projects', '--created-after', '-7d'],
+        { from: 'node' },
+      )
+
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.searchParams.get('createdAfter')).toBe('2026-03-18T12:00:00.000Z')
+
+      vi.useRealTimers()
+    })
+
+    it('should resolve relative time for momentum --start and --end', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-03-25T12:00:00.000Z'))
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: { projectId: 'p1', projectName: 'Test', data: [] } }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        ['node', 'aixbt', '--format', 'json', 'projects', 'momentum', 'p1', '--start', '-30d', '--end', '-1d'],
+        { from: 'node' },
+      )
+
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.searchParams.get('start')).toBe('2026-02-23T12:00:00.000Z')
+      expect(callUrl.searchParams.get('end')).toBe('2026-03-24T12:00:00.000Z')
+
+      vi.useRealTimers()
+    })
+  })
+
   // -- auth modes --
 
   describe('auth modes', () => {

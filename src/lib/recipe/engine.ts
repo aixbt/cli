@@ -3,7 +3,7 @@ import type {
   RecipeAwaitingAgent, RecipeComplete, Recipe,
   RateLimitInfo,
 } from '../../types.js'
-import { isAgentStep, isParallelAgentStep, isApiStep, isForeachStep, isTransformStep } from '../../types.js'
+import { isAgentStep, isParallelAgentStep, isApiStep, hasForModifier } from '../../types.js'
 import { applyTransforms } from '../transforms.js'
 import { parseRecipe } from './parser.js'
 import { validateRecipe, buildSegments, extractStepReferences } from './validator.js'
@@ -20,10 +20,11 @@ import { resolveProviderKey } from '../providers/config.js'
 import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 import { isTierSufficient } from '../providers/types.js'
 import type { ForeachResult } from '../../types.js'
-import { estimateTokenCount } from './output.js'
+import { estimateTokenCount } from '../tokens.js'
 
 // Re-export public API for backward compatibility
-export { resolveValue, resolveActionPath, resolveRelativeTime } from './template.js'
+export { resolveValue, resolveActionPath } from './template.js'
+export { resolveRelativeTime } from '../date.js'
 export { applyTransforms } from '../transforms.js'
 
 // -- Debug logging --
@@ -42,7 +43,7 @@ function debugStepLog(verbosity: number, result: StepResult, step: RecipeStep, p
   ]
 
   // Step type tag
-  if (isForeachStep(step)) {
+  if (isApiStep(step) && hasForModifier(step)) {
     const fr = result as ForeachResult
     const itemCount = fr.items?.length ?? 0
     const failCount = fr.failures?.length ?? 0
@@ -56,12 +57,10 @@ function debugStepLog(verbosity: number, result: StepResult, step: RecipeStep, p
         ...(fallbackCount > 0 ? [`${fallbackCount} fallback`] : []),
         ...(failCount > 0 ? [`${failCount} failed`] : []),
       ].join(', ')
-      parts.push(`foreach(${itemCount + failCount}: ${detail})`)
+      parts.push(`for(${itemCount + failCount}: ${detail})`)
     } else {
-      parts.push(`foreach(${itemCount}${failCount > 0 ? `, ${failCount} failed` : ''})`)
+      parts.push(`for(${itemCount}${failCount > 0 ? `, ${failCount} failed` : ''})`)
     }
-  } else if (isTransformStep(step)) {
-    parts.push('transform')
   } else if (isApiStep(step) && step.source && step.source !== 'aixbt') {
     parts.push(step.source)
   }
@@ -78,14 +77,14 @@ function debugStepLog(verbosity: number, result: StepResult, step: RecipeStep, p
     parts.push(`sampled ${result.sampled.before}→${result.sampled.after}`)
   }
 
-  // -vv: source:action and foreach source
+  // -vv: source:action and for source
   if (verbosity >= 2) {
-    if (isApiStep(step) || isForeachStep(step)) {
+    if (isApiStep(step)) {
       const source = step.source ?? 'aixbt'
       parts.push(`${source}:${step.action}`)
     }
-    if (isForeachStep(step)) {
-      parts.push(`over ${step.foreach}`)
+    if (hasForModifier(step)) {
+      parts.push(`over ${step['for']}`)
     }
   }
 
@@ -186,7 +185,7 @@ function validateRequiredParams(
 
 function emitTierWarnings(recipe: Recipe): void {
   for (const step of recipe.steps) {
-    if (!isApiStep(step) && !isForeachStep(step)) continue
+    if (!isApiStep(step)) continue
     const rawSource = step.source
     if (!rawSource || rawSource === 'aixbt') continue
     const { providerName: source } = parseSource(rawSource)
@@ -378,7 +377,8 @@ async function executeStep(
 ): Promise<StepResult> {
   const startedAt = new Date()
 
-  if (isForeachStep(step)) {
+  // API step with for: modifier → foreach execution
+  if (isApiStep(step) && hasForModifier(step)) {
     // Check provider availability before iterating — avoid N failed calls
     if (step.source && step.source !== 'aixbt') {
       try {
@@ -407,16 +407,16 @@ async function executeStep(
       }
     }
 
-    const sourceData = resolveValue(`{${step.foreach}}`, ctx)
+    const sourceData = resolveValue(`{${step['for']}}`, ctx)
     if (sourceData === undefined || sourceData === null) {
       throw new CliError(
-        `Foreach step "${step.id}": source "${step.foreach}" resolved to ${String(sourceData)}`,
+        `Step "${step.id}": for: "${step['for']}" resolved to ${String(sourceData)}`,
         'FOREACH_SOURCE_MISSING',
       )
     }
     if (!Array.isArray(sourceData)) {
       throw new CliError(
-        `Foreach step "${step.id}": source "${step.foreach}" resolved to ${typeof sourceData}, expected array`,
+        `Step "${step.id}": for: "${step['for']}" resolved to ${typeof sourceData}, expected array`,
         'FOREACH_SOURCE_NOT_ARRAY',
       )
     }
@@ -429,30 +429,6 @@ async function executeStep(
       currentRateLimit: ctx.currentRateLimit,
       onProgress,
     })
-  }
-
-  if (isTransformStep(step)) {
-    const sourceResult = ctx.results.get(step.input)
-    if (!sourceResult) {
-      throw new CliError(
-        `Transform step "${step.id}": input step "${step.input}" has no result`,
-        'TRANSFORM_INPUT_MISSING',
-      )
-    }
-
-    const transformedData = applyTransforms(sourceResult.data, step.transform)
-    const completedAt = new Date()
-
-    return {
-      stepId: step.id,
-      data: transformedData,
-      rateLimit: null,
-      timing: {
-        startedAt: startedAt.toISOString(),
-        completedAt: completedAt.toISOString(),
-        durationMs: completedAt.getTime() - startedAt.getTime(),
-      },
-    }
   }
 
   let resultData: unknown

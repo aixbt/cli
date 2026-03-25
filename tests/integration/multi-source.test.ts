@@ -50,15 +50,15 @@ version: "1.0"
 description: Fetch AIXBT projects, enrich with DeFiLlama protocol TVL data
 steps:
   - id: projects
+    type: api
     action: projects
   - id: protocols
-    foreach: "projects.data"
+    type: api
+    for: "projects.data"
     action: protocol
     source: defillama
     params:
       protocol: "{item.slug}"
-  - id: summary
-    input: protocols
     transform:
       select:
         - name
@@ -71,6 +71,7 @@ version: "1.0"
 description: Get total historical TVL from DeFiLlama
 steps:
   - id: tvl
+    type: api
     action: tvl
     source: defillama
 `
@@ -81,9 +82,11 @@ version: "1.0"
 description: Fetch AIXBT projects then scan each with GoPlus
 steps:
   - id: tokens
+    type: api
     action: projects
   - id: security
-    foreach: "tokens.data"
+    type: api
+    for: "tokens.data"
     action: token-security
     source: goplus
     params:
@@ -97,6 +100,7 @@ version: "1.0"
 description: Single GoPlus token security check
 steps:
   - id: check
+    type: api
     action: token-security
     source: goplus
     params:
@@ -110,11 +114,14 @@ version: "1.0"
 description: Mix of AIXBT steps and external provider steps
 steps:
   - id: projects
+    type: api
     action: projects
   - id: chains_tvl
+    type: api
     action: chains
     source: defillama
   - id: signals
+    type: api
     action: signals
     params:
       projectIds: "{projects.data[*].id}"
@@ -181,15 +188,12 @@ describe('multi-source integration tests', () => {
       // Step 1: AIXBT projects should have fetched the project list
       expect(complete.data.projects).toEqual(PROJECTS)
 
-      // Step 2: foreach should have fetched protocol data from DeFiLlama for each project
-      const protocols = complete.data.protocols as unknown[]
+      // Step 2: for: modifier should have fetched protocol data from DeFiLlama for each project
+      // The inline transform applies select to each iteration's result
+      const protocols = complete.data.protocols as Array<Record<string, unknown>>
       expect(protocols).toHaveLength(2)
-
-      // Step 3: transform should have applied select to pick name and tvl
-      const summary = complete.data.summary as Array<Record<string, unknown>>
-      expect(summary).toHaveLength(2)
-      expect(summary[0]).toHaveProperty('name')
-      expect(summary[0]).toHaveProperty('tvl')
+      expect(protocols[0]).toHaveProperty('name')
+      expect(protocols[0]).toHaveProperty('tvl')
     })
 
     it('should call AIXBT API with X-API-Key and DeFiLlama without it', async () => {
@@ -666,8 +670,10 @@ version: "1.0"
 description: Test fallback for CoinGecko step requiring demo tier
 steps:
   - id: projects
+    type: api
     action: projects
   - id: coin_info
+    type: api
     action: coin
     source: coingecko
     params:
@@ -681,8 +687,10 @@ version: "1.0"
 description: Test step without fallback for CoinGecko step
 steps:
   - id: projects
+    type: api
     action: projects
   - id: coin_info
+    type: api
     action: coin
     source: coingecko
     params:
@@ -695,9 +703,11 @@ version: "1.0"
 description: Test fallback for foreach CoinGecko step
 steps:
   - id: projects
+    type: api
     action: projects
   - id: coin_info
-    foreach: "projects.data"
+    type: api
+    for: "projects.data"
     action: coin
     source: coingecko
     params:
@@ -804,6 +814,7 @@ version: "1.0"
 description: DeFiLlama step with fallback (should not trigger since free tier)
 steps:
   - id: tvl
+    type: api
     action: tvl
     source: defillama
     fallback: "Get total TVL from DeFiLlama"
