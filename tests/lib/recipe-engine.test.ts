@@ -358,56 +358,11 @@ describe('resolveActionPath', () => {
   })
 })
 
-// -- resolveRelativeTime --
+// -- resolveRelativeTime integration --
+// Unit tests for resolveRelativeTime are in tests/lib/date.test.ts.
+// This test verifies the integration: resolveValue triggers relative time resolution.
 
-describe('resolveRelativeTime', () => {
-  it('should convert -24h to ISO timestamp approximately 24 hours ago', () => {
-    const before = Date.now()
-    const result = resolveRelativeTime('-24h')
-    const after = Date.now()
-
-    const resultMs = new Date(result).getTime()
-    const expected24hAgo = before - 24 * 60 * 60 * 1000
-
-    // Within 2 second tolerance
-    expect(resultMs).toBeGreaterThanOrEqual(expected24hAgo - 2000)
-    expect(resultMs).toBeLessThanOrEqual(after - 24 * 60 * 60 * 1000 + 2000)
-  })
-
-  it('should convert -7d to ISO timestamp approximately 7 days ago', () => {
-    const before = Date.now()
-    const result = resolveRelativeTime('-7d')
-
-    const resultMs = new Date(result).getTime()
-    const expected7dAgo = before - 7 * 24 * 60 * 60 * 1000
-
-    expect(resultMs).toBeGreaterThanOrEqual(expected7dAgo - 2000)
-    expect(resultMs).toBeLessThanOrEqual(expected7dAgo + 2000)
-  })
-
-  it('should convert -30m to ISO timestamp approximately 30 minutes ago', () => {
-    const before = Date.now()
-    const result = resolveRelativeTime('-30m')
-
-    const resultMs = new Date(result).getTime()
-    const expected30mAgo = before - 30 * 60 * 1000
-
-    expect(resultMs).toBeGreaterThanOrEqual(expected30mAgo - 2000)
-    expect(resultMs).toBeLessThanOrEqual(expected30mAgo + 2000)
-  })
-
-  it('should return an ISO 8601 formatted string', () => {
-    const result = resolveRelativeTime('-1h')
-    // ISO string ends with Z and matches ISO pattern
-    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/)
-  })
-
-  it('should return non-matching string as-is', () => {
-    expect(resolveRelativeTime('2024-01-01T00:00:00Z')).toBe('2024-01-01T00:00:00Z')
-    expect(resolveRelativeTime('hello')).toBe('hello')
-    expect(resolveRelativeTime('')).toBe('')
-  })
-
+describe('resolveRelativeTime integration', () => {
   it('should be triggered automatically by resolveValue for relative time strings', () => {
     const ctx = makeCtx()
     const before = Date.now()

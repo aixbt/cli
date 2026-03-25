@@ -226,6 +226,8 @@ async function handleCategories(cmd: Command): Promise<void> {
   }))
 
   output.table(rows, CATEGORY_COLUMNS)
+  console.log()
+  output.dim(`${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`)
 }
 
 function filterSignalFields(s: SignalData, verbosity: number): Record<string, unknown> {
