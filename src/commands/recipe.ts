@@ -447,8 +447,11 @@ export function registerRecipeCommand(program: Command): void {
           updatedAt = detail.updatedAt
           resolvedSource = 'registry'
           fromRegistry = true
-        } catch {
-          // Not in registry — check user recipes dir
+        } catch (err) {
+          const isNotFound = err instanceof CliError && err.code === 'RECIPE_NOT_FOUND'
+          if (!isNotFound) {
+            console.error(`warning: could not reach recipe registry: ${err instanceof Error ? err.message : String(err)}`)
+          }
           const userFile = resolveUserRecipe(name)
           if (userFile) {
             yaml = readFileSync(userFile, 'utf-8')
@@ -891,7 +894,11 @@ export function registerRecipeCommand(program: Command): void {
           if (localFile) {
             console.error(output.fmt.dim(`using registry recipe "${source}" (local version at ${localFile} is overridden)`))
           }
-        } catch {
+        } catch (err) {
+          const isNotFound = err instanceof CliError && err.code === 'RECIPE_NOT_FOUND'
+          if (!isNotFound) {
+            console.error(`warning: could not reach recipe registry: ${err instanceof Error ? err.message : String(err)}`)
+          }
           const userFile = resolveUserRecipe(source)
           if (userFile) {
             yaml = readFileSync(userFile, 'utf-8')
