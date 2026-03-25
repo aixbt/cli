@@ -213,6 +213,13 @@ export interface Segment {
 
 // -- Recipe execution output types --
 
+export interface RecipeYieldProgress {
+  stepsCompleted: number    // ctx.results.size
+  stepsTotal: number        // ctx.recipe.steps.length
+  segmentIndex: number      // ctx.currentSegmentIndex (0-based)
+  segmentsTotal: number     // ctx.segments.length
+}
+
 export interface ParallelAgentMeta {
   items: unknown[]
   itemKey: string
@@ -231,6 +238,8 @@ export interface RecipeAwaitingAgent {
   data: Record<string, unknown>
   tokenCount: number
   resumeCommand: string
+  progress: RecipeYieldProgress
+  remaining: string
   parallel?: ParallelAgentMeta
   /** Present only on parallel steps — tells the operating agent how to execute */
   parallelExecution?: string

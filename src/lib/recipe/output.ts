@@ -4,8 +4,9 @@ import { encode } from '@toon-format/toon'
 import type {
   ExecutionContext, AgentStep, ForeachResult,
   RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta,
+  RecipeYieldProgress,
 } from '../../types.js'
-import { isApiStep, hasForModifier } from '../../types.js'
+import { isApiStep, isAgentStep, hasForModifier } from '../../types.js'
 import { resolveValue, resolveExpression } from './template.js'
 import { resolveContextHints } from '../agents/context.js'
 import { estimateTokenCount } from '../tokens.js'
@@ -23,6 +24,62 @@ function collectFallbackNotes(
     }
   }
   return Object.keys(notes).length > 0 ? notes : undefined
+}
+
+export function buildProgressAndRemaining(
+  ctx: ExecutionContext,
+): { progress: RecipeYieldProgress; remaining: string } {
+  const progress: RecipeYieldProgress = {
+    stepsCompleted: ctx.results.size,
+    stepsTotal: ctx.recipe.steps.length,
+    segmentIndex: ctx.currentSegmentIndex,
+    segmentsTotal: ctx.segments.length,
+  }
+
+  // Check if there are remaining segments after the current one
+  const remainingSegments = ctx.segments.slice(ctx.currentSegmentIndex + 1)
+
+  if (remainingSegments.length === 0) {
+    return {
+      progress,
+      remaining: 'This is the final agent step. No remaining steps.',
+    }
+  }
+
+  // Count remaining steps by type across all remaining segments
+  let apiCount = 0
+  let agentCount = 0
+  const stepIds: string[] = []
+
+  for (const segment of remainingSegments) {
+    for (const step of segment.steps) {
+      if (isAgentStep(step)) {
+        agentCount++
+      } else {
+        apiCount++
+      }
+      stepIds.push(step.id)
+    }
+  }
+
+  // Build prose description
+  const parts: string[] = []
+  if (apiCount > 0) {
+    parts.push(`${apiCount} API step${apiCount > 1 ? 's' : ''} (${stepIds.filter((id) => {
+      const step = ctx.recipe.steps.find((s) => s.id === id)
+      return step && !isAgentStep(step)
+    }).join(', ')})`)
+  }
+  if (agentCount > 0) {
+    parts.push(`${agentCount} agent step${agentCount > 1 ? 's' : ''} (${stepIds.filter((id) => {
+      const step = ctx.recipe.steps.find((s) => s.id === id)
+      return step && isAgentStep(step)
+    }).join(', ')})`)
+  }
+
+  const remaining = `Data assembled (raw). Remaining: ${parts.join(' and ')} produce: ${ctx.recipe.description}`
+
+  return { progress, remaining }
 }
 
 export function buildAwaitingAgentOutput(
@@ -62,6 +119,7 @@ export function buildAwaitingAgentOutput(
   const resumeCommand = parts.join(' ')
 
   const contextHints = resolveContextHints(ctx.recipe.steps, ctx.results)
+  const { progress, remaining } = buildProgressAndRemaining(ctx)
 
   return {
     status: 'awaiting_agent',
@@ -73,6 +131,8 @@ export function buildAwaitingAgentOutput(
     data,
     tokenCount: estimateTokenCount(data),
     resumeCommand,
+    progress,
+    remaining,
     ...(contextHints.length > 0 ? { contextHints } : {}),
   }
 }
@@ -162,6 +222,7 @@ export function buildAwaitingParallelAgentOutput(
   ].join('')
 
   const contextHints = resolveContextHints(ctx.recipe.steps, ctx.results)
+  const { progress, remaining } = buildProgressAndRemaining(ctx)
 
   return {
     status: 'awaiting_agent',
@@ -173,6 +234,8 @@ export function buildAwaitingParallelAgentOutput(
     data,
     tokenCount: estimateTokenCount(data),
     resumeCommand,
+    progress,
+    remaining,
     parallel,
     parallelExecution,
     ...(contextHints.length > 0 ? { contextHints } : {}),

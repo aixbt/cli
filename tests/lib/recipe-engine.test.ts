@@ -2398,4 +2398,201 @@ steps:
       }
     })
   })
+
+  // -- Yield progress (progress & remaining fields) --
+
+  describe('yield progress', () => {
+    it('should include progress object with correct fields in awaiting_agent output', async () => {
+      const surgingData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        progress: {
+          stepsCompleted: number
+          stepsTotal: number
+          segmentIndex: number
+          segmentsTotal: number
+        }
+      }
+      expect(awaiting.progress).toBeDefined()
+      expect(typeof awaiting.progress.stepsCompleted).toBe('number')
+      expect(typeof awaiting.progress.stepsTotal).toBe('number')
+      expect(typeof awaiting.progress.segmentIndex).toBe('number')
+      expect(typeof awaiting.progress.segmentsTotal).toBe('number')
+    })
+
+    it('should not count the current agent step in stepsCompleted', async () => {
+      // AGENT_RECIPE: surging(api) -> analyze(agent) -> deep(api)
+      // At yield for analyze: only surging is completed, analyze is NOT completed yet
+      const surgingData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        progress: { stepsCompleted: number; stepsTotal: number }
+      }
+      // Only surging is in ctx.results at yield time, not analyze
+      expect(awaiting.progress.stepsCompleted).toBe(1)
+      expect(awaiting.progress.stepsTotal).toBe(3)
+    })
+
+    it('should report correct progress for first yield in a 5-step recipe', async () => {
+      // MULTI_SEGMENT_RECIPE: surging(api) -> filter(agent) -> signals(api) -> analyze(agent) -> enrichment(api)
+      // Segments: [surging, filter] | [signals, analyze] | [enrichment]
+      // First yield at filter: stepsCompleted=1 (surging), stepsTotal=5, segmentIndex=0, segmentsTotal=3
+      const surgingData = [{ id: 'p1' }, { id: 'p2' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        step: string
+        progress: {
+          stepsCompleted: number
+          stepsTotal: number
+          segmentIndex: number
+          segmentsTotal: number
+        }
+      }
+      expect(awaiting.step).toBe('filter')
+      expect(awaiting.progress.stepsCompleted).toBe(1)
+      expect(awaiting.progress.stepsTotal).toBe(5)
+      expect(awaiting.progress.segmentIndex).toBe(0)
+      expect(awaiting.progress.segmentsTotal).toBe(3)
+    })
+
+    it('should include remaining string with step count info for mid-recipe yields', async () => {
+      // AGENT_RECIPE: surging(api) -> analyze(agent) -> deep(api)
+      // At yield for analyze: remaining segments contain deep (1 API step)
+      const surgingData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { remaining: string }
+      expect(typeof awaiting.remaining).toBe('string')
+      // Should mention step count info
+      expect(awaiting.remaining).toContain('1 API step')
+      // Should mention the recipe description
+      expect(awaiting.remaining).toContain('Recipe with agent step')
+    })
+
+    it('should include remaining string with both API and agent step counts for multi-segment recipes', async () => {
+      // MULTI_SEGMENT_RECIPE: surging(api) -> filter(agent) -> signals(api) -> analyze(agent) -> enrichment(api)
+      // At first yield (filter): remaining has signals(api), analyze(agent), enrichment(api)
+      // = 2 API steps and 1 agent step
+      const surgingData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(surgingData))
+
+      const result = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { remaining: string }
+      expect(awaiting.remaining).toContain('2 API steps')
+      expect(awaiting.remaining).toContain('1 agent step')
+    })
+
+    it('should report remaining steps at second yield of multi-segment recipe', async () => {
+      // MULTI_SEGMENT_RECIPE resumed from filter -> yields at analyze
+      // Remaining segments after analyze contain [enrichment] = 1 API step
+      const signalsData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1', 'p2'] },
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { step: string; remaining: string }
+      expect(awaiting.step).toBe('analyze')
+      // After segment 1 (analyze), remaining segments contain [enrichment]
+      // That's 1 API step
+      expect(awaiting.remaining).toContain('1 API step')
+      expect(awaiting.remaining).toContain('enrichment')
+    })
+
+    it('should increment segmentIndex for second agent yield in multi-segment recipe', async () => {
+      // Resume from filter -> yields at analyze in segment 1
+      const signalsData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: MULTI_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1', 'p2'] },
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as {
+        step: string
+        progress: {
+          stepsCompleted: number
+          stepsTotal: number
+          segmentIndex: number
+          segmentsTotal: number
+        }
+      }
+      expect(awaiting.step).toBe('analyze')
+      expect(awaiting.progress.segmentIndex).toBe(1)
+      expect(awaiting.progress.segmentsTotal).toBe(3)
+      // filter (injected) + signals (executed) = 2 steps completed
+      expect(awaiting.progress.stepsCompleted).toBe(2)
+      expect(awaiting.progress.stepsTotal).toBe(5)
+    })
+
+    it('should include remaining string in agent-at-end recipe', async () => {
+      const projectsData = [{ id: 'p1' }]
+      const signalsData = [{ id: 's1' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: AGENT_AT_END_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { remaining: string; progress: { stepsCompleted: number } }
+      expect(typeof awaiting.remaining).toBe('string')
+      expect(awaiting.remaining.length).toBeGreaterThan(0)
+      // 2 API steps completed (projects, signals), agent step not counted
+      expect(awaiting.progress.stepsCompleted).toBe(2)
+    })
+  })
 })
