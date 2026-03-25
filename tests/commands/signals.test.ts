@@ -384,7 +384,7 @@ describe('signals commands', () => {
       expect(parsed.data[1].name).toBe('Adoption')
     })
 
-    it('should display table in human mode', async () => {
+    it('should display cards without descriptions by default', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_CATEGORIES }),
       )
@@ -394,11 +394,25 @@ describe('signals commands', () => {
       await program.parseAsync(['node', 'aixbt', 'signals', 'categories'], { from: 'node' })
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Category')
-      expect(allOutput).toContain('Description')
+      expect(allOutput).toContain('DeFi')
+      expect(allOutput).toContain('Security')
+      expect(allOutput).not.toContain('Decentralized finance signals')
+      expect(allOutput).toContain('Use -v for category descriptions')
+    })
+
+    it('should show descriptions with -v', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CATEGORIES }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'signals', 'categories', '-v'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
       expect(allOutput).toContain('DeFi')
       expect(allOutput).toContain('Decentralized finance signals')
-      expect(allOutput).toContain('Security')
+      expect(allOutput).not.toContain('Use -v for category descriptions')
     })
 
     it('should show empty state when no categories', async () => {
