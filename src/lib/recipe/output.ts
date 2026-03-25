@@ -77,7 +77,7 @@ export function buildProgressAndRemaining(
     }).join(', ')})`)
   }
 
-  const remaining = `Data assembled (raw). Remaining: ${parts.join(' and ')} produce: ${ctx.recipe.description}`
+  const remaining = `Data assembled (raw). Remaining: ${parts.join(' and ')} to produce: ${ctx.recipe.description}`
 
   return { progress, remaining }
 }
@@ -144,7 +144,8 @@ export function buildAwaitingParallelAgentOutput(
   recipeSource?: string,
 ): RecipeAwaitingAgent {
   // Resolve for: items
-  const items = resolveExpression(agentStep['for'], ctx) as unknown[]
+  const resolved = resolveExpression(agentStep['for'], ctx)
+  const items = Array.isArray(resolved) ? resolved : []
 
   // Classify context steps as per-item vs shared
   const perItemContext: string[] = []

@@ -65,7 +65,9 @@ export function extractStepReferences(step: RecipeStep): Set<string> {
   if (step.params) {
     allRefs.push(...extractAllTemplateRefs(step.params))
   }
-  allRefs.push(...extractTemplateRefs(step.action))
+  if (step.action) {
+    allRefs.push(...extractTemplateRefs(step.action))
+  }
 
   for (const ref of allRefs) {
     const dotIndex = ref.indexOf('.')

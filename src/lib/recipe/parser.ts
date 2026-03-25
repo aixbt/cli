@@ -171,10 +171,10 @@ function validateAgentStep(
   forValue: string | undefined,
   issues: ValidationIssue[],
 ): AgentStep | null {
-  if (!Array.isArray(step.context)) {
+  if (!Array.isArray(step.context) || !step.context.every((v: unknown) => typeof v === 'string')) {
     issues.push({
       path: `${stepPath}.context`,
-      message: `Step "${step.id}" has type: agent but is missing required field "context" (must be an array)`,
+      message: `Step "${step.id}" has type: agent but is missing required field "context" (must be an array of strings)`,
     })
   }
 
