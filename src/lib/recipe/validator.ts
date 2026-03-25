@@ -1,6 +1,6 @@
 import { RecipeValidationError } from '../errors.js'
 import type { Recipe, RecipeStep, Segment, AgentStep, ValidationIssue } from '../../types.js'
-import { isAgentStep, isApiStep, isParallelAgentStep, hasForModifier, TEMPLATE_REGEX } from '../../types.js'
+import { isAgentStep, isApiStep, isParallelAgentStep, hasForModifier, parseForStepRef, TEMPLATE_REGEX } from '../../types.js'
 import { getProviderNames, getProvider, parseSource } from '../providers/registry.js'
 
 export function extractTemplateRefs(str: string): string[] {
@@ -42,12 +42,8 @@ export function extractStepReferences(step: RecipeStep): Set<string> {
 
   // Agent step with for: modifier (parallel agent)
   if (isParallelAgentStep(step)) {
-    const forRef = step['for']
-    const dotIndex = forRef.indexOf('.')
-    const stepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
-    if (stepId !== 'params' && stepId !== 'item') {
-      refs.add(stepId)
-    }
+    const refId = parseForStepRef(step['for'])
+    if (refId) refs.add(refId)
     for (const ref of step.context) {
       refs.add(ref)
     }
@@ -61,12 +57,8 @@ export function extractStepReferences(step: RecipeStep): Set<string> {
 
   // API step — check for: modifier, params templates, and action templates
   if (hasForModifier(step)) {
-    const forRef = step['for']
-    const dotIndex = forRef.indexOf('.')
-    const stepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
-    if (stepId !== 'params' && stepId !== 'item') {
-      refs.add(stepId)
-    }
+    const refId = parseForStepRef(step['for'])
+    if (refId) refs.add(refId)
   }
 
   const allRefs: string[] = []
@@ -160,10 +152,8 @@ function validateSegmentBoundaries(
         }
         // Validate for: ref on parallel agent steps
         if (isParallelAgentStep(step)) {
-          const forRef = step['for']
-          const dotIndex = forRef.indexOf('.')
-          const refStepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
-          if (refStepId !== 'params' && refStepId !== 'item' && !accessible.has(refStepId)) {
+          const refStepId = parseForStepRef(step['for'])
+          if (refStepId && !accessible.has(refStepId)) {
             const accessibleList = [...accessible].sort()
             issues.push({
               path: `steps.${step.id}.for`,
@@ -237,21 +227,14 @@ function validateVariableReferences(
     recipe.params ? Object.keys(recipe.params) : [],
   )
 
-  const stepIdOrder = new Map<string, number>()
-  for (let i = 0; i < recipe.steps.length; i++) {
-    stepIdOrder.set(recipe.steps[i].id, i)
-  }
-
   for (const step of recipe.steps) {
     // Parallel agent step: validate for: reference
     if (isParallelAgentStep(step)) {
-      const forRef = step['for']
-      const dotIndex = forRef.indexOf('.')
-      const stepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
-      if (stepId !== 'params' && stepId !== 'item' && !allStepIds.has(stepId)) {
+      const refId = parseForStepRef(step['for'])
+      if (refId && !allStepIds.has(refId)) {
         issues.push({
           path: `steps.${step.id}.for`,
-          message: `References unknown step "${stepId}"`,
+          message: `References unknown step "${refId}"`,
         })
       }
       continue
@@ -261,13 +244,11 @@ function validateVariableReferences(
 
     // API step: check for: references
     if (isApiStep(step) && hasForModifier(step)) {
-      const forRef = step['for']
-      const dotIndex = forRef.indexOf('.')
-      const stepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
-      if (stepId !== 'params' && stepId !== 'item' && !allStepIds.has(stepId)) {
+      const refId = parseForStepRef(step['for'])
+      if (refId && !allStepIds.has(refId)) {
         issues.push({
           path: `steps.${step.id}.for`,
-          message: `References unknown step "${stepId}"`,
+          message: `References unknown step "${refId}"`,
         })
       }
     }

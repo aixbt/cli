@@ -163,6 +163,13 @@ export function isParallelAgentStep(step: RecipeStep): step is AgentStep & { 'fo
   return isAgentStep(step) && hasForModifier(step)
 }
 
+/** Parse a for: reference and return the step ID it refers to, or null if it's a reserved name (params, item). */
+export function parseForStepRef(forRef: string): string | null {
+  const dotIndex = forRef.indexOf('.')
+  const stepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
+  return (stepId === 'params' || stepId === 'item') ? null : stepId
+}
+
 // -- Execution types --
 
 export interface ExecutionContext {

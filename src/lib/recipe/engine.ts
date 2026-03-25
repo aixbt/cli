@@ -42,7 +42,7 @@ function debugStepLog(verbosity: number, result: StepResult, step: RecipeStep, p
   ]
 
   // Step type tag
-  if (hasForModifier(step) && !isAgentStep(step)) {
+  if (isApiStep(step) && hasForModifier(step)) {
     const fr = result as ForeachResult
     const itemCount = fr.items?.length ?? 0
     const failCount = fr.failures?.length ?? 0
