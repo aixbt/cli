@@ -1,5 +1,5 @@
 import type {
-  ExecutionContext, ForeachStep, ForeachResult,
+  ExecutionContext, ApiStep, ForeachResult,
   ForeachFailure, RateLimitInfo,
 } from '../../types.js'
 import { resolveActionPath, flattenParams, substitutePathParams } from './template.js'
@@ -91,7 +91,7 @@ export interface ForeachProgressEvent {
 }
 
 export interface ForeachOptions {
-  step: ForeachStep
+  step: ApiStep & { 'for': string }
   items: unknown[]
   ctx: ExecutionContext
   clientOptions: import('../api-client.js').ApiClientOptions

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 
 import { parseRecipe } from '../../src/lib/recipe/parser.js'
 import { RecipeValidationError } from '../../src/lib/errors.js'
-import { isAgentStep, isForeachStep, isApiStep, isTransformStep } from '../../src/types.js'
-import type { AgentStep, ForeachStep, ApiStep, TransformStep } from '../../src/types.js'
+import { isAgentStep, isApiStep, hasForModifier, isParallelAgentStep } from '../../src/types.js'
+import type { AgentStep, ApiStep, RecipeStep } from '../../src/types.js'
 
 // -- Helpers --
 
@@ -34,6 +34,7 @@ describe('parseRecipe', () => {
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -47,6 +48,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -59,6 +61,7 @@ name: test-recipe
 version: 2
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -71,6 +74,7 @@ name: test-recipe
 version: "3.5.1"
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -82,6 +86,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -94,6 +99,7 @@ name: test-recipe
 description: "A test recipe for validation"
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -106,6 +112,7 @@ name: test-recipe
 tier: pro
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -118,6 +125,7 @@ steps:
 name: "  spaced-name  "
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -140,11 +148,13 @@ params:
     default: 10
 steps:
   - id: fetch-projects
+    type: api
     action: "GET /v2/projects"
     params:
       limit: "{{limit}}"
   - id: fetch-details
-    foreach: "fetch-projects.data"
+    type: api
+    for: "fetch-projects.data"
     action: "GET /v2/projects/{{item.id}}"
   - id: analyze
     type: agent
@@ -192,6 +202,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
     params:
       limit: 10
@@ -202,21 +213,23 @@ steps:
       expect(step.params).toEqual({ limit: 10, sort: 'name' })
     })
 
-    it('should parse a foreach step correctly', () => {
+    it('should parse an API step with for: modifier', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
   - id: step2
-    foreach: "step1.data"
-    action: "GET /v2/projects/{{item.id}}"
+    type: api
+    for: "step1.data"
+    action: "GET /v2/projects/{item.id}"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.steps).toHaveLength(2)
-      const foreachStep = recipe.steps[1] as ForeachStep
-      expect(foreachStep.foreach).toBe('step1.data')
-      expect(foreachStep.action).toBe('GET /v2/projects/{{item.id}}')
+      const step = recipe.steps[1] as ApiStep
+      expect(step['for']).toBe('step1.data')
+      expect(step.action).toBe('GET /v2/projects/{item.id}')
     })
 
     it('should parse an agent step correctly', () => {
@@ -238,6 +251,28 @@ steps:
       expect(agentStep.instructions).toBe('Analysis step')
       expect(agentStep.returns).toEqual({ summary: 'string' })
     })
+
+    it('should parse an agent step with for: modifier', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: analyze
+    type: agent
+    for: "projects.data"
+    context:
+      - projects
+    instructions: "Analyze each project"
+    returns:
+      summary: string
+`
+      const recipe = parseRecipe(yaml)
+      const step = recipe.steps[1] as AgentStep
+      expect(step.type).toBe('agent')
+      expect(step['for']).toBe('projects.data')
+    })
   })
 
   // -- Required field validation --
@@ -247,6 +282,7 @@ steps:
       const yaml = `
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -260,6 +296,7 @@ steps:
 name: ""
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -273,6 +310,7 @@ steps:
 name: "   "
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -321,7 +359,8 @@ steps: "not an array"
       const yaml = `
 name: test-recipe
 steps:
-  - action: "GET /v2/projects"
+  - type: api
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
@@ -334,6 +373,7 @@ steps:
 name: test-recipe
 steps:
   - id: ""
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -347,8 +387,10 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
   - id: step1
+    type: api
     action: "GET /v2/signals"
 `
       const err = expectValidationError(yaml)
@@ -369,15 +411,46 @@ steps:
       )
     })
 
-    it('should throw when API step is missing action', () => {
+    it('should throw when step is missing type field', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Step must have a non-empty "action" string'),
+        expect.stringContaining('Every step requires type: api or type: agent'),
+      )
+    })
+
+    it('should throw when step has unknown type value', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: transform
+    action: "GET /v2/projects"
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('Unknown step type "transform"'),
+      )
+    })
+
+    it('should throw when type: api step is missing action', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: api
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('type: api'),
+      )
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('action'),
       )
     })
 
@@ -393,7 +466,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Agent step must have a context array'),
+        expect.stringContaining('context'),
       )
     })
 
@@ -410,11 +483,11 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Agent step must have an instructions string'),
+        expect.stringContaining('instructions'),
       )
     })
 
-    it('should accept deprecated task as instructions (backward compat)', () => {
+    it('should reject agent step using deprecated task field without instructions', () => {
       const yaml = `
 name: test-recipe
 steps:
@@ -426,9 +499,11 @@ steps:
     returns:
       summary: string
 `
-      const recipe = parseRecipe(yaml)
-      const agentStep = recipe.steps[0] as AgentStep
-      expect(agentStep.instructions).toBe('Analyze')
+      // task is no longer a recognized field on agent steps; instructions is required
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('instructions'),
+      )
     })
 
     it('should throw when agent step is missing returns', () => {
@@ -443,7 +518,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Agent step must have a returns object'),
+        expect.stringContaining('returns'),
       )
     })
 
@@ -461,7 +536,7 @@ steps:
 `
       const err = expectValidationError(yaml)
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Agent step must have a returns object'),
+        expect.stringContaining('returns'),
       )
     })
 
@@ -477,30 +552,67 @@ steps:
       expect(err.issues.length).toBeGreaterThanOrEqual(3)
     })
 
-    it('should throw when foreach step is missing action', () => {
+    it('should throw when for: value is not a string', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: api
+    for: 123
+    action: "GET /v2/projects"
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('for'),
+      )
+    })
+
+    it('should throw when for: value is an empty string', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: api
+    for: ""
+    action: "GET /v2/projects"
+`
+      const err = expectValidationError(yaml)
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('for'),
+      )
+    })
+
+    it('should fail when old foreach: syntax is used without type', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: step1
     foreach: "prev.data"
-`
-      const err = expectValidationError(yaml)
-      expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Step must have a non-empty "action" string'),
-      )
-    })
-
-    it('should throw when foreach value is not a string', () => {
-      const yaml = `
-name: test-recipe
-steps:
-  - id: step1
-    foreach: 123
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
+      // Without explicit type, the parser rejects the step
       expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('foreach must be a string'),
+        expect.stringContaining('Every step requires type: api or type: agent'),
+      )
+    })
+
+    it('should fail when old input: / standalone transform step syntax is used', () => {
+      const yaml = `
+name: test-recipe
+steps:
+  - id: signals
+    type: api
+    action: "GET /v2/signals"
+  - id: filtered
+    input: signals
+    transform:
+      select: [id, name]
+`
+      const err = expectValidationError(yaml)
+      // Without explicit type, the parser rejects the step
+      expect(issueMessages(err)).toContainEqual(
+        expect.stringContaining('Every step requires type: api or type: agent'),
       )
     })
   })
@@ -513,7 +625,9 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
   - id: step2
+    type: api
 `
       const err = expectValidationError(yaml)
       // Both steps missing action
@@ -526,7 +640,8 @@ steps:
     it('should collect issues from both top-level and step validation', () => {
       const yaml = `
 steps:
-  - action: "GET /v2/projects"
+  - type: api
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       // Missing name + step missing id
@@ -555,6 +670,7 @@ params:
     default: false
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -576,6 +692,7 @@ params:
     type: object
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -590,6 +707,7 @@ name: test-recipe
 params: "not an object"
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -606,6 +724,7 @@ params:
   - limit
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -621,6 +740,7 @@ params:
   token: "string"
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -634,6 +754,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -649,6 +770,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 hints:
   combine:
@@ -670,6 +792,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 hints:
   combine: "step1"
@@ -685,6 +808,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 hints:
   combine:
@@ -701,6 +825,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 hints:
   key: 123
@@ -716,6 +841,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 hints:
   include: "name"
@@ -731,6 +857,7 @@ hints:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 hints: "not an object"
 `
@@ -745,6 +872,7 @@ hints: "not an object"
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -760,6 +888,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 analysis:
   instructions: "Summarize the data"
@@ -776,6 +905,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 analysis:
   instructions: "Summarize the data"
@@ -791,6 +921,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 analysis:
   instructions: "Summarize"
@@ -806,6 +937,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 analysis:
   instructions: 123
@@ -821,6 +953,7 @@ analysis:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 analysis: "not an object"
 `
@@ -835,6 +968,7 @@ analysis: "not an object"
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const recipe = parseRecipe(yaml)
@@ -850,6 +984,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     params:
       limit: 50
@@ -867,6 +1002,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample:
@@ -886,6 +1022,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample:
@@ -906,6 +1043,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       select: [id, name, score]
@@ -926,6 +1064,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample:
@@ -939,95 +1078,25 @@ steps:
       expect(step.transform!.sample!.guaranteePercent).toBeUndefined()
     })
 
-    it('should parse transform block on foreach step', () => {
+    it('should parse transform block on API step with for: modifier', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: details
-    foreach: "projects.data"
-    action: "GET /v2/projects/{{item.id}}"
+    type: api
+    for: "projects.data"
+    action: "GET /v2/projects/{item.id}"
     transform:
       select: [id, name]
 `
       const recipe = parseRecipe(yaml)
-      const step = recipe.steps[1] as ForeachStep
+      const step = recipe.steps[1] as ApiStep
+      expect(step['for']).toBe('projects.data')
       expect(step.transform).toBeDefined()
       expect(step.transform!.select).toEqual(['id', 'name'])
-    })
-
-    it('should parse standalone transform step with input and transform', () => {
-      const yaml = `
-name: test-recipe
-steps:
-  - id: signals
-    action: "GET /v2/signals"
-    params:
-      limit: 50
-  - id: filtered
-    input: signals
-    transform:
-      select: [id, name]
-`
-      const recipe = parseRecipe(yaml)
-      expect(recipe.steps).toHaveLength(2)
-      const step = recipe.steps[1] as TransformStep
-      expect(step.id).toBe('filtered')
-      expect(step.input).toBe('signals')
-      expect(step.transform).toBeDefined()
-      expect(step.transform.select).toEqual(['id', 'name'])
-    })
-
-    it('should throw when transform step is missing transform block', () => {
-      const yaml = `
-name: test-recipe
-steps:
-  - id: signals
-    action: "GET /v2/signals"
-  - id: filtered
-    input: signals
-`
-      const err = expectValidationError(yaml)
-      expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Transform step must have a transform block'),
-      )
-    })
-
-    it('should throw when transform step has an action', () => {
-      const yaml = `
-name: test-recipe
-steps:
-  - id: signals
-    action: "GET /v2/signals"
-  - id: filtered
-    input: signals
-    action: "GET /v2/other"
-    transform:
-      select: [id]
-`
-      const err = expectValidationError(yaml)
-      expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Transform step (with input) cannot have an action'),
-      )
-    })
-
-    it('should throw when transform step has foreach', () => {
-      const yaml = `
-name: test-recipe
-steps:
-  - id: signals
-    action: "GET /v2/signals"
-  - id: filtered
-    input: signals
-    foreach: "signals.data"
-    transform:
-      select: [id]
-`
-      const err = expectValidationError(yaml)
-      expect(issueMessages(err)).toContainEqual(
-        expect.stringContaining('Transform step (with input) cannot have foreach'),
-      )
     })
 
     it('should throw when select is not an array', () => {
@@ -1035,6 +1104,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       select: "not-an-array"
@@ -1050,6 +1120,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample: {}
@@ -1065,6 +1136,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample:
@@ -1081,6 +1153,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample:
@@ -1098,6 +1171,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample:
@@ -1116,6 +1190,7 @@ steps:
 name: test-recipe
 steps:
   - id: signals
+    type: api
     action: "GET /v2/signals"
     transform:
       sample:
@@ -1133,6 +1208,7 @@ steps:
 name: test-recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
     params:
       limit: 10
@@ -1144,20 +1220,22 @@ steps:
       expect(step.transform).toBeUndefined()
     })
 
-    it('should still parse foreach step without transform', () => {
+    it('should still parse API step with for: without transform', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: details
-    foreach: "projects.data"
-    action: "GET /v2/projects/{{item.id}}"
+    type: api
+    for: "projects.data"
+    action: "GET /v2/projects/{item.id}"
 `
       const recipe = parseRecipe(yaml)
       expect(recipe.steps).toHaveLength(2)
-      const step = recipe.steps[1] as ForeachStep
-      expect(step.foreach).toBe('projects.data')
+      const step = recipe.steps[1] as ApiStep
+      expect(step['for']).toBe('projects.data')
       expect(step.transform).toBeUndefined()
     })
   })
@@ -1170,6 +1248,7 @@ steps:
 name: test-recipe
 steps:
   - id: price
+    type: api
     action: ohlc
     source: coingecko
     params:
@@ -1182,14 +1261,16 @@ steps:
       expect(step.fallback).toBe('Pull 30-day OHLC price data from CoinGecko for bitcoin')
     })
 
-    it('should parse fallback on foreach step', () => {
+    it('should parse fallback on API step with for: modifier', () => {
       const yaml = `
 name: test-recipe
 steps:
   - id: projects
+    type: api
     action: projects
   - id: prices
-    foreach: "projects.data"
+    type: api
+    for: "projects.data"
     action: ohlc
     source: coingecko
     params:
@@ -1198,7 +1279,7 @@ steps:
     fallback: "Pull 30-day price data for each project"
 `
       const recipe = parseRecipe(yaml)
-      const step = recipe.steps[1] as ForeachStep
+      const step = recipe.steps[1] as ApiStep
       expect(step.fallback).toBe('Pull 30-day price data for each project')
     })
 
@@ -1207,6 +1288,7 @@ steps:
 name: test-recipe
 steps:
   - id: price
+    type: api
     action: ohlc
     source: coingecko
     params:
@@ -1222,6 +1304,7 @@ steps:
 name: test-recipe
 steps:
   - id: price
+    type: api
     action: ohlc
     source: coingecko
     fallback: 42
@@ -1282,6 +1365,7 @@ name: test-recipe
 version: true
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -1300,6 +1384,7 @@ name: test-recipe
 description: 123
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
@@ -1318,6 +1403,7 @@ name: test-recipe
 tier: 123
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
 `
       // tier is no longer a recognized field, so non-string values are simply ignored
@@ -1332,7 +1418,8 @@ steps:
     it('should have an issues array with path and message', () => {
       const yaml = `
 steps:
-  - action: "GET /v2/projects"
+  - type: api
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(err.issues).toBeInstanceOf(Array)
@@ -1348,7 +1435,8 @@ steps:
     it('should report issue count in the error message', () => {
       const yaml = `
 steps:
-  - action: "GET /v2/projects"
+  - type: api
+    action: "GET /v2/projects"
 `
       const err = expectValidationError(yaml)
       expect(err.message).toContain('issue')
@@ -1365,21 +1453,44 @@ steps:
 // -- Step type guards (smoke test) --
 
 describe('step type guards', () => {
-  const steps = {
-    api: { id: 'api1', action: 'GET /v2/projects' } as ApiStep,
-    foreach: { id: 'foreach1', foreach: 'api1.data', action: 'GET /v2/projects/{{item.id}}' } as ForeachStep,
-    agent: { id: 'agent1', type: 'agent', context: ['api1'], instructions: 'Analysis step', returns: { summary: 'string' } } as AgentStep,
-    transform: { id: 'transform1', input: 'api1', transform: { select: ['id', 'name'] } } as TransformStep,
-  }
+  const apiStep: ApiStep = { id: 'api1', type: 'api', action: 'GET /v2/projects' }
+  const apiStepWithFor: ApiStep = { id: 'foreach1', type: 'api', 'for': 'api1.data', action: 'GET /v2/projects/{item.id}' }
+  const agentStep: AgentStep = { id: 'agent1', type: 'agent', context: ['api1'], instructions: 'Analysis step', returns: { summary: 'string' } }
+  const agentStepWithFor: AgentStep = { id: 'pagent1', type: 'agent', 'for': 'api1.data', context: ['api1'], instructions: 'Analyze each', returns: { summary: 'string' } }
 
-  it.each([
-    ['isAgentStep', isAgentStep, 'agent'],
-    ['isForeachStep', isForeachStep, 'foreach'],
-    ['isApiStep', isApiStep, 'api'],
-    ['isTransformStep', isTransformStep, 'transform'],
-  ] as const)('%s returns true only for %s steps', (_name, guard, trueKey) => {
-    for (const [key, step] of Object.entries(steps)) {
-      expect(guard(step)).toBe(key === trueKey)
-    }
+  it('isAgentStep returns true for agent steps', () => {
+    expect(isAgentStep(agentStep)).toBe(true)
+    expect(isAgentStep(agentStepWithFor)).toBe(true)
+    expect(isAgentStep(apiStep)).toBe(false)
+    expect(isAgentStep(apiStepWithFor)).toBe(false)
+  })
+
+  it('isApiStep returns true for api steps', () => {
+    expect(isApiStep(apiStep)).toBe(true)
+    expect(isApiStep(apiStepWithFor)).toBe(true)
+    expect(isApiStep(agentStep)).toBe(false)
+    expect(isApiStep(agentStepWithFor)).toBe(false)
+  })
+
+  it('hasForModifier returns true when for is present and non-empty', () => {
+    expect(hasForModifier(apiStepWithFor)).toBe(true)
+    expect(hasForModifier(agentStepWithFor)).toBe(true)
+  })
+
+  it('hasForModifier returns false when for is undefined', () => {
+    expect(hasForModifier(apiStep)).toBe(false)
+    expect(hasForModifier(agentStep)).toBe(false)
+  })
+
+  it('hasForModifier returns false when for is empty string', () => {
+    const emptyFor: ApiStep = { ...apiStep, 'for': '' }
+    expect(hasForModifier(emptyFor)).toBe(false)
+  })
+
+  it('isParallelAgentStep returns true only for agent steps with for', () => {
+    expect(isParallelAgentStep(agentStepWithFor)).toBe(true)
+    expect(isParallelAgentStep(agentStep)).toBe(false)
+    expect(isParallelAgentStep(apiStep)).toBe(false)
+    expect(isParallelAgentStep(apiStepWithFor)).toBe(false)
   })
 })

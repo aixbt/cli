@@ -432,6 +432,7 @@ version: "1.0"
 description: Simple test
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
 
@@ -441,8 +442,10 @@ version: "1.0"
 description: Two steps
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: signals
+    type: api
     action: "GET /v2/signals"
 `
 
@@ -452,8 +455,10 @@ version: "1.0"
 description: Steps with variable references
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: signals
+    type: api
     action: "GET /v2/signals"
     params:
       projectIds: "{projects.data[*].id}"
@@ -465,6 +470,7 @@ version: "1.0"
 description: Recipe with agent step
 steps:
   - id: surging
+    type: api
     action: "GET /v2/projects"
     params:
       momentum: rising
@@ -475,6 +481,7 @@ steps:
     returns:
       projectIds: "string[]"
   - id: deep
+    type: api
     action: "GET /v2/signals"
 `
 
@@ -491,6 +498,7 @@ params:
     default: 10
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
     params:
       chain: "{params.chain}"
@@ -503,8 +511,10 @@ version: "1.0"
 description: Recipe with agent step at the end
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: signals
+    type: api
     action: "GET /v2/signals"
   - id: analyze
     type: agent
@@ -520,6 +530,7 @@ version: "1.0"
 description: Recipe with two agent steps
 steps:
   - id: surging
+    type: api
     action: "GET /v2/projects"
   - id: filter
     type: agent
@@ -528,6 +539,7 @@ steps:
     returns:
       projectIds: "string[]"
   - id: signals
+    type: api
     action: "GET /v2/signals"
     params:
       projectIds: "{filter.data.projectIds}"
@@ -538,6 +550,7 @@ steps:
     returns:
       summary: "string"
   - id: enrichment
+    type: api
     action: "GET /v2/projects"
 `
 
@@ -552,8 +565,10 @@ analysis:
   instructions: "Summarize the data"
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: signals
+    type: api
     action: "GET /v2/signals"
 `
 
@@ -1380,6 +1395,7 @@ params:
     type: string
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
     params:
       chain: "{params.chain}"
@@ -1411,9 +1427,11 @@ version: "1.0"
 description: Foreach test recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: momentum
-    foreach: projects.data
+    type: api
+    for: projects.data
     action: "GET /v2/projects/{item.id}/momentum"
 `
 
@@ -1423,9 +1441,11 @@ version: "1.0"
 description: Foreach with params test
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: details
-    foreach: projects.data
+    type: api
+    for: projects.data
     action: "GET /v2/projects/{item.id}"
     params:
       chain: "{item.chain}"
@@ -1674,6 +1694,7 @@ params:
     required: true
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
       mockGet.mockResolvedValueOnce(mockApiResponse([]))
@@ -1698,6 +1719,7 @@ params:
     required: true
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
       try {
@@ -1726,6 +1748,7 @@ params:
     default: base
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
       mockGet.mockResolvedValueOnce(mockApiResponse([]))
@@ -1753,6 +1776,7 @@ params:
     required: true
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
       try {
@@ -1780,6 +1804,7 @@ params:
     type: string
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
       mockGet.mockResolvedValueOnce(mockApiResponse([]))
@@ -1794,143 +1819,9 @@ steps:
     })
   })
 
-  // -- Transform step execution --
-
-  describe('transform step execution', () => {
-    const TRANSFORM_SELECT_RECIPE = `
-name: transform-select
-version: "1.0"
-description: Transform step with select
-steps:
-  - id: projects
-    action: "GET /v2/projects"
-  - id: projected
-    input: projects
-    transform:
-      select: [id, name]
-`
-
-    const TRANSFORM_SAMPLE_RECIPE = `
-name: transform-sample
-version: "1.0"
-description: Transform step with sample
-steps:
-  - id: projects
-    action: "GET /v2/projects"
-  - id: sampled
-    input: projects
-    transform:
-      sample:
-        count: 2
-`
-
-    const TRANSFORM_CHAINED_RECIPE = `
-name: transform-chained
-version: "1.0"
-description: Chained transform steps
-steps:
-  - id: projects
-    action: "GET /v2/projects"
-  - id: sampled
-    input: projects
-    transform:
-      sample:
-        count: 3
-  - id: projected
-    input: sampled
-    transform:
-      select: [id]
-`
-
-    const TRANSFORM_MISSING_INPUT_RECIPE = `
-name: transform-missing
-version: "1.0"
-description: Transform with missing input
-steps:
-  - id: projected
-    input: nonexistent
-    transform:
-      select: [id]
-`
-
-    it('should apply select transform to prior step data', async () => {
-      const projectsData = [
-        { id: 'p1', name: 'Alpha', extra: 'x', score: 100 },
-        { id: 'p2', name: 'Beta', extra: 'y', score: 200 },
-      ]
-      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
-
-      const result = await executeRecipe({
-        yaml: TRANSFORM_SELECT_RECIPE,
-        params: {},
-        clientOptions: {},
-      })
-
-      expect(result.status).toBe('complete')
-      const data = (result as { data: Record<string, unknown> }).data
-      expect(data.projected).toEqual([
-        { id: 'p1', name: 'Alpha' },
-        { id: 'p2', name: 'Beta' },
-      ])
-    })
-
-    it('should apply sample transform to prior step data', async () => {
-      const projectsData = Array.from({ length: 10 }, (_, i) => ({
-        id: `p${i}`,
-        name: `Project ${i}`,
-      }))
-      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
-
-      const result = await executeRecipe({
-        yaml: TRANSFORM_SAMPLE_RECIPE,
-        params: {},
-        clientOptions: {},
-      })
-
-      expect(result.status).toBe('complete')
-      const data = (result as { data: Record<string, unknown> }).data
-      const sampled = data.sampled as unknown[]
-      expect(sampled).toHaveLength(2)
-    })
-
-    it('should throw validation error when transform input references unknown step', async () => {
-      try {
-        await executeRecipe({
-          yaml: TRANSFORM_MISSING_INPUT_RECIPE,
-          params: {},
-          clientOptions: {},
-        })
-        expect.fail('Expected CliError to be thrown')
-      } catch (err) {
-        expect(err).toBeInstanceOf(CliError)
-        expect((err as CliError).code).toBe('RECIPE_VALIDATION_ERROR')
-      }
-    })
-
-    it('should chain transform steps: sample then select on sampled output', async () => {
-      const projectsData = Array.from({ length: 10 }, (_, i) => ({
-        id: `p${i}`,
-        name: `Project ${i}`,
-        extra: `data-${i}`,
-      }))
-      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
-
-      const result = await executeRecipe({
-        yaml: TRANSFORM_CHAINED_RECIPE,
-        params: {},
-        clientOptions: {},
-      })
-
-      expect(result.status).toBe('complete')
-      const data = (result as { data: Record<string, unknown> }).data
-      const projected = data.projected as Record<string, unknown>[]
-      expect(projected).toHaveLength(3)
-      // Each item should only have id (select stripped name and extra)
-      for (const item of projected) {
-        expect(Object.keys(item)).toEqual(['id'])
-      }
-    })
-  })
+  // -- Inline transform on API step execution --
+  // Note: standalone TransformStep (with input:) was eliminated in the step type redesign.
+  // Transforms are now only inline modifiers on API steps.
 
   // -- Per-iteration transforms on foreach --
 
@@ -1941,9 +1832,11 @@ version: "1.0"
 description: Foreach with per-iteration select
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: details
-    foreach: projects.data
+    type: api
+    for: projects.data
     action: "GET /v2/projects/{item.id}"
     transform:
       select: [id, status]
@@ -1955,9 +1848,11 @@ version: "1.0"
 description: Foreach with per-iteration sample
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
   - id: signals
-    foreach: projects.data
+    type: api
+    for: projects.data
     action: "GET /v2/projects/{item.id}/signals"
     transform:
       sample:
@@ -2031,6 +1926,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 150
@@ -2068,6 +1964,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 50
@@ -2095,6 +1992,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
 `
       mockGet.mockResolvedValueOnce(mockApiResponse(makeItems(10)))
@@ -2116,6 +2014,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 150
@@ -2148,6 +2047,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 100
@@ -2188,6 +2088,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 100
@@ -2220,6 +2121,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
 `
       mockGet.mockRejectedValueOnce(new PaymentRequiredError({ detail: 'pay up' }))
@@ -2242,6 +2144,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
 `
       mockGet.mockRejectedValueOnce(new TypeError('fetch failed'))
@@ -2266,6 +2169,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 100
@@ -2320,6 +2224,7 @@ version: "1.0"
 description: test
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 80
@@ -2360,6 +2265,7 @@ version: "1.0"
 description: API step with select transform
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
     transform:
       select: [id, name]
@@ -2371,6 +2277,7 @@ version: "1.0"
 description: API step with sample transform
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
     transform:
       sample:
@@ -2430,19 +2337,18 @@ steps:
       metrics: { usd: Math.random() * 100, volume: Math.random() * 1000 },
     })
 
-    it('should paginate API call then apply sample + select via transform step', async () => {
+    it('should paginate API call then apply inline sample + select transform', async () => {
       const PIPELINE_RECIPE = `
 name: signal-analysis
 version: "1.0"
 description: Paginate, sample, and project signals
 steps:
   - id: signals
+    type: api
     action: /v2/signals
     params:
       limit: 100
       since: -24h
-  - id: filtered
-    input: signals
     transform:
       sample:
         count: 20
@@ -2476,16 +2382,12 @@ steps:
 
       const data = (result as { data: Record<string, unknown> }).data
 
-      // Original signals step has all 100 items from both pages
-      const signals = data.signals as unknown[]
-      expect(signals).toHaveLength(100)
-
-      // Transform step sampled down to exactly 20 items
-      const filtered = data.filtered as Record<string, unknown>[]
-      expect(filtered).toHaveLength(20)
+      // The signals step has been sampled down to exactly 20 items and projected
+      const signals = data.signals as Record<string, unknown>[]
+      expect(signals).toHaveLength(20)
 
       // Select projection: each item has ONLY id, name, category
-      for (const item of filtered) {
+      for (const item of signals) {
         const keys = Object.keys(item).sort()
         expect(keys).toEqual(['category', 'id', 'name'])
 

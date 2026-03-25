@@ -101,9 +101,8 @@ describe('writeDataFiles', () => {
 // -- getObservableSteps --
 
 describe('getObservableSteps', () => {
-  const makeApiStep = (id: string): RecipeStep => ({ id, action: 'signals:list' }) as RecipeStep
-  const makeAgentStep = (id: string): RecipeStep => ({ id, type: 'agent', instructions: '', returns: {} }) as RecipeStep
-  const makeTransformStep = (id: string): RecipeStep => ({ id, input: 'signals' }) as RecipeStep
+  const makeApiStep = (id: string): RecipeStep => ({ id, type: 'api', action: 'signals:list' }) as RecipeStep
+  const makeAgentStep = (id: string): RecipeStep => ({ id, type: 'agent', instructions: '', returns: {}, context: [] }) as RecipeStep
 
   it('includes API steps with data', () => {
     const steps: RecipeStep[] = [makeApiStep('signals'), makeApiStep('projects')]
@@ -128,16 +127,6 @@ describe('getObservableSteps', () => {
   it('skips agent steps', () => {
     const steps: RecipeStep[] = [makeApiStep('signals'), makeAgentStep('picks')]
     const data = { signals: [1], picks: [2] }
-
-    const result = getObservableSteps(data, steps)
-
-    expect(result).toHaveLength(1)
-    expect(result[0].stepId).toBe('signals')
-  })
-
-  it('skips transform steps', () => {
-    const steps: RecipeStep[] = [makeApiStep('signals'), makeTransformStep('filtered')]
-    const data = { signals: [1], filtered: [2] }
 
     const result = getObservableSteps(data, steps)
 

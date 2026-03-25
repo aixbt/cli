@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path'
 import { globSync } from 'tinyglobby'
 import { parse as parseYaml } from 'yaml'
 import type { Recipe, RecipeAwaitingAgent } from '../types.js'
-import { isAgentStep, isParallelAgentStep, isForeachStep, isTransformStep } from '../types.js'
+import { isAgentStep, isParallelAgentStep, isApiStep, hasForModifier } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { executeRecipe } from '../lib/recipe/engine.js'
 import { measureRecipe } from '../lib/recipe/measure.js'
@@ -133,7 +133,7 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
   output.success(`${file} is valid`)
 
   const agentSteps = recipe.steps.filter(isAgentStep).map((s) => s.id)
-  const foreachSteps = recipe.steps.filter(isForeachStep).map((s) => s.id)
+  const forSteps = recipe.steps.filter(hasForModifier).map((s) => s.id)
   const paramCount = recipe.params ? Object.keys(recipe.params).length : 0
 
   output.keyValue('Recipe', recipe.name, 20)
@@ -144,8 +144,8 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
   if (agentSteps.length > 0) {
     output.keyValue('Agent steps', agentSteps.join(', '), 20)
   }
-  if (foreachSteps.length > 0) {
-    output.keyValue('Foreach steps', foreachSteps.join(', '), 20)
+  if (forSteps.length > 0) {
+    output.keyValue('Iterated steps', forSteps.join(', '), 20)
   }
   if (recipe.analysis?.instructions) {
     output.keyValue('Analysis', 'Yes', 20)
@@ -477,16 +477,13 @@ export function registerRecipeCommand(program: Command): void {
 
       const steps = parsed.steps.map((step) => {
         if (isParallelAgentStep(step)) {
-          return { id: step.id, type: 'foreach' as const, action: 'agent', foreach: step.foreach, instructions: step.instructions }
+          return { id: step.id, type: 'agent' as const, for: step['for'], instructions: step.instructions }
         }
         if (isAgentStep(step)) {
           return { id: step.id, type: 'agent' as const, instructions: step.instructions }
         }
-        if (isForeachStep(step)) {
-          return { id: step.id, type: 'foreach' as const, action: step.action, source: step.source }
-        }
-        if (isTransformStep(step)) {
-          return { id: step.id, type: 'transform' as const, input: step.input }
+        if (hasForModifier(step)) {
+          return { id: step.id, type: 'api' as const, action: step.action, source: step.source, for: step['for'] }
         }
         return { id: step.id, type: 'api' as const, action: step.action, source: step.source }
       })
@@ -536,14 +533,12 @@ export function registerRecipeCommand(program: Command): void {
       for (const step of parsed.steps) {
         if (isParallelAgentStep(step)) {
           const ctxLabel = step.context.length > 0 ? ` ${output.fmt.dim(`[${step.context.join(', ')}]`)}` : ''
-          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} agent${ctxLabel}\n${output.fmt.dim(step.instructions.trim())}`, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim('for:')} ${output.fmt.dim(step['for'])}${ctxLabel}\n${output.fmt.dim(step.instructions.trim())}`, 20)
         } else if (isAgentStep(step)) {
           output.keyValue(step.id, `${output.fmt.cyan('agent')} ${output.fmt.dim(step.instructions.trim())}`, 20)
-        } else if (isForeachStep(step)) {
+        } else if (hasForModifier(step)) {
           const label = step.source ? `${step.action} (${step.source})` : step.action
-          output.keyValue(step.id, `${output.fmt.cyan('foreach')} ${output.fmt.dim(step.foreach)} ${output.fmt.green('→')} ${output.fmt.dim(label)}`, 20)
-        } else if (isTransformStep(step)) {
-          output.keyValue(step.id, `${output.fmt.cyan('transform')} ${output.fmt.dim(step.input)}`, 20)
+          output.keyValue(step.id, `${output.fmt.cyan('api')} ${output.fmt.dim('for:')} ${output.fmt.dim(step['for'])} ${output.fmt.green('→')} ${output.fmt.dim(label)}`, 20)
         } else {
           const label = step.source ? `${step.action} (${step.source})` : step.action
           output.keyValue(step.id, `${output.fmt.cyan('api')} ${output.fmt.dim(label)}`, 20)

@@ -1,7 +1,7 @@
 import { parse as parseYaml } from 'yaml'
 import { RecipeValidationError } from '../errors.js'
 import { AGENT_RETURN_TYPES } from '../../types.js'
-import type { Recipe, RecipeStep, RecipeParam, ValidationIssue, TransformBlock, SampleTransform } from '../../types.js'
+import type { Recipe, RecipeStep, RecipeParam, ValidationIssue, TransformBlock, SampleTransform, ApiStep, AgentStep } from '../../types.js'
 
 function validateTransformBlock(
   raw: unknown,
@@ -128,6 +128,93 @@ function validateTransformBlock(
   return result
 }
 
+function validateApiStep(
+  step: Record<string, unknown>,
+  stepPath: string,
+  forValue: string | undefined,
+  issues: ValidationIssue[],
+): ApiStep | null {
+  // Must have action
+  if (typeof step.action !== 'string' || step.action.trim() === '') {
+    issues.push({
+      path: `${stepPath}.action`,
+      message: `Step "${step.id}" has type: api but is missing required field "action"`,
+    })
+  }
+
+  // Validate source if present
+  if ('source' in step && step.source !== undefined) {
+    if (typeof step.source !== 'string') {
+      issues.push({ path: `${stepPath}.source`, message: 'source must be a string' })
+    }
+  }
+
+  const transform = validateTransformBlock(step.transform, `${stepPath}.transform`, issues)
+
+  return {
+    id: step.id as string,
+    type: 'api' as const,
+    action: typeof step.action === 'string' ? step.action : '',
+    source: typeof step.source === 'string' ? step.source : undefined,
+    params: typeof step.params === 'object' && step.params !== null
+      ? (step.params as Record<string, unknown>)
+      : undefined,
+    ...(transform ? { transform } : {}),
+    ...(forValue ? { 'for': forValue } : {}),
+    ...(typeof step.fallback === 'string' ? { fallback: step.fallback } : {}),
+  }
+}
+
+function validateAgentStep(
+  step: Record<string, unknown>,
+  stepPath: string,
+  forValue: string | undefined,
+  issues: ValidationIssue[],
+): AgentStep | null {
+  if (!Array.isArray(step.context)) {
+    issues.push({
+      path: `${stepPath}.context`,
+      message: `Step "${step.id}" has type: agent but is missing required field "context" (must be an array)`,
+    })
+  }
+
+  const instructions = typeof step.instructions === 'string' ? step.instructions : ''
+  if (!instructions) {
+    issues.push({
+      path: `${stepPath}.instructions`,
+      message: `Step "${step.id}" has type: agent but is missing required field "instructions"`,
+    })
+  }
+
+  if (typeof step.returns !== 'object' || step.returns === null || Array.isArray(step.returns)) {
+    issues.push({
+      path: `${stepPath}.returns`,
+      message: `Step "${step.id}" has type: agent but is missing required field "returns" (must be an object)`,
+    })
+  } else {
+    for (const [key, value] of Object.entries(step.returns as Record<string, unknown>)) {
+      if (typeof value !== 'string' || !(AGENT_RETURN_TYPES as readonly string[]).includes(value)) {
+        issues.push({
+          path: `${stepPath}.returns.${key}`,
+          message: `Invalid return type "${value}". Must be one of: ${AGENT_RETURN_TYPES.join(', ')}`,
+        })
+      }
+    }
+  }
+
+  return {
+    id: step.id as string,
+    type: 'agent' as const,
+    context: Array.isArray(step.context) ? (step.context as string[]) : [],
+    instructions,
+    returns:
+      typeof step.returns === 'object' && step.returns !== null && !Array.isArray(step.returns)
+        ? (step.returns as Record<string, string>)
+        : {},
+    ...(forValue ? { 'for': forValue } : {}),
+  }
+}
+
 function validateStep(
   raw: unknown,
   index: number,
@@ -156,164 +243,33 @@ function validateStep(
 
   const stepPath = `steps[${index}] (${step.id})`
 
-  // Determine step type
-  if (step.type === 'agent') {
-    // Agent step validation
-    if (!Array.isArray(step.context)) {
-      issues.push({ path: `${stepPath}.context`, message: 'Agent step must have a context array' })
-    }
+  // Require explicit type
+  if (step.type !== 'api' && step.type !== 'agent') {
+    const hint = step.type === undefined
+      ? 'Every step requires type: api or type: agent'
+      : `Unknown step type "${step.type}". Use type: api or type: agent`
+    issues.push({ path: `${stepPath}.type`, message: hint })
+    return null
+  }
 
-    // Backward compat: merge task into instructions if present
-    let instructions = typeof step.instructions === 'string' ? step.instructions : ''
-    if (typeof step.task === 'string') {
-      if (instructions) {
-        instructions = `${instructions}\n\n${step.task}`
-      } else {
-        instructions = step.task
-      }
-      console.error(`warning: ${stepPath}: "task" is deprecated, use "instructions" instead`)
-    }
-
-    if (!instructions) {
+  // Validate optional for: modifier (shared by both types)
+  let forValue: string | undefined
+  if ('for' in step && step.for !== undefined) {
+    if (typeof step.for !== 'string' || (step.for as string).trim() === '') {
       issues.push({
-        path: `${stepPath}.instructions`,
-        message: 'Agent step must have an instructions string',
-      })
-    }
-    if (typeof step.returns !== 'object' || step.returns === null || Array.isArray(step.returns)) {
-      issues.push({
-        path: `${stepPath}.returns`,
-        message: 'Agent step must have a returns object',
+        path: `${stepPath}.for`,
+        message: `Step "${step.id}" has type: ${step.type} with an invalid for: value (must be a non-empty string)`,
       })
     } else {
-      for (const [key, value] of Object.entries(step.returns as Record<string, unknown>)) {
-        if (typeof value !== 'string' || !(AGENT_RETURN_TYPES as readonly string[]).includes(value)) {
-          issues.push({
-            path: `${stepPath}.returns.${key}`,
-            message: `Invalid return type "${value}". Must be one of: ${AGENT_RETURN_TYPES.join(', ')}`,
-          })
-        }
-      }
-    }
-
-    // Validate optional foreach on agent steps (parallel agent)
-    let agentForeach: string | undefined
-    if ('foreach' in step && step.foreach !== undefined) {
-      if (typeof step.foreach !== 'string' || (step.foreach as string).trim() === '') {
-        issues.push({
-          path: `${stepPath}.foreach`,
-          message: 'Agent foreach must be a non-empty string',
-        })
-      } else {
-        agentForeach = step.foreach as string
-      }
-    }
-
-    return {
-      id: step.id,
-      type: 'agent' as const,
-      context: Array.isArray(step.context) ? (step.context as string[]) : [],
-      instructions,
-      returns:
-        typeof step.returns === 'object' && step.returns !== null && !Array.isArray(step.returns)
-          ? (step.returns as Record<string, string>)
-          : {},
-      ...(agentForeach ? { foreach: agentForeach } : {}),
+      forValue = step.for as string
     }
   }
 
-  // Transform step (has input, no endpoint)
-  if ('input' in step && step.input !== undefined) {
-    if (typeof step.input !== 'string' || (step.input as string).trim() === '') {
-      issues.push({
-        path: `${stepPath}.input`,
-        message: 'input must be a non-empty string referencing a step id',
-      })
-    }
-
-    if ('action' in step && step.action !== undefined) {
-      issues.push({
-        path: stepPath,
-        message: 'Transform step (with input) cannot have an action',
-      })
-    }
-
-    if ('foreach' in step && step.foreach !== undefined) {
-      issues.push({
-        path: stepPath,
-        message: 'Transform step (with input) cannot have foreach',
-      })
-    }
-
-    const transform = validateTransformBlock(step.transform, `${stepPath}.transform`, issues)
-    if (step.transform === undefined || step.transform === null) {
-      issues.push({
-        path: `${stepPath}.transform`,
-        message: 'Transform step must have a transform block',
-      })
-    }
-
-    return {
-      id: step.id,
-      input: typeof step.input === 'string' ? step.input : '',
-      transform: transform ?? {},
-    }
+  if (step.type === 'agent') {
+    return validateAgentStep(step, stepPath, forValue, issues)
   }
 
-  // API or foreach step — must have action
-  const hasAction = typeof step.action === 'string' && step.action.trim() !== ''
-
-  if (!hasAction) {
-    issues.push({
-      path: `${stepPath}.action`,
-      message: 'Step must have a non-empty "action" string',
-    })
-  }
-
-  // Validate source if present
-  if ('source' in step && step.source !== undefined) {
-    if (typeof step.source !== 'string') {
-      issues.push({
-        path: `${stepPath}.source`,
-        message: 'source must be a string',
-      })
-    }
-  }
-
-  const transform = validateTransformBlock(step.transform, `${stepPath}.transform`, issues)
-
-  if ('foreach' in step && step.foreach !== undefined) {
-    // Foreach step
-    if (typeof step.foreach !== 'string') {
-      issues.push({
-        path: `${stepPath}.foreach`,
-        message: 'foreach must be a string',
-      })
-    }
-    return {
-      id: step.id,
-      foreach: typeof step.foreach === 'string' ? step.foreach : '',
-      action: typeof step.action === 'string' ? step.action : '',
-      source: typeof step.source === 'string' ? step.source : undefined,
-      params: typeof step.params === 'object' && step.params !== null
-        ? (step.params as Record<string, unknown>)
-        : undefined,
-      ...(transform ? { transform } : {}),
-      ...(typeof step.fallback === 'string' ? { fallback: step.fallback } : {}),
-    }
-  }
-
-  // Plain API step
-  return {
-    id: step.id,
-    action: typeof step.action === 'string' ? step.action : '',
-    source: typeof step.source === 'string' ? step.source : undefined,
-    params: typeof step.params === 'object' && step.params !== null
-      ? (step.params as Record<string, unknown>)
-      : undefined,
-    ...(transform ? { transform } : {}),
-    ...(typeof step.fallback === 'string' ? { fallback: step.fallback } : {}),
-  }
+  return validateApiStep(step, stepPath, forValue, issues)
 }
 
 const VALID_PARAM_TYPES = new Set(['string', 'number', 'boolean'])

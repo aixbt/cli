@@ -375,6 +375,7 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `)
 
@@ -397,6 +398,7 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `)
 
@@ -446,6 +448,7 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `)
 
@@ -472,6 +475,7 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `)
 

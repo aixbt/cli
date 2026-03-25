@@ -5,7 +5,7 @@ import type {
   ExecutionContext, AgentStep, ForeachResult,
   RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta,
 } from '../../types.js'
-import { isForeachStep } from '../../types.js'
+import { isApiStep, hasForModifier } from '../../types.js'
 import { resolveValue, resolveExpression } from './template.js'
 import { resolveContextHints } from '../agents/context.js'
 import { estimateTokenCount } from '../tokens.js'
@@ -79,12 +79,12 @@ export function buildAwaitingAgentOutput(
 
 export function buildAwaitingParallelAgentOutput(
   ctx: ExecutionContext,
-  agentStep: AgentStep & { foreach: string },
+  agentStep: AgentStep & { 'for': string },
   originalParams: Record<string, string>,
   recipeSource?: string,
 ): RecipeAwaitingAgent {
-  // Resolve foreach items
-  const items = resolveExpression(agentStep.foreach, ctx) as unknown[]
+  // Resolve for: items
+  const items = resolveExpression(agentStep['for'], ctx) as unknown[]
 
   // Classify context steps as per-item vs shared
   const perItemContext: string[] = []
@@ -92,7 +92,7 @@ export function buildAwaitingParallelAgentOutput(
 
   for (const ref of agentStep.context) {
     const refStep = ctx.recipe.steps.find((s) => s.id === ref)
-    if (refStep && isForeachStep(refStep) && refStep.foreach === agentStep.foreach) {
+    if (refStep && isApiStep(refStep) && hasForModifier(refStep) && refStep['for'] === agentStep['for']) {
       perItemContext.push(ref)
     } else {
       sharedContext.push(ref)
@@ -133,7 +133,7 @@ export function buildAwaitingParallelAgentOutput(
 
   const parallel: ParallelAgentMeta = {
     items: items ?? [],
-    itemKey: agentStep.foreach,
+    itemKey: agentStep['for'],
     concurrency: 3,
     perItemContext,
     sharedContext,
