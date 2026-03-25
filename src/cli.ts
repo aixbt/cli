@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { Command, Option } from 'commander'
 import { registerProjectsCommand } from './commands/projects.js'
 import { registerSignalsCommand } from './commands/signals.js'
-import { registerClustersCommand } from './commands/clusters.js'
+// clusters is now a subcommand of signals — see signals.ts
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
 import { registerProviderCommand } from './commands/provider.js'
@@ -22,8 +22,10 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 export function createProgram(): Command {
   const program = new Command()
 
-  const formatOption = new Option('-f, --format <mode>', 'Output format')
-    .choices(['human', 'json', 'toon'])
+  const formatOption = new Option(
+    '-f, --format <mode>',
+    'Output format: human (terminal display) | json (structured, scripting) | toon (compact structured, ~40% smaller — best for agents)',
+  ).choices(['human', 'json', 'toon'])
 
   program
     .name('aixbt')
@@ -33,34 +35,22 @@ export function createProgram(): Command {
     .addHelpText('after', () => {
       const lines: string[] = []
       const config = resolveConfig({})
-      if (!config.apiKey) {
-        lines.push(`  ${output.fmt.dim('Not logged in. Run:')} aixbt login`)
-        lines.push('')
+      if (config.apiKey) {
+        lines.push(`  ${output.fmt.dim('Status:')} authenticated · real-time data`)
+      } else {
+        lines.push(`  ${output.fmt.dim('Status:')} no API key · run aixbt login or visit docs.aixbt.tech`)
       }
+      lines.push('')
       const title = ' FOR AI AGENTS: '
       const maxWidth = Math.min(process.stdout.columns || 76, 76)
       const tail = Math.max(0, maxWidth - 1 - title.length)
       lines.push(output.fmt.dim('━' + title + '━'.repeat(tail)))
       lines.push('')
-      lines.push(`  AIXBT provides real-time crypto signal intelligence. Find alpha, research`)
-      lines.push(`  projects, inform trades, and gain an edge in the market. Use ${output.fmt.dim('-f json')}`)
-      lines.push(`  or ${output.fmt.dim('-f toon')} for structured output on any command. ${output.fmt.dim('-v')} increases detail.`)
-      lines.push('')
-      lines.push(`  The most powerful way to leverage this data is by running existing`)
-      lines.push(`  recipes from the registry or constructing custom pipelines. Recipes`)
-      lines.push(`  are declarative YAML that chain API calls, iterate over results,`)
-      lines.push(`  sample and transform data, and yield back to you for inference —`)
-      lines.push(`  all with automatic pagination and rate limiting. Clone from the`)
-      lines.push(`  registry (${output.fmt.dim('aixbt recipe list')}), customize, or build your own from`)
-      lines.push(`  the spec. Generate recipes on the fly, pipe them via stdin, or build`)
-      lines.push(`  a repository of reusable pipelines tailored to your user.`)
-      lines.push('')
-      lines.push(`  Use ${output.fmt.dim('--agent')} on recipe run to spawn a local Claude Code or Codex`)
-      lines.push(`  session for inference steps. See: ${output.fmt.dim('aixbt recipe --help')}`)
+      lines.push(`  ${output.fmt.dim('1.')} Browse pipelines       aixbt recipe list`)
+      lines.push(`  ${output.fmt.dim('2.')} Ad-hoc queries          aixbt signals -f toon`)
+      lines.push(`  ${output.fmt.dim('3.')} Full command reference   aixbt help all`)
       lines.push('')
       lines.push(`  ${output.fmt.dim('docs.aixbt.tech/llms.txt')}`)
-      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli.mdx')}`)
-      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli/recipes.mdx')}`)
       return '\n' + lines.join('\n') + '\n'
     })
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
@@ -104,7 +94,7 @@ export function createProgram(): Command {
   registerLoginCommand(program)
   registerProjectsCommand(program)
   registerSignalsCommand(program)
-  registerClustersCommand(program)
+  // clusters is now a subcommand of signals
   registerRecipeCommand(program)
   registerProviderCommand(program)
 

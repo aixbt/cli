@@ -1,14 +1,20 @@
 import type { Command } from 'commander'
 import type { SignalData } from '../types.js'
-import { getClientOptions } from '../lib/auth.js'
+import { getClientOptions, getPublicClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 
+interface ClusterData {
+  id: string
+  name: string
+  description: string
+}
+
 export function registerSignalsCommand(program: Command): void {
-  program
+  const signals = program
     .command('signals')
-    .description('Query real-time detected signals')
+    .description('Query real-time signal intelligence')
     .option('--page <n>', 'Page number', '1')
     .option('--limit <n>', 'Results per page')
     .option('--project-ids <ids>', 'Filter by project IDs (comma-separated)')
@@ -26,6 +32,13 @@ export function registerSignalsCommand(program: Command): void {
     .option('--sort-by <field>', 'Sort by field (createdAt, reinforcedAt)', 'createdAt')
     .action(async (_opts: unknown, cmd: Command) => {
       await handleSignalList(cmd)
+    })
+
+  signals
+    .command('clusters')
+    .description('List signal clusters with IDs and names (-v for descriptions)')
+    .action(async (_opts: unknown, cmd: Command) => {
+      await handleClusters(cmd)
     })
 }
 
@@ -120,6 +133,36 @@ async function handleSignalList(cmd: Command): Promise<void> {
   output.showPagination(result.pagination, result.data.length)
 
   if (verbosity < 1) output.verboseHint('Use -v for activity details')
+}
+
+async function handleClusters(cmd: Command): Promise<void> {
+  const { clientOpts, outputFormat, verbosity } = getPublicClientOptions(cmd)
+
+  const result = await output.withSpinner(
+    'Fetching clusters...',
+    outputFormat,
+    () => get<ClusterData[]>('/v2/clusters', undefined, clientOpts),
+    'Failed to fetch clusters',
+    { silent: true },
+  )
+
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputApiResult({ data: result.data, meta: result.meta }, outputFormat)
+    return
+  }
+
+  output.cards(result.data.map((c) => ({
+    title: c.name,
+    fields: [
+      { label: 'ID', value: output.fmt.id(c.id) },
+      ...(verbosity >= 1 ? [{ label: 'Description', value: c.description }] : []),
+    ],
+  })))
+
+  if (result.data.length > 0) {
+    console.log()
+    output.dim(`${result.data.length} clusters`)
+  }
 }
 
 function filterSignalFields(s: SignalData, verbosity: number): Record<string, unknown> {

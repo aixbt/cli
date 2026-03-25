@@ -125,6 +125,7 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
       version: recipe.version,
       stepCount: recipe.steps.length,
       paramCount: recipe.params ? Object.keys(recipe.params).length : 0,
+      hint: `Run 'aixbt recipe measure ${recipe.name}' to check context token usage`,
     }, outputFormat)
     return
   }
@@ -149,6 +150,7 @@ function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: Out
   if (recipe.analysis?.instructions) {
     output.keyValue('Analysis', 'Yes', 20)
   }
+  output.hint(`Next: aixbt recipe measure ${recipe.name}`)
 }
 
 // -- Local recipe scanning --
@@ -238,15 +240,24 @@ export function registerRecipeCommand(program: Command): void {
   recipe.addHelpText('after', () => {
     return [
       '',
-      `  Recipes are multi-step analysis pipelines defined in YAML. They chain`,
-      `  API calls, assemble data, and produce structured prompts for LLM analysis.`,
+      `  Recipes are declarative YAML pipelines that chain API calls, iterate`,
+      `  over results, sample and transform data, and yield back to you for`,
+      `  inference. Clone from the registry, customize, or build your own.`,
       '',
-      `  As an agent, the most powerful way you can leverage AIXBT data is by`,
-      `  running existing recipes from the registry or constructing custom`,
-      `  pipelines for your user. Check the registry and guide to dive deeper.`,
+      `  ${output.fmt.boldWhite('Quick start')}`,
+      `  ${output.fmt.dim('Browse registry')}    aixbt recipe list`,
+      `  ${output.fmt.dim('Recipe details')}    aixbt recipe info <name>`,
+      `  ${output.fmt.dim('Run a recipe')}      aixbt recipe run <name> -f toon`,
       '',
-      `  ${output.fmt.dim('Registry')}  aixbt recipe list`,
-      `  ${output.fmt.dim('Docs')}      ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipes')}`,
+      `  ${output.fmt.boldWhite('Docs')}`,
+      `  ${output.fmt.dim('Recipe spec')}       ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipe-specification.mdx')}`,
+      `  ${output.fmt.dim('Building blocks')}   ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipe-building-blocks.mdx')}`,
+      `  ${output.fmt.dim('Guide')}             ${output.fmt.link('https://docs.aixbt.tech/builders/cli/recipes.mdx')}`,
+      '',
+      `  ${output.fmt.boldWhite('Notes')}`,
+      `  Recipes always return full data. Use ${output.fmt.dim('transform:')} on steps to control`,
+      `  output size. ${output.fmt.dim('-v')} has no effect on recipe output.`,
+      `  Use ${output.fmt.dim('-f toon')} for compact structured output (~40% smaller than json).`,
       '',
       `  ${output.fmt.boldWhite('Agent integration')}`,
       `  Use --agent to spawn an isolated inference session for recipe steps.`,
@@ -844,7 +855,7 @@ export function registerRecipeCommand(program: Command): void {
       const formatFlag = globalOpts.format as string | undefined
       if (formatFlag === 'human') {
         throw new CliError(
-          'Recipes do not support --format human. Use --format json or --format toon.',
+          'Recipes output structured data for agent consumption. Use -f json or -f toon (omit -f to default to json).',
           'INVALID_FORMAT',
         )
       }

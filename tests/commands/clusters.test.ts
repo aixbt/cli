@@ -90,7 +90,7 @@ describe('clusters commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals', 'clusters'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
@@ -113,7 +113,7 @@ describe('clusters commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals', 'clusters'], { from: 'node' })
 
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
       // Clusters endpoint takes no params
@@ -127,7 +127,7 @@ describe('clusters commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '-v', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-v', 'signals', 'clusters'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       // Card titles (cluster names)
@@ -152,7 +152,7 @@ describe('clusters commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'signals', 'clusters'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('No results')
@@ -171,7 +171,7 @@ describe('clusters commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', '--delayed', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', '--delayed', 'signals', 'clusters'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
@@ -185,7 +185,7 @@ describe('clusters commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals', 'clusters'], { from: 'node' })
 
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
       expect(headers['X-API-Key']).toBe('test-key-123')

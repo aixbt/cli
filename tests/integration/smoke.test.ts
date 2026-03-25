@@ -142,7 +142,6 @@ describe('E2E smoke tests', () => {
         expect(stripped).toContain('login')
         expect(stripped).toContain('projects')
         expect(stripped).toContain('signals')
-        expect(stripped).toContain('clusters')
         expect(stripped).toContain('recipe')
         expect(stripped).toContain('--format')
         expect(stripped).toContain('--delayed')
