@@ -4,6 +4,7 @@ import { getClientOptions, getPublicClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
+import { formatTokenCount } from '../lib/tokens.js'
 
 // -- Response types --
 
@@ -179,14 +180,25 @@ async function handleProjectList(cmd: Command): Promise<void> {
     { silent: true },
   )
 
+  const hints: string[] = []
+  if (verbosity === 0) {
+    hints.push('Use -v for details, -vv for signals')
+  } else if (verbosity === 1) {
+    hints.push('Use -vv for inline signals')
+  }
+  if (verbosity >= 2 && result.data.length > 0) {
+    hints.push(`Output: ~${formatTokenCount(result.data)} tokens. In recipes, use transform: to control what reaches agents.`)
+  }
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: result.data.map(p => filterProjectFields(p, verbosity)), meta: result.meta }, outputFormat)
+    output.outputApiResult({ data: result.data.map(p => filterProjectFields(p, verbosity)), meta: result.meta, hints }, outputFormat)
     return
   }
 
   if (verbosity >= 1) {
     output.cards(result.data.map((p) => buildProjectCard(p, verbosity)))
     output.showPagination(result.pagination, result.data.length)
+    output.printHints(hints)
 
     return
   }
@@ -206,7 +218,7 @@ async function handleProjectList(cmd: Command): Promise<void> {
   output.table(rows, PROJECT_LIST_COLUMNS)
   output.showPagination(result.pagination)
 
-  output.verboseHint()
+  output.printHints(hints)
 }
 
 async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
@@ -228,8 +240,13 @@ async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
 
   const project = result.data
 
+  const hints: string[] = []
+  if (verbosity >= 2) {
+    hints.push(`Output: ~${formatTokenCount(project)} tokens. In recipes, use transform: to control what reaches agents.`)
+  }
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: filterProjectFields(project, verbosity), meta: result.meta }, outputFormat)
+    output.outputApiResult({ data: filterProjectFields(project, verbosity), meta: result.meta, hints }, outputFormat)
     return
   }
 
@@ -238,6 +255,7 @@ async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
   const cardVerbosity = verbosity + 1
   output.cards([buildProjectCard(project, cardVerbosity)])
 
+  output.printHints(hints)
 }
 
 async function handleMomentum(id: string, cmd: Command): Promise<void> {

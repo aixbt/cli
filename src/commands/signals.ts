@@ -4,6 +4,7 @@ import { getClientOptions, getPublicClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
+import { formatTokenCount } from '../lib/tokens.js'
 
 interface ClusterData {
   id: string
@@ -88,8 +89,15 @@ async function handleSignalList(cmd: Command): Promise<void> {
     { silent: true },
   )
 
+  const hints: string[] = []
+  if (verbosity < 1) hints.push('Use -v for activity details')
+  hints.push('For pipeline analysis, try: aixbt recipe run signal_scanner -f toon')
+  if (verbosity >= 2 && result.data.length > 0) {
+    hints.push(`Output: ~${formatTokenCount(result.data)} tokens. In recipes, use transform: to control what reaches agents.`)
+  }
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: result.data.map(s => filterSignalFields(s, verbosity)), meta: result.meta }, outputFormat)
+    output.outputApiResult({ data: result.data.map(s => filterSignalFields(s, verbosity)), meta: result.meta, hints }, outputFormat)
     return
   }
 
@@ -132,7 +140,7 @@ async function handleSignalList(cmd: Command): Promise<void> {
   console.log()
   output.showPagination(result.pagination, result.data.length)
 
-  if (verbosity < 1) output.verboseHint('Use -v for activity details')
+  output.printHints(hints)
 }
 
 async function handleClusters(cmd: Command): Promise<void> {
@@ -146,8 +154,11 @@ async function handleClusters(cmd: Command): Promise<void> {
     { silent: true },
   )
 
+  const hints: string[] = []
+  if (verbosity < 1) hints.push('Use -v for cluster descriptions')
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: result.data, meta: result.meta }, outputFormat)
+    output.outputApiResult({ data: result.data, meta: result.meta, hints }, outputFormat)
     return
   }
 
@@ -163,6 +174,8 @@ async function handleClusters(cmd: Command): Promise<void> {
     console.log()
     output.dim(`${result.data.length} clusters`)
   }
+
+  output.printHints(hints)
 }
 
 function filterSignalFields(s: SignalData, verbosity: number): Record<string, unknown> {

@@ -8,14 +8,7 @@ import type {
 import { isForeachStep } from '../../types.js'
 import { resolveValue, resolveExpression } from './template.js'
 import { resolveContextHints } from '../agents/context.js'
-
-/**
- * Estimate token count from a data payload.
- * Uses byte-length heuristic (~4 chars per token for JSON/English).
- */
-export function estimateTokenCount(data: unknown): number {
-  return Math.ceil(JSON.stringify(data).length / 4)
-}
+import { estimateTokenCount } from '../tokens.js'
 
 /** Collect _fallbackNote entries from foreach results into a single notes object. */
 function collectFallbackNotes(

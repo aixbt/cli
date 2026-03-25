@@ -20,7 +20,7 @@ import { resolveProviderKey } from '../providers/config.js'
 import { AIXBT_ACTION_PATHS } from '../providers/aixbt.js'
 import { isTierSufficient } from '../providers/types.js'
 import type { ForeachResult } from '../../types.js'
-import { estimateTokenCount } from './output.js'
+import { estimateTokenCount } from '../tokens.js'
 
 // Re-export public API for backward compatibility
 export { resolveValue, resolveActionPath, resolveRelativeTime } from './template.js'
