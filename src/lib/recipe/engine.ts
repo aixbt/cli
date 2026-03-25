@@ -23,7 +23,8 @@ import type { ForeachResult } from '../../types.js'
 import { estimateTokenCount } from '../tokens.js'
 
 // Re-export public API for backward compatibility
-export { resolveValue, resolveActionPath, resolveRelativeTime } from './template.js'
+export { resolveValue, resolveActionPath } from './template.js'
+export { resolveRelativeTime } from '../date.js'
 export { applyTransforms } from '../transforms.js'
 
 // -- Debug logging --

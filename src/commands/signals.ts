@@ -5,8 +5,15 @@ import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 import { formatTokenCount } from '../lib/tokens.js'
+import { resolveDate } from '../lib/date.js'
 
 interface ClusterData {
+  id: string
+  name: string
+  description: string
+}
+
+interface SignalCategoryData {
   id: string
   name: string
   description: string
@@ -25,10 +32,10 @@ export function registerSignalsCommand(program: Command): void {
     .option('--address <address>', 'Filter by token address')
     .option('--cluster-ids <ids>', 'Filter by cluster IDs (comma-separated)')
     .option('--categories <cats>', 'Filter by categories (comma-separated)')
-    .option('--detected-after <date>', 'Detected after date (ISO 8601)')
-    .option('--detected-before <date>', 'Detected before date (ISO 8601)')
-    .option('--reinforced-after <date>', 'Reinforced after date (ISO 8601)')
-    .option('--reinforced-before <date>', 'Reinforced before date (ISO 8601)')
+    .option('--detected-after <date>', 'Detected after date (ISO 8601 or relative: -7d, -24h, -30m)')
+    .option('--detected-before <date>', 'Detected before date (ISO 8601 or relative: -7d, -24h, -30m)')
+    .option('--reinforced-after <date>', 'Reinforced after date (ISO 8601 or relative: -7d, -24h, -30m)')
+    .option('--reinforced-before <date>', 'Reinforced before date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--official', 'Show only signals with official sources')
     .option('--sort-by <field>', 'Sort by field (createdAt, reinforcedAt)', 'createdAt')
     .action(async (_opts: unknown, cmd: Command) => {
@@ -40,6 +47,13 @@ export function registerSignalsCommand(program: Command): void {
     .description('List signal clusters with IDs and names (-v for descriptions)')
     .action(async (_opts: unknown, cmd: Command) => {
       await handleClusters(cmd)
+    })
+
+  signals
+    .command('categories')
+    .description('List available signal categories')
+    .action(async (_opts: unknown, cmd: Command) => {
+      await handleCategories(cmd)
     })
 }
 
@@ -68,10 +82,10 @@ async function handleSignalList(cmd: Command): Promise<void> {
     address: opts.address as string | undefined,
     clusterIds: opts.clusterIds as string | undefined,
     categories: opts.categories as string | undefined,
-    detectedAfter: opts.detectedAfter as string | undefined,
-    detectedBefore: opts.detectedBefore as string | undefined,
-    reinforcedAfter: opts.reinforcedAfter as string | undefined,
-    reinforcedBefore: opts.reinforcedBefore as string | undefined,
+    detectedAfter: resolveDate(opts.detectedAfter as string | undefined),
+    detectedBefore: resolveDate(opts.detectedBefore as string | undefined),
+    reinforcedAfter: resolveDate(opts.reinforcedAfter as string | undefined),
+    reinforcedBefore: resolveDate(opts.reinforcedBefore as string | undefined),
     sortBy: opts.sortBy as string,
     hasOfficialSource: opts.official ? true : undefined,
   }
@@ -176,6 +190,42 @@ async function handleClusters(cmd: Command): Promise<void> {
   }
 
   output.printHints(hints)
+}
+
+const CATEGORY_COLUMNS: output.TableColumn[] = [
+  { key: 'name', header: 'Category', width: 24 },
+  { key: 'description', header: 'Description' },
+]
+
+async function handleCategories(cmd: Command): Promise<void> {
+  const { clientOpts, outputFormat } = getPublicClientOptions(cmd)
+
+  const result = await output.withSpinner(
+    'Fetching categories...',
+    outputFormat,
+    () => get<SignalCategoryData[]>('/v2/signal-categories', undefined, clientOpts),
+    'Failed to fetch categories',
+    { silent: true },
+  )
+
+  const categories = result.data
+
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputApiResult({ data: categories, meta: result.meta }, outputFormat)
+    return
+  }
+
+  if (categories.length === 0) {
+    output.dim('No categories available.')
+    return
+  }
+
+  const rows = categories.map((c) => ({
+    name: c.name,
+    description: c.description,
+  }))
+
+  output.table(rows, CATEGORY_COLUMNS)
 }
 
 function filterSignalFields(s: SignalData, verbosity: number): Record<string, unknown> {
