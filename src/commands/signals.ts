@@ -192,13 +192,8 @@ async function handleClusters(cmd: Command): Promise<void> {
   output.printHints(hints)
 }
 
-const CATEGORY_COLUMNS: output.TableColumn[] = [
-  { key: 'name', header: 'Category', width: 24 },
-  { key: 'description', header: 'Description' },
-]
-
 async function handleCategories(cmd: Command): Promise<void> {
-  const { clientOpts, outputFormat } = getPublicClientOptions(cmd)
+  const { clientOpts, outputFormat, verbosity } = getPublicClientOptions(cmd)
 
   const result = await output.withSpinner(
     'Fetching categories...',
@@ -210,8 +205,11 @@ async function handleCategories(cmd: Command): Promise<void> {
 
   const categories = result.data
 
+  const hints: string[] = []
+  if (verbosity < 1) hints.push('Use -v for category descriptions')
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: categories, meta: result.meta }, outputFormat)
+    output.outputApiResult({ data: categories, meta: result.meta, hints }, outputFormat)
     return
   }
 
@@ -220,14 +218,19 @@ async function handleCategories(cmd: Command): Promise<void> {
     return
   }
 
-  const rows = categories.map((c) => ({
-    name: c.name,
-    description: c.description,
-  }))
+  output.cards(categories.map((c) => ({
+    title: c.name,
+    fields: [
+      ...(verbosity >= 1 ? [{ label: 'Description', value: c.description }] : []),
+    ],
+  })))
 
-  output.table(rows, CATEGORY_COLUMNS)
-  console.log()
-  output.dim(`${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`)
+  if (categories.length > 0) {
+    console.log()
+    output.dim(`${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`)
+  }
+
+  output.printHints(hints)
 }
 
 function filterSignalFields(s: SignalData, verbosity: number): Record<string, unknown> {
