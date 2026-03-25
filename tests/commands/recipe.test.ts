@@ -37,12 +37,14 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
 
 const INVALID_RECIPE_YAML_NO_NAME = `
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
 
@@ -62,6 +64,7 @@ params:
     description: Blockchain to query
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
     params:
       chain: "{params.chain}"
@@ -394,6 +397,7 @@ version: "1.0"
 description: Recipe with analysis
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 analysis:
   instructions: "Analyze the data"
@@ -474,6 +478,7 @@ version: "1.0"
 description: A registry recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
       // First fetch: registry lookup returns recipe detail
@@ -563,8 +568,10 @@ version: "1.0"
 description: A test recipe
 steps:
   - id: step1
+    type: api
     action: "GET /v2/projects"
   - id: step2
+    type: api
     action: "GET /v2/signals"
 `
 
@@ -579,6 +586,7 @@ params:
     description: Blockchain to query
 steps:
   - id: fetch_projects
+    type: api
     action: "GET /v2/projects"
   - id: analyze
     type: agent
@@ -588,7 +596,8 @@ steps:
     returns:
       summary: string
   - id: details
-    foreach: "fetch_projects.data"
+    type: api
+    for: "fetch_projects.data"
     action: "GET /v2/projects/{item.id}"
 analysis:
   instructions: Summarize findings
@@ -690,9 +699,9 @@ analysis:
       expect(parsed.steps[1].instructions).toBe('Use AI to analyze')
       expect(parsed.steps[1].action).toBeUndefined()
 
-      // Foreach step
+      // API step with for: modifier
       expect(parsed.steps[2].id).toBe('details')
-      expect(parsed.steps[2].type).toBe('foreach')
+      expect(parsed.steps[2].type).toBe('api')
       expect(parsed.steps[2].action).toBe('GET /v2/projects/{item.id}')
 
       // Params
@@ -730,6 +739,7 @@ version: "1.0"
 description: A cloneable recipe
 steps:
   - id: projects
+    type: api
     action: "GET /v2/projects"
 `
 

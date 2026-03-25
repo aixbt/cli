@@ -250,8 +250,11 @@ export function hint(msg: string): void {
   console.log(chalk.dim(msg))
 }
 
-export function verboseHint(msg = 'Use -v for details, -vv for signals'): void {
-  hint(msg)
+/** Print multiple hints as dim footer lines. */
+export function printHints(hints: string[]): void {
+  for (const h of hints) {
+    hint(h)
+  }
 }
 
 export function label(key: string, value: string): void {
@@ -682,10 +685,19 @@ export function colorizeHelp(text: string): string {
 
 // -- Output mode helper --
 
-/** Output an API result with optional meta in structured format. */
-export function outputApiResult(result: { data: unknown; meta?: unknown }, outputFormat: StructuredFormat): void {
+/** Output an API result with optional meta and hints in structured format. */
+export function outputApiResult(
+  result: { data: unknown; meta?: unknown; hints?: string[] },
+  outputFormat: StructuredFormat,
+): void {
   const out: Record<string, unknown> = { data: result.data }
-  if (result.meta) out.meta = result.meta
+
+  const apiMeta = (result.meta ?? {}) as Record<string, unknown>
+  const hasHints = result.hints && result.hints.length > 0
+  if (result.meta || hasHints) {
+    out.meta = { ...apiMeta, ...(hasHints ? { hints: result.hints } : {}) }
+  }
+
   outputStructured(out, outputFormat)
 }
 

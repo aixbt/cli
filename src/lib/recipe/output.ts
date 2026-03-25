@@ -4,18 +4,12 @@ import { encode } from '@toon-format/toon'
 import type {
   ExecutionContext, AgentStep, ForeachResult,
   RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta,
+  RecipeYieldProgress,
 } from '../../types.js'
-import { isForeachStep } from '../../types.js'
+import { isApiStep, isAgentStep, hasForModifier } from '../../types.js'
 import { resolveValue, resolveExpression } from './template.js'
 import { resolveContextHints } from '../agents/context.js'
-
-/**
- * Estimate token count from a data payload.
- * Uses byte-length heuristic (~4 chars per token for JSON/English).
- */
-export function estimateTokenCount(data: unknown): number {
-  return Math.ceil(JSON.stringify(data).length / 4)
-}
+import { estimateTokenCount } from '../tokens.js'
 
 /** Collect _fallbackNote entries from foreach results into a single notes object. */
 function collectFallbackNotes(
@@ -30,6 +24,55 @@ function collectFallbackNotes(
     }
   }
   return Object.keys(notes).length > 0 ? notes : undefined
+}
+
+export function buildProgressAndRemaining(
+  ctx: ExecutionContext,
+): { progress: RecipeYieldProgress; remaining: string } {
+  const progress: RecipeYieldProgress = {
+    stepsCompleted: ctx.results.size,
+    stepsTotal: ctx.recipe.steps.length,
+    segmentIndex: ctx.currentSegmentIndex,
+    segmentsTotal: ctx.segments.length,
+  }
+
+  // Check if there are remaining segments after the current one
+  const remainingSegments = ctx.segments.slice(ctx.currentSegmentIndex + 1)
+
+  // Count remaining steps by type across all remaining segments
+  let apiCount = 0
+  let agentCount = 0
+  const stepIds: string[] = []
+
+  for (const segment of remainingSegments) {
+    for (const step of segment.steps) {
+      if (isAgentStep(step)) {
+        agentCount++
+      } else {
+        apiCount++
+      }
+      stepIds.push(step.id)
+    }
+  }
+
+  // Build prose description
+  const parts: string[] = []
+  if (apiCount > 0) {
+    parts.push(`${apiCount} API step${apiCount > 1 ? 's' : ''} (${stepIds.filter((id) => {
+      const step = ctx.recipe.steps.find((s) => s.id === id)
+      return step && !isAgentStep(step)
+    }).join(', ')})`)
+  }
+  if (agentCount > 0) {
+    parts.push(`${agentCount} agent step${agentCount > 1 ? 's' : ''} (${stepIds.filter((id) => {
+      const step = ctx.recipe.steps.find((s) => s.id === id)
+      return step && isAgentStep(step)
+    }).join(', ')})`)
+  }
+
+  const remaining = `Data assembled (raw). Remaining: ${parts.join(' and ')} to produce: ${ctx.recipe.description}`
+
+  return { progress, remaining }
 }
 
 export function buildAwaitingAgentOutput(
@@ -69,6 +112,7 @@ export function buildAwaitingAgentOutput(
   const resumeCommand = parts.join(' ')
 
   const contextHints = resolveContextHints(ctx.recipe.steps, ctx.results)
+  const { progress, remaining } = buildProgressAndRemaining(ctx)
 
   return {
     status: 'awaiting_agent',
@@ -80,18 +124,21 @@ export function buildAwaitingAgentOutput(
     data,
     tokenCount: estimateTokenCount(data),
     resumeCommand,
+    progress,
+    remaining,
     ...(contextHints.length > 0 ? { contextHints } : {}),
   }
 }
 
 export function buildAwaitingParallelAgentOutput(
   ctx: ExecutionContext,
-  agentStep: AgentStep & { foreach: string },
+  agentStep: AgentStep & { 'for': string },
   originalParams: Record<string, string>,
   recipeSource?: string,
 ): RecipeAwaitingAgent {
-  // Resolve foreach items
-  const items = resolveExpression(agentStep.foreach, ctx) as unknown[]
+  // Resolve for: items
+  const resolved = resolveExpression(agentStep['for'], ctx)
+  const items = Array.isArray(resolved) ? resolved : []
 
   // Classify context steps as per-item vs shared
   const perItemContext: string[] = []
@@ -99,7 +146,7 @@ export function buildAwaitingParallelAgentOutput(
 
   for (const ref of agentStep.context) {
     const refStep = ctx.recipe.steps.find((s) => s.id === ref)
-    if (refStep && isForeachStep(refStep) && refStep.foreach === agentStep.foreach) {
+    if (refStep && isApiStep(refStep) && hasForModifier(refStep) && refStep['for'] === agentStep['for']) {
       perItemContext.push(ref)
     } else {
       sharedContext.push(ref)
@@ -140,7 +187,7 @@ export function buildAwaitingParallelAgentOutput(
 
   const parallel: ParallelAgentMeta = {
     items: items ?? [],
-    itemKey: agentStep.foreach,
+    itemKey: agentStep['for'],
     concurrency: 3,
     perItemContext,
     sharedContext,
@@ -169,6 +216,7 @@ export function buildAwaitingParallelAgentOutput(
   ].join('')
 
   const contextHints = resolveContextHints(ctx.recipe.steps, ctx.results)
+  const { progress, remaining } = buildProgressAndRemaining(ctx)
 
   return {
     status: 'awaiting_agent',
@@ -180,6 +228,8 @@ export function buildAwaitingParallelAgentOutput(
     data,
     tokenCount: estimateTokenCount(data),
     resumeCommand,
+    progress,
+    remaining,
     parallel,
     parallelExecution,
     ...(contextHints.length > 0 ? { contextHints } : {}),

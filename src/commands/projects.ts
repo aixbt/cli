@@ -4,6 +4,8 @@ import { getClientOptions, getPublicClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
+import { formatTokenCount } from '../lib/tokens.js'
+import { resolveDate } from '../lib/date.js'
 
 // -- Response types --
 
@@ -116,6 +118,8 @@ export function registerProjectsCommand(program: Command): void {
     .option('--sort-by <field>', 'Sort by field (momentumScore, popularityScore, createdAt, reinforcedAt)', 'momentumScore')
     .option('--has-token [bool]', 'Filter projects with/without tokens')
     .option('--exclude-stables', 'Exclude stablecoins')
+    .option('--created-after <date>', 'Filter projects created after date (ISO 8601 or relative: -7d, -24h, -30m)')
+    .option('--created-before <date>', 'Filter projects created before date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--signal-sort <field>', 'Sort signals by field (createdAt, reinforcedAt)', 'createdAt')
     .action(async (id: string | undefined, _opts: unknown, cmd: Command) => {
       if (id) {
@@ -137,8 +141,8 @@ export function registerProjectsCommand(program: Command): void {
   projects
     .command('momentum <id>')
     .description('Get momentum history for a project')
-    .option('--start <date>', 'Start date (ISO 8601)')
-    .option('--end <date>', 'End date (ISO 8601)')
+    .option('--start <date>', 'Start date (ISO 8601 or relative: -7d, -24h, -30m)')
+    .option('--end <date>', 'End date (ISO 8601 or relative: -7d, -24h, -30m)')
     .action(async (id: string, _opts: unknown, cmd: Command) => {
       await handleMomentum(id, cmd)
     })
@@ -163,6 +167,8 @@ async function handleProjectList(cmd: Command): Promise<void> {
     sortBy: opts.sortBy as string,
     hasToken: opts.hasToken as string | undefined,
     excludeStables: opts.excludeStables ? 'true' : undefined,
+    createdAfter: resolveDate(opts.createdAfter as string | undefined),
+    createdBefore: resolveDate(opts.createdBefore as string | undefined),
     signalSortBy: opts.signalSort as string,
   }
 
@@ -179,14 +185,25 @@ async function handleProjectList(cmd: Command): Promise<void> {
     { silent: true },
   )
 
+  const hints: string[] = []
+  if (verbosity === 0) {
+    hints.push('Use -v for details, -vv for signals')
+  } else if (verbosity === 1) {
+    hints.push('Use -vv for inline signals')
+  }
+  if (verbosity >= 2 && result.data.length > 0) {
+    hints.push(`Output: ~${formatTokenCount(result.data)} tokens. In recipes, use transform: to control what reaches agents.`)
+  }
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: result.data.map(p => filterProjectFields(p, verbosity)), meta: result.meta }, outputFormat)
+    output.outputApiResult({ data: result.data.map(p => filterProjectFields(p, verbosity)), meta: result.meta, hints }, outputFormat)
     return
   }
 
   if (verbosity >= 1) {
     output.cards(result.data.map((p) => buildProjectCard(p, verbosity)))
     output.showPagination(result.pagination, result.data.length)
+    output.printHints(hints)
 
     return
   }
@@ -206,7 +223,7 @@ async function handleProjectList(cmd: Command): Promise<void> {
   output.table(rows, PROJECT_LIST_COLUMNS)
   output.showPagination(result.pagination)
 
-  output.verboseHint()
+  output.printHints(hints)
 }
 
 async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
@@ -228,8 +245,13 @@ async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
 
   const project = result.data
 
+  const hints: string[] = []
+  if (verbosity >= 2) {
+    hints.push(`Output: ~${formatTokenCount(project)} tokens. In recipes, use transform: to control what reaches agents.`)
+  }
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: filterProjectFields(project, verbosity), meta: result.meta }, outputFormat)
+    output.outputApiResult({ data: filterProjectFields(project, verbosity), meta: result.meta, hints }, outputFormat)
     return
   }
 
@@ -238,6 +260,7 @@ async function handleProjectDetail(id: string, cmd: Command): Promise<void> {
   const cardVerbosity = verbosity + 1
   output.cards([buildProjectCard(project, cardVerbosity)])
 
+  output.printHints(hints)
 }
 
 async function handleMomentum(id: string, cmd: Command): Promise<void> {
@@ -245,8 +268,8 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
-    start: opts.start as string | undefined,
-    end: opts.end as string | undefined,
+    start: resolveDate(opts.start as string | undefined),
+    end: resolveDate(opts.end as string | undefined),
   }
 
   const result = await output.withSpinner(

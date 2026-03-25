@@ -354,6 +354,154 @@ describe('signals commands', () => {
     })
   })
 
+  // -- signals categories --
+
+  describe('signals categories', () => {
+    const MOCK_CATEGORIES = [
+      { id: 'cat-1', name: 'DeFi', description: 'Decentralized finance signals' },
+      { id: 'cat-2', name: 'Adoption', description: 'Adoption and institutional signals' },
+      { id: 'cat-3', name: 'Security', description: 'Security and vulnerability signals' },
+    ]
+
+    it('should fetch categories in JSON mode', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CATEGORIES }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals', 'categories'], { from: 'node' })
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.pathname).toBe('/v2/signal-categories')
+
+      const jsonOutput = logs.find(l => l.includes('DeFi'))
+      expect(jsonOutput).toBeDefined()
+      const parsed = JSON.parse(jsonOutput!)
+      expect(parsed.data).toHaveLength(3)
+      expect(parsed.data[0].name).toBe('DeFi')
+      expect(parsed.data[1].name).toBe('Adoption')
+    })
+
+    it('should display table in human mode', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CATEGORIES }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'signals', 'categories'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      expect(allOutput).toContain('Category')
+      expect(allOutput).toContain('Description')
+      expect(allOutput).toContain('DeFi')
+      expect(allOutput).toContain('Decentralized finance signals')
+      expect(allOutput).toContain('Security')
+    })
+
+    it('should show empty state when no categories', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'signals', 'categories'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      expect(allOutput).toContain('No categories available')
+    })
+
+    it('should not require auth (uses public client)', async () => {
+      delete process.env.AIXBT_API_KEY
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CATEGORIES }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals', 'categories'], { from: 'node' })
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
+      expect(headers['X-API-Key']).toBeUndefined()
+    })
+  })
+
+  // -- date resolver integration --
+
+  describe('date resolver', () => {
+    it('should resolve relative time for --detected-after', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-03-25T12:00:00.000Z'))
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        ['node', 'aixbt', '--format', 'json', 'signals', '--detected-after', '-7d'],
+        { from: 'node' },
+      )
+
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.searchParams.get('detectedAfter')).toBe('2026-03-18T12:00:00.000Z')
+
+      vi.useRealTimers()
+    })
+
+    it('should resolve relative time for all date options', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-03-25T12:00:00.000Z'))
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        [
+          'node', 'aixbt', '--format', 'json', 'signals',
+          '--detected-after', '-7d',
+          '--detected-before', '-1d',
+          '--reinforced-after', '-24h',
+          '--reinforced-before', '-30m',
+        ],
+        { from: 'node' },
+      )
+
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.searchParams.get('detectedAfter')).toBe('2026-03-18T12:00:00.000Z')
+      expect(callUrl.searchParams.get('detectedBefore')).toBe('2026-03-24T12:00:00.000Z')
+      expect(callUrl.searchParams.get('reinforcedAfter')).toBe('2026-03-24T12:00:00.000Z')
+      expect(callUrl.searchParams.get('reinforcedBefore')).toBe('2026-03-25T11:30:00.000Z')
+
+      vi.useRealTimers()
+    })
+
+    it('should pass through ISO dates without resolving', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        ['node', 'aixbt', '--format', 'json', 'signals', '--detected-after', '2026-01-01T00:00:00Z'],
+        { from: 'node' },
+      )
+
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.searchParams.get('detectedAfter')).toBe('2026-01-01T00:00:00Z')
+    })
+  })
+
   // -- auth modes --
 
   describe('auth modes', () => {

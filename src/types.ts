@@ -91,32 +91,19 @@ export interface RecipeParam {
   default?: string | number | boolean
 }
 
-export type RecipeStep = ApiStep | ForeachStep | AgentStep | TransformStep
+export type RecipeStep = ApiStep | AgentStep
 
 export interface ApiStep {
   id: string
+  type: 'api'
   action: string
   source?: string
   params?: Record<string, unknown>
   transform?: TransformBlock
+  /** Optional iteration modifier — iterates over the referenced array */
+  'for'?: string
   /** Message shown to agent when step is skipped due to missing provider key/tier */
   fallback?: string
-  type?: never
-  foreach?: never
-  input?: never
-}
-
-export interface ForeachStep {
-  id: string
-  foreach: string
-  action: string
-  source?: string
-  params?: Record<string, unknown>
-  transform?: TransformBlock
-  /** Message shown to agent when step is skipped due to missing provider key/tier */
-  fallback?: string
-  type?: never
-  input?: never
 }
 
 export const AGENT_RETURN_TYPES = ['string', 'number', 'boolean', 'string[]', 'object'] as const
@@ -128,17 +115,8 @@ export interface AgentStep {
   context: string[]
   instructions: string
   returns: Record<string, string>
-  foreach?: string
-  input?: never
-  transform?: never
-}
-
-export interface TransformStep {
-  id: string
-  input: string
-  transform: TransformBlock
-  foreach?: never
-  type?: never
+  /** Optional iteration modifier — runs the agent step for each item in the array */
+  'for'?: string
 }
 
 export interface RecipeHints {
@@ -170,23 +148,26 @@ export interface TransformBlock {
 // -- Step type guards --
 
 export function isAgentStep(step: RecipeStep): step is AgentStep {
-  return (step as AgentStep).type === 'agent'
-}
-
-export function isForeachStep(step: RecipeStep): step is ForeachStep {
-  return 'foreach' in step && (step as ForeachStep).foreach !== undefined && !isAgentStep(step)
-}
-
-export function isTransformStep(step: RecipeStep): step is TransformStep {
-  return 'input' in step && (step as TransformStep).input !== undefined
+  return step.type === 'agent'
 }
 
 export function isApiStep(step: RecipeStep): step is ApiStep {
-  return !isAgentStep(step) && !isForeachStep(step) && !isTransformStep(step)
+  return step.type === 'api'
 }
 
-export function isParallelAgentStep(step: RecipeStep): step is AgentStep & { foreach: string } {
-  return isAgentStep(step) && typeof step.foreach === 'string' && step.foreach.length > 0
+export function hasForModifier(step: RecipeStep): step is RecipeStep & { 'for': string } {
+  return typeof step['for'] === 'string' && step['for'].length > 0
+}
+
+export function isParallelAgentStep(step: RecipeStep): step is AgentStep & { 'for': string } {
+  return isAgentStep(step) && hasForModifier(step)
+}
+
+/** Parse a for: reference and return the step ID it refers to, or null if it's a reserved name (params, item). */
+export function parseForStepRef(forRef: string): string | null {
+  const dotIndex = forRef.indexOf('.')
+  const stepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
+  return (stepId === 'params' || stepId === 'item') ? null : stepId
 }
 
 // -- Execution types --
@@ -239,6 +220,13 @@ export interface Segment {
 
 // -- Recipe execution output types --
 
+export interface RecipeYieldProgress {
+  stepsCompleted: number    // ctx.results.size
+  stepsTotal: number        // ctx.recipe.steps.length
+  segmentIndex: number      // ctx.currentSegmentIndex (0-based)
+  segmentsTotal: number     // ctx.segments.length
+}
+
 export interface ParallelAgentMeta {
   items: unknown[]
   itemKey: string
@@ -257,6 +245,8 @@ export interface RecipeAwaitingAgent {
   data: Record<string, unknown>
   tokenCount: number
   resumeCommand: string
+  progress: RecipeYieldProgress
+  remaining: string
   parallel?: ParallelAgentMeta
   /** Present only on parallel steps — tells the operating agent how to execute */
   parallelExecution?: string

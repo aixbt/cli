@@ -16,8 +16,6 @@ import type {
   RecipeStep,
   ApiStep,
   AgentStep,
-  ForeachStep,
-  TransformStep,
 } from '../../src/types.js'
 
 // -- Test helpers --
@@ -40,7 +38,16 @@ function apiStep(
   action: string,
   params?: Record<string, unknown>,
 ): ApiStep {
-  return { id, action, params }
+  return { id, type: 'api', action, params }
+}
+
+function apiStepWithFor(
+  id: string,
+  forRef: string,
+  action: string,
+  params?: Record<string, unknown>,
+): ApiStep {
+  return { id, type: 'api', 'for': forRef, action, params }
 }
 
 function agentStep(id: string, context: string[]): AgentStep {
@@ -53,21 +60,15 @@ function agentStep(id: string, context: string[]): AgentStep {
   }
 }
 
-function foreachStep(
-  id: string,
-  foreach: string,
-  action: string,
-  params?: Record<string, unknown>,
-): ForeachStep {
-  return { id, foreach, action, params }
-}
-
-function transformStep(
-  id: string,
-  input: string,
-  transform: TransformStep['transform'] = { select: ['id'] },
-): TransformStep {
-  return { id, input, transform }
+function agentStepWithFor(id: string, forRef: string, context: string[]): AgentStep {
+  return {
+    id,
+    type: 'agent',
+    'for': forRef,
+    context,
+    instructions: 'test',
+    returns: { result: 'string' },
+  }
 }
 
 // -- extractTemplateRefs --
@@ -145,18 +146,18 @@ describe('extractStepReferences', () => {
 
   it('should not include item prefix as a step reference', () => {
     const refs = extractStepReferences(
-      foreachStep('s2', 'step1.data', 'GET /v2/projects/{item.id}'),
+      apiStepWithFor('s2', 'step1.data', 'GET /v2/projects/{item.id}'),
     )
     expect(refs.has('item')).toBe(false)
   })
 
-  it('should extract foreach step reference from the foreach field', () => {
-    const refs = extractStepReferences(foreachStep('s2', 'step1.data', 'GET /v2/projects'))
+  it('should extract for: step reference from the for field on API steps', () => {
+    const refs = extractStepReferences(apiStepWithFor('s2', 'step1.data', 'GET /v2/projects'))
     expect(refs.has('step1')).toBe(true)
   })
 
-  it('should extract foreach step reference when foreach has no dot', () => {
-    const refs = extractStepReferences(foreachStep('s2', 'step1', 'GET /v2/projects'))
+  it('should extract for: step reference when for has no dot', () => {
+    const refs = extractStepReferences(apiStepWithFor('s2', 'step1', 'GET /v2/projects'))
     expect(refs.has('step1')).toBe(true)
   })
 
@@ -166,9 +167,9 @@ describe('extractStepReferences', () => {
     expect(refs.size).toBe(0)
   })
 
-  it('should extract input as the sole reference for a transform step', () => {
-    const refs = extractStepReferences(transformStep('t1', 'signals'))
-    expect(refs).toEqual(new Set(['signals']))
+  it('should extract for: reference and context references from parallel agent step', () => {
+    const refs = extractStepReferences(agentStepWithFor('a1', 'projects.data', ['projects']))
+    expect(refs.has('projects')).toBe(true)
   })
 })
 
@@ -424,17 +425,34 @@ describe('validateRecipe variable references', () => {
     expect(issues.some((i) => i.message.includes('unknown step') && i.message.includes('"nonexistent"'))).toBe(true)
   })
 
-  it('should accept foreach reference to existing step', () => {
+  it('should accept for: reference to existing step on API step', () => {
     const recipe = makeRecipe([
       apiStep('s1', 'GET /v2/projects'),
-      foreachStep('s2', 's1.data', 'GET /v2/projects/{item.id}'),
+      apiStepWithFor('s2', 's1.data', 'GET /v2/projects/{item.id}'),
     ])
     expect(() => validateRecipe(recipe)).not.toThrow()
   })
 
-  it('should reject foreach reference to nonexistent step', () => {
+  it('should reject for: reference to nonexistent step on API step', () => {
     const recipe = makeRecipe([
-      foreachStep('s1', 'missing.data', 'GET /v2/projects/{item.id}'),
+      apiStepWithFor('s1', 'missing.data', 'GET /v2/projects/{item.id}'),
+    ])
+    expect(() => validateRecipe(recipe)).toThrow(RecipeValidationError)
+    const issues = validateRecipeCollectIssues(recipe)
+    expect(issues.some((i) => i.message.includes('unknown step') && i.message.includes('"missing"'))).toBe(true)
+  })
+
+  it('should accept for: reference to existing step on agent step', () => {
+    const recipe = makeRecipe([
+      apiStep('s1', 'GET /v2/projects'),
+      agentStepWithFor('a1', 's1.data', ['s1']),
+    ])
+    expect(() => validateRecipe(recipe)).not.toThrow()
+  })
+
+  it('should reject for: reference to nonexistent step on agent step', () => {
+    const recipe = makeRecipe([
+      agentStepWithFor('a1', 'missing.data', []),
     ])
     expect(() => validateRecipe(recipe)).toThrow(RecipeValidationError)
     const issues = validateRecipeCollectIssues(recipe)
@@ -444,7 +462,7 @@ describe('validateRecipe variable references', () => {
   it('should always accept {item.X} references (runtime check)', () => {
     const recipe = makeRecipe([
       apiStep('s1', 'GET /v2/projects'),
-      foreachStep('s2', 's1.data', 'GET /v2/projects/{item.id}', { name: '{item.name}' }),
+      apiStepWithFor('s2', 's1.data', 'GET /v2/projects/{item.id}', { name: '{item.name}' }),
     ])
     expect(() => validateRecipe(recipe)).not.toThrow()
   })
@@ -501,6 +519,16 @@ describe('validateRecipe variable references', () => {
     ])
     expect(() => validateRecipe(recipe)).not.toThrow()
   })
+
+  it('should skip provider action validation for agent steps', () => {
+    const recipe = makeRecipe([
+      apiStep('s1', 'GET /v2/projects'),
+      agentStep('a1', ['s1']),
+    ])
+    // validateRecipe should not throw when agent steps are present
+    // (agent steps have no action to validate)
+    expect(() => validateRecipe(recipe)).not.toThrow()
+  })
 })
 
 // -- validateRecipe: required params --
@@ -540,7 +568,7 @@ describe('validateRecipeCollectIssues', () => {
     const recipe = makeRecipe(
       [
         apiStep('s1', 'GET /v2/projects/{params.missing}'),
-        foreachStep('s2', 'ghost.data', 'GET /v2/things'),
+        apiStepWithFor('s2', 'ghost.data', 'GET /v2/things'),
       ],
       { token: { type: 'object' as unknown as 'string' } },
     )
@@ -620,68 +648,34 @@ describe('multiple issue collection', () => {
   })
 })
 
-// -- Transform step validation --
+// -- Segment boundaries with for: modifier --
 
-describe('transform step validation', () => {
-  it('should accept valid transform step referencing an earlier step', () => {
-    const recipe = makeRecipe([
-      apiStep('signals', 'GET /v2/signals'),
-      transformStep('filtered', 'signals', { select: ['id', 'name'] }),
-    ])
-    const issues = validateRecipeCollectIssues(recipe)
-    expect(issues).toHaveLength(0)
-  })
-
-  it('should reject transform step referencing nonexistent step', () => {
-    const recipe = makeRecipe([
-      apiStep('signals', 'GET /v2/signals'),
-      transformStep('filtered', 'nonexistent'),
-    ])
-    const issues = validateRecipeCollectIssues(recipe)
-    expect(issues.some((i) =>
-      i.path.includes('filtered') && i.message.includes('unknown step') && i.message.includes('"nonexistent"'),
-    )).toBe(true)
-  })
-
-  it('should reject transform step with forward reference to a later step', () => {
-    const recipe = makeRecipe([
-      transformStep('first', 'second'),
-      transformStep('second', 'first'),
-    ])
-    const issues = validateRecipeCollectIssues(recipe)
-    expect(issues.some((i) =>
-      i.path.includes('first') && i.message.includes('earlier in the recipe'),
-    )).toBe(true)
-  })
-
-  it('should validate transform step in segment boundary checks', () => {
+describe('segment boundaries with for: modifier', () => {
+  it('should accept API step with for: referencing step in same segment', () => {
     const recipe = makeRecipe([
       apiStep('s1', 'GET /v2/projects'),
-      transformStep('t1', 's1', { select: ['id'] }),
+      apiStepWithFor('s2', 's1.data', 'GET /v2/projects/{item.id}'),
     ])
-    const issues = validateRecipeCollectIssues(recipe)
-    expect(issues).toHaveLength(0)
+    expect(() => validateRecipe(recipe)).not.toThrow()
   })
 
-  it('should accept transform step referencing a foreach step', () => {
-    const recipe = makeRecipe([
-      apiStep('projects', 'GET /v2/projects'),
-      foreachStep('details', 'projects.data', 'GET /v2/projects/{item.id}'),
-      transformStep('filtered', 'details', { select: ['id', 'name'] }),
-    ])
-    const issues = validateRecipeCollectIssues(recipe)
-    expect(issues).toHaveLength(0)
-  })
-
-  it('should reject transform step referencing step across agent boundary', () => {
+  it('should reject API step with for: referencing step across agent boundary', () => {
     const recipe = makeRecipe([
       apiStep('s1', 'GET /v2/projects'),
       agentStep('a1', ['s1']),
-      transformStep('t1', 's1', { select: ['id'] }),
+      apiStepWithFor('s2', 's1.data', 'GET /v2/projects/{item.id}'),
     ])
     const issues = validateRecipeCollectIssues(recipe)
     expect(issues.some((i) =>
       i.message.includes('"s1"') && i.message.includes('not accessible'),
     )).toBe(true)
+  })
+
+  it('should accept agent step with for: referencing step in same segment', () => {
+    const recipe = makeRecipe([
+      apiStep('s1', 'GET /v2/projects'),
+      agentStepWithFor('a1', 's1.data', ['s1']),
+    ])
+    expect(() => validateRecipe(recipe)).not.toThrow()
   })
 })
