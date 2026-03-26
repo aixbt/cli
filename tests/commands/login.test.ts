@@ -420,7 +420,7 @@ describe('login commands', () => {
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.authenticated).toBe(true)
       expect(parsed.keyType).toBe('full')
-      expect(parsed.scopes).toEqual(['read', 'write'])
+      expect(parsed.source).toBe('config')
       expect(parsed.expiresAt).toBe('never')
     })
 

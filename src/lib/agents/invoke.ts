@@ -7,7 +7,6 @@ import type { AgentAdapter } from './types.js'
 import type { RecipeAwaitingAgent, RecipeComplete, ParallelAgentMeta, RecipeStep } from '../../types.js'
 import { isAgentStep } from '../../types.js'
 import { CliError } from '../errors.js'
-import { getConfigDir } from '../config.js'
 import { fmt, wrapIndented } from '../output.js'
 
 const AGENT_SYSTEM_PROMPT = [
@@ -45,9 +44,7 @@ export const AGENT_COLORS: Record<string, string> = {
 }
 
 function writeTempFile(prefix: string, data: string): string {
-  const tmpBase = join(getConfigDir(), 'tmp')
-  mkdirSync(tmpBase, { recursive: true, mode: 0o700 })
-  const dir = mkdtempSync(join(tmpBase, 'aixbt-'))
+  const dir = mkdtempSync(join(tmpdir(), 'aixbt-'))
   const file = join(dir, `${prefix}.json`)
   writeFileSync(file, data, { mode: 0o600 })
   return file

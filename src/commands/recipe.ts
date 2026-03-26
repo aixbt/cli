@@ -266,7 +266,7 @@ export function registerRecipeCommand(program: Command): void {
       `  the caller to multitask and allowing use of high-thinking models.`,
       '',
       `  ${output.fmt.dim('Available agents:')}  claude, codex`,
-      `  ${output.fmt.dim('Example:')}           aixbt recipe run momentum-report --agent claude`,
+      `  ${output.fmt.dim('Example:')}           aixbt recipe run daily_digest --agent claude`,
       `  ${output.fmt.dim('Env var:')}           AIXBT_AGENT=claude`,
       '',
     ].join('\n')
