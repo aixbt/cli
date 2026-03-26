@@ -56,27 +56,24 @@ describe('Phase 1: CLI Help & Discovery', () => {
   // ── Task 1.1: Banner rewrite ──
 
   describe('banner content', () => {
-    it('should include the 3 directive lines with concrete commands', () => {
+    it('should include prose directives with concrete commands', () => {
       delete process.env.AIXBT_API_KEY
       const program = createProgram()
       const raw = captureHelpOutput(program)
       const text = stripAnsi(raw)
 
-      expect(text).toContain('Browse pipelines')
       expect(text).toContain('recipe list')
-      expect(text).toContain('Ad-hoc queries')
-      expect(text).toContain('signals -f toon')
-      expect(text).toContain('Full command reference')
+      expect(text).toContain('signals and projects with -f toon')
       expect(text).toContain('help all')
     })
 
-    it('should include the llms.txt link', () => {
+    it('should include the CLI docs link', () => {
       delete process.env.AIXBT_API_KEY
       const program = createProgram()
       const raw = captureHelpOutput(program)
       const text = stripAnsi(raw)
 
-      expect(text).toContain('docs.aixbt.tech/llms.txt')
+      expect(text).toContain('docs.aixbt.tech/builders/cli.mdx')
     })
 
     it('should include the FOR AI AGENTS title bar', () => {
@@ -98,7 +95,6 @@ describe('Phase 1: CLI Help & Discovery', () => {
       const raw = captureHelpOutput(program)
       const text = stripAnsi(raw)
 
-      expect(text).toContain('Status:')
       expect(text).toContain('authenticated')
       expect(text).toContain('real-time data')
     })
@@ -121,7 +117,6 @@ describe('Phase 1: CLI Help & Discovery', () => {
       const raw = captureHelpOutput(program)
       const text = stripAnsi(raw)
 
-      expect(text).toContain('Status:')
       expect(text).toContain('no API key')
     })
 
@@ -147,18 +142,18 @@ describe('Phase 1: CLI Help & Discovery', () => {
   })
 
   describe('auth status always renders', () => {
-    it('should always show a Status: line regardless of auth state', () => {
+    it('should always show auth state regardless of auth state', () => {
       // Unauthenticated
       delete process.env.AIXBT_API_KEY
       const program1 = createProgram()
       const text1 = stripAnsi(captureHelpOutput(program1))
-      expect(text1).toContain('Status:')
+      expect(text1).toContain('no API key')
 
       // Authenticated
       process.env.AIXBT_API_KEY = 'test-key'
       const program2 = createProgram()
       const text2 = stripAnsi(captureHelpOutput(program2))
-      expect(text2).toContain('Status:')
+      expect(text2).toContain('authenticated')
     })
   })
 
@@ -174,33 +169,12 @@ describe('Phase 1: CLI Help & Discovery', () => {
       expect(formatOpt!.description).toContain('toon')
     })
 
-    it('should describe toon as compact structured with size comparison', () => {
+    it('should list all three formats with human as default', () => {
       const program = createProgram()
       const formatOpt = program.options.find((o) => o.long === '--format')
       expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toContain('compact structured')
-      expect(formatOpt!.description).toContain('~40% smaller')
-    })
-
-    it('should describe toon as best for agents', () => {
-      const program = createProgram()
-      const formatOpt = program.options.find((o) => o.long === '--format')
-      expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toContain('best for agents')
-    })
-
-    it('should describe json as structured for scripting', () => {
-      const program = createProgram()
-      const formatOpt = program.options.find((o) => o.long === '--format')
-      expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toContain('scripting')
-    })
-
-    it('should describe human as terminal display', () => {
-      const program = createProgram()
-      const formatOpt = program.options.find((o) => o.long === '--format')
-      expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toContain('terminal display')
+      expect(formatOpt!.description).toContain('human')
+      expect(formatOpt!.description).toContain('default')
     })
 
     it('should show format descriptions in help output', () => {
@@ -209,7 +183,6 @@ describe('Phase 1: CLI Help & Discovery', () => {
       const text = stripAnsi(raw)
 
       expect(text).toContain('toon')
-      expect(text).toContain('compact structured')
     })
   })
 
