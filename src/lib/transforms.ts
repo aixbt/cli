@@ -107,7 +107,7 @@ function computeWeights(items: unknown[], weightBy?: string): number[] {
     })
   }
 
-  // Default weighting: recency * strength (matching rxbt.services pattern)
+  // Default weighting: recency * strength
   const now = Date.now()
 
   return items.map((item) => {
