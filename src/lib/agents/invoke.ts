@@ -1,5 +1,5 @@
 import { spawn, execSync } from 'node:child_process'
-import { writeFileSync, unlinkSync, mkdtempSync, mkdirSync } from 'node:fs'
+import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import chalk from 'chalk'
