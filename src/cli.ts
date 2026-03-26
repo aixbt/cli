@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import chalk from 'chalk'
 import { readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,10 +23,16 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 export function createProgram(): Command {
   const program = new Command()
 
+  const VALID_FORMATS = ['human', 'json', 'toon']
   const formatOption = new Option(
     '-f, --format <mode>',
-    'Output format: human (terminal display) | json (structured, scripting) | toon (compact structured, ~40% smaller — best for agents)',
-  ).choices(['human', 'json', 'toon'])
+    'Output format: human (default), json, toon',
+  ).argParser((val: string) => {
+    if (!VALID_FORMATS.includes(val)) {
+      throw new Error(`Invalid format '${val}'. Choose from: ${VALID_FORMATS.join(', ')}`)
+    }
+    return val
+  })
 
   program
     .name('aixbt')
@@ -33,24 +40,27 @@ export function createProgram(): Command {
     .version(pkg.version, '-V, --version')
     .addHelpText('before', output.banner(pkg.version))
     .addHelpText('after', () => {
-      const lines: string[] = []
       const config = resolveConfig({})
-      if (config.apiKey) {
-        lines.push(`  ${output.fmt.dim('Status:')} authenticated · real-time data`)
-      } else {
-        lines.push(`  ${output.fmt.dim('Status:')} no API key · run aixbt login or visit docs.aixbt.tech`)
-      }
-      lines.push('')
+      const lines: string[] = []
       const title = ' FOR AI AGENTS: '
       const maxWidth = Math.min(process.stdout.columns || 76, 76)
       const tail = Math.max(0, maxWidth - 1 - title.length)
       lines.push(output.fmt.dim('━' + title + '━'.repeat(tail)))
       lines.push('')
-      lines.push(`  ${output.fmt.dim('1.')} Browse pipelines       aixbt recipe list`)
-      lines.push(`  ${output.fmt.dim('2.')} Ad-hoc queries          aixbt signals -f toon`)
-      lines.push(`  ${output.fmt.dim('3.')} Full command reference   aixbt help all`)
+      lines.push('  AIXBT provides real-time crypto signal intelligence. Find alpha, research')
+      lines.push('  projects, inform trades, and gain an edge in the market.')
       lines.push('')
-      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/llms.txt')}`)
+      lines.push('  Start with aixbt recipe list to find analysis pipelines for your task.')
+      lines.push('  For ad-hoc queries, use signals and projects with -f toon.')
+      lines.push('  Full command reference: aixbt help all')
+      lines.push('')
+      lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli.mdx')}`)
+      lines.push('')
+      const status = config.apiKey
+        ? 'authenticated · real-time data'
+        : chalk.red('no API key') + ' · run aixbt login or visit docs.aixbt.tech'
+      lines.push(output.fmt.dim('━'.repeat(maxWidth)))
+      lines.push(status)
       return '\n' + lines.join('\n') + '\n'
     })
     .option('--delayed', 'Use free tier with delayed data (no auth required)')

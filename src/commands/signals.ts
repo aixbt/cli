@@ -140,13 +140,16 @@ async function handleSignalList(cmd: Command): Promise<void> {
     ).join('  ')
     if (clusterTags) console.log(clusterTags)
 
-    // Activity (verbose)
-    if (verbosity >= 1 && (s.activity?.length ?? 0) > 1) {
-      console.log(output.fmt.boldWhite('activity'))
-      const entries = output.formatActivity(s.activity, clusterColorMap)
-      for (let j = 0; j < entries.length; j++) {
-        if (j > 0) console.log()
-        console.log(entries[j])
+    // Verbose: ID + activity (only when reinforced, i.e. >1 update)
+    if (verbosity >= 1) {
+      console.log(output.fmt.dim(`ID: ${s.id}`))
+      if ((s.activity?.length ?? 0) > 1) {
+        console.log(output.fmt.boldWhite('activity'))
+        const entries = output.formatActivity(s.activity, clusterColorMap)
+        for (let j = 0; j < entries.length; j++) {
+          if (j > 0) console.log()
+          console.log(entries[j])
+        }
       }
     }
   }
@@ -218,17 +221,17 @@ async function handleCategories(cmd: Command): Promise<void> {
     return
   }
 
-  output.cards(categories.map((c) => ({
-    title: c.name,
-    fields: [
-      ...(verbosity >= 1 ? [{ label: 'Description', value: c.description }] : []),
-    ],
-  })))
-
-  if (categories.length > 0) {
-    console.log()
-    output.dim(`${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`)
+  for (let i = 0; i < categories.length; i++) {
+    const c = categories[i]
+    console.log(output.fmt.tag(c.name))
+    if (verbosity >= 1) {
+      console.log(c.description)
+    }
+    if (i < categories.length - 1) console.log()
   }
+
+  console.log()
+  output.dim(`${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`)
 
   output.printHints(hints)
 }
