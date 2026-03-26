@@ -15,7 +15,8 @@ import { registerProviderCommand } from './commands/provider.js'
 import type { OutputFormat } from './lib/output.js'
 import * as output from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
-import { resolveFormat, resolveConfig } from './lib/config.js'
+import { resolveFormat, detectAllKeys } from './lib/config.js'
+import { isExpired, isExpiringSoon, formatTimeRemaining } from './lib/auth.js'
 import { getLastMeta } from './lib/api-client.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
@@ -40,7 +41,7 @@ export function createProgram(): Command {
     .version(pkg.version, '-V, --version')
     .addHelpText('before', output.banner(pkg.version))
     .addHelpText('after', () => {
-      const config = resolveConfig({})
+      const keys = detectAllKeys()
       const lines: string[] = []
       const title = ' FOR AI AGENTS: '
       const maxWidth = Math.min(process.stdout.columns || 76, 76)
@@ -56,11 +57,29 @@ export function createProgram(): Command {
       lines.push('')
       lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli.mdx')}`)
       lines.push('')
-      const status = config.apiKey
-        ? 'authenticated · real-time data'
-        : chalk.red('no API key') + ' · run aixbt login or visit docs.aixbt.tech'
       lines.push(output.fmt.dim('━'.repeat(maxWidth)))
-      lines.push(status)
+      if (keys.length === 0) {
+        lines.push(chalk.red('no API key') + ' · run aixbt login or visit docs.aixbt.tech')
+      } else {
+        // Determine which key is active (first non-expired, or first if all expired)
+        const activeIdx = keys.findIndex(k => !k.expiresAt || !isExpired(k.expiresAt))
+        const effectiveActiveIdx = activeIdx >= 0 ? activeIdx : 0
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i]
+          const isActive = i === effectiveActiveIdx
+          const parts: string[] = [`key loaded (${k.source})`]
+          if (k.expiresAt && isExpired(k.expiresAt)) {
+            parts.push(chalk.red('expired'))
+          } else if (k.expiresAt && isExpiringSoon(k.expiresAt, k.keyName)) {
+            parts.push(chalk.yellow(formatTimeRemaining(k.expiresAt)))
+          } else if (k.expiresAt && k.expiresAt !== 'never') {
+            parts.push(formatTimeRemaining(k.expiresAt))
+          }
+          if (isActive && keys.length > 1) parts.push(output.fmt.brand('active'))
+          const line = parts.join('  ')
+          lines.push(isActive ? line : output.fmt.dim(line))
+        }
+      }
       return '\n' + lines.join('\n') + '\n'
     })
     .option('--delayed', 'Use free tier with delayed data (no auth required)')

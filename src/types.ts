@@ -1,6 +1,6 @@
 // Shared types for @aixbt/cli
 
-export type KeyType = 'demo' | 'full' | 'x402'
+export type KeyType = 'full' | 'x402'
 
 export interface RateLimitInfo {
   limitPerMinute: number
