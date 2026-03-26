@@ -80,6 +80,7 @@ export function createProgram(): Command {
           lines.push(isActive ? line : output.fmt.dim(line))
         }
       }
+      lines.push(output.fmt.dim('NFA. DYOR. Information Purpose Only.'))
       return '\n' + lines.join('\n') + '\n'
     })
     .option('--delayed', 'Use free tier with delayed data (no auth required)')
