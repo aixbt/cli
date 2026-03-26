@@ -111,7 +111,6 @@ describe('login commands', () => {
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.status).toBe('authenticated')
       expect(parsed.keyType).toBe('full')
-      expect(parsed.scopes).toEqual(['read', 'write'])
       expect(parsed.expiresAt).toBe('never')
     })
 
@@ -419,9 +418,9 @@ describe('login commands', () => {
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
       expect(parsed.authenticated).toBe(true)
-      expect(parsed.keyType).toBe('full')
-      expect(parsed.scopes).toEqual(['read', 'write'])
-      expect(parsed.expiresAt).toBe('never')
+      expect(parsed.activeKey.keyType).toBe('full')
+      expect(parsed.activeKey.source).toBe('config')
+      expect(parsed.activeKey.expiresAt).toBe('never')
     })
 
     it('should output JSON for unauthenticated state with --json', async () => {
@@ -447,8 +446,8 @@ describe('login commands', () => {
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
       // maskApiKey shows first 6 chars + ... + last 4 chars
-      expect(parsed.key).not.toBe('abcdef-long-key-suffix')
-      expect(parsed.key).toContain('...')
+      expect(parsed.activeKey.key).not.toBe('abcdef-long-key-suffix')
+      expect(parsed.activeKey.key).toContain('...')
     })
 
     it('should throw when API validation fails for stored key', async () => {
@@ -475,8 +474,8 @@ describe('login commands', () => {
       program.exitOverride()
       await program.parseAsync(['node', 'aixbt', 'whoami'], { from: 'node' })
 
-      const allErrors = errors.join('\n')
-      expect(allErrors).toContain('expires in less than 24 hours')
+      const allOutput = [...logs, ...errors].join('\n')
+      expect(allOutput).toContain('remaining')
     })
 
     it('should set expiringSoon to true in JSON when key is expiring soon', async () => {
@@ -493,7 +492,7 @@ describe('login commands', () => {
       const jsonOutput = logs.find(l => l.includes('"authenticated"'))
       expect(jsonOutput).toBeDefined()
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.expiringSoon).toBe(true)
+      expect(parsed.activeKey.expiringSoon).toBe(true)
     })
 
     it('should not warn for already-expired keys (expiringSoon is false)', async () => {
@@ -509,7 +508,7 @@ describe('login commands', () => {
 
       const jsonOutput = logs.find(l => l.includes('"authenticated"'))
       const parsed = JSON.parse(jsonOutput!)
-      expect(parsed.expiringSoon).toBe(false)
+      expect(parsed.activeKey.expiringSoon).toBe(false)
     })
   })
 

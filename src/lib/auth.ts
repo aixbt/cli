@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 import type { KeyType } from '../types.js'
-import { resolveConfig, type ResolvedConfig } from './config.js'
-import { NoApiKeyError } from './errors.js'
+import { readConfig, resolveConfig, type KeySource, type ResolvedConfig } from './config.js'
+import { NoApiKeyError, AuthError } from './errors.js'
 import { get, type ApiClientOptions } from './api-client.js'
 import type { OutputFormat } from './output.js'
 
@@ -20,6 +20,7 @@ interface AuthModeFlags {
 
 export interface ApiKeyInfo {
   id: string
+  name?: string
   type: KeyType
   scopes: string[]
   expiresAt: string  // ISO 8601 or "never"
@@ -71,12 +72,82 @@ export function formatExpiry(expiresAt: string): string {
   return date.toLocaleString()
 }
 
-export function isExpiringSoon(expiresAt: string): boolean {
+export function isExpiringSoon(expiresAt: string, keyName?: string): boolean {
   if (expiresAt === 'never') return false
   const date = new Date(expiresAt)
   if (isNaN(date.getTime())) return false
   const hoursUntilExpiry = (date.getTime() - Date.now()) / (1000 * 60 * 60)
-  return hoursUntilExpiry > 0 && hoursUntilExpiry < 24
+  if (hoursUntilExpiry <= 0) return false
+  const threshold = getExpiryThresholdHours(keyName)
+  return hoursUntilExpiry < threshold
+}
+
+export function isExpired(expiresAt: string): boolean {
+  if (expiresAt === 'never') return false
+  const date = new Date(expiresAt)
+  if (isNaN(date.getTime())) return false
+  return date.getTime() < Date.now()
+}
+
+export function parseX402Period(name?: string): string | undefined {
+  if (!name) return undefined
+  const match = name.match(/^x402-(1d|1w|4w)-/)
+  return match?.[1]
+}
+
+function getExpiryThresholdHours(keyName?: string): number {
+  const period = parseX402Period(keyName)
+  if (period === '1d') return 2
+  return 24
+}
+
+export function formatTimeRemaining(expiresAt: string): string {
+  if (expiresAt === 'never') return 'never expires'
+  const date = new Date(expiresAt)
+  if (isNaN(date.getTime())) return expiresAt
+  const msRemaining = date.getTime() - Date.now()
+  if (msRemaining <= 0) return 'expired'
+  const hours = Math.floor(msRemaining / (1000 * 60 * 60))
+  const minutes = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60))
+  if (hours >= 48) return `${Math.floor(hours / 24)}d remaining`
+  if (hours >= 1) return `${hours}h remaining`
+  return `${minutes}m remaining`
+}
+
+/**
+ * Get the fallback API key when the active key fails auth.
+ * Only falls back from env → config. Flag keys don't fall back (user was explicit).
+ */
+export function getFallbackApiKey(activeSource: KeySource | undefined): string | undefined {
+  if (activeSource !== 'env') return undefined
+  const config = readConfig()
+  const envKey = process.env.AIXBT_API_KEY
+  if (config.apiKey && config.apiKey !== envKey) return config.apiKey
+  return undefined
+}
+
+/**
+ * Wrap an async API call with auth fallback.
+ * If the primary key gets a 401 and a fallback key is available, retries with it.
+ */
+export async function withAuthFallback<T>(
+  fn: (clientOpts: ApiClientOptions) => Promise<T>,
+  clientOpts: ApiClientOptions,
+  keySource: KeySource | undefined,
+  onFallback?: () => void,
+): Promise<T> {
+  try {
+    return await fn(clientOpts)
+  } catch (err) {
+    if (err instanceof AuthError) {
+      const fallbackKey = getFallbackApiKey(keySource)
+      if (fallbackKey) {
+        onFallback?.()
+        return fn({ ...clientOpts, apiKey: fallbackKey })
+      }
+    }
+    throw err
+  }
 }
 
 export function getClientOptions(cmd: Command): {

@@ -711,13 +711,12 @@ describe('handlePurchasePass', () => {
 
 describe('X402_API_KEY_ENDPOINTS', () => {
   it('should have endpoints for all supported durations', () => {
-    expect(X402_API_KEY_ENDPOINTS['10c']).toBe('/x402/v2/api-keys/10c')
     expect(X402_API_KEY_ENDPOINTS['1d']).toBe('/x402/v2/api-keys/1d')
     expect(X402_API_KEY_ENDPOINTS['1w']).toBe('/x402/v2/api-keys/1w')
     expect(X402_API_KEY_ENDPOINTS['4w']).toBe('/x402/v2/api-keys/4w')
   })
 
-  it('should have exactly 4 endpoint entries', () => {
-    expect(Object.keys(X402_API_KEY_ENDPOINTS)).toHaveLength(4)
+  it('should have exactly 3 endpoint entries', () => {
+    expect(Object.keys(X402_API_KEY_ENDPOINTS)).toHaveLength(3)
   })
 })
