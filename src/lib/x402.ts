@@ -61,7 +61,6 @@ interface PurchasePassResult {
 
 /** API key purchase endpoints (duration -> path) */
 export const X402_API_KEY_ENDPOINTS: Record<string, string> = {
-  '10c': '/x402/v2/api-keys/10c',
   '1d': '/x402/v2/api-keys/1d',
   '1w': '/x402/v2/api-keys/1w',
   '4w': '/x402/v2/api-keys/4w',

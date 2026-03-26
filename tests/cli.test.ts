@@ -30,7 +30,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = output.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.2')
+      expect(stripped).toContain('v0.1.3')
     })
   })
 
@@ -231,7 +231,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.2')
+      expect(stripped).toContain('v0.1.3')
     })
 
     it('should have writeOut configured to use process.stdout.write', () => {

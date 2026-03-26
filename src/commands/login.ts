@@ -159,6 +159,11 @@ export function registerLoginCommand(program: Command): void {
         apiUrl: opts.apiUrl as string | undefined,
       })
 
+      // Determine key source
+      const flagKey = opts.apiKey as string | undefined
+      const envKey = process.env.AIXBT_API_KEY
+      const source = flagKey ? '--api-key flag' : envKey ? 'AIXBT_API_KEY env' : 'config'
+
       if (!resolved.apiKey) {
         if (output.isStructuredFormat(outputFormat)) {
           output.outputStructured({ authenticated: false }, outputFormat)
@@ -183,15 +188,15 @@ export function registerLoginCommand(program: Command): void {
         output.outputStructured({
           authenticated: true,
           key: output.maskApiKey(resolved.apiKey),
+          source,
           keyType: keyInfo.type,
-          scopes: keyInfo.scopes,
           expiresAt: keyInfo.expiresAt,
           expiringSoon: expiryWarning,
         }, outputFormat)
       } else {
         output.keyValue('Key', output.maskApiKey(resolved.apiKey))
+        output.keyValue('Source', source)
         output.keyValue('Key type', keyInfo.type)
-        output.keyValue('Scopes', keyInfo.scopes.join(', ') || 'none')
         output.keyValue('Expires', formatExpiry(keyInfo.expiresAt))
         if (expiryWarning) {
           output.warn('API key expires in less than 24 hours!')
