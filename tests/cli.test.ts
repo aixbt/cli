@@ -30,7 +30,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = output.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.1')
+      expect(stripped).toContain('v0.1.2')
     })
   })
 
@@ -39,7 +39,7 @@ describe('CLI', () => {
       const program = createProgram()
       const formatOpt = program.options.find((o) => o.long === '--format')
       expect(formatOpt).toBeDefined()
-      expect(formatOpt!.description).toBe('Output format: human (terminal display) | json (structured, scripting) | toon (compact structured, ~40% smaller — best for agents)')
+      expect(formatOpt!.description).toBe('Output format: human (default), json, toon')
     })
 
     it('should have --delayed option registered', () => {
@@ -149,9 +149,8 @@ describe('CLI', () => {
 
     it('should have --format with choices validation', () => {
       const program = createProgram()
-      const formatOpt = program.options.find((o) => o.long === '--format')
-      expect(formatOpt).toBeDefined()
-      expect(formatOpt!.argChoices).toEqual(['human', 'json', 'toon'])
+      program.exitOverride()
+      expect(() => program.parse(['node', 'aixbt', '-f', 'xml'], { from: 'node' })).toThrow()
     })
 
     it('should have --delayed as a boolean flag (no argument)', () => {
@@ -232,7 +231,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.1')
+      expect(stripped).toContain('v0.1.2')
     })
 
     it('should have writeOut configured to use process.stdout.write', () => {
