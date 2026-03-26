@@ -88,15 +88,14 @@ describe('Phase 1: CLI Help & Discovery', () => {
 
   // ── Task 1.2: Auth status line ──
 
-  describe('auth status — authenticated', () => {
-    it('should display authenticated status when API key is present', () => {
+  describe('auth status — key loaded', () => {
+    it('should display key loaded status when API key is present', () => {
       process.env.AIXBT_API_KEY = 'test-key-123'
       const program = createProgram()
       const raw = captureHelpOutput(program)
       const text = stripAnsi(raw)
 
-      expect(text).toContain('authenticated')
-      expect(text).toContain('real-time data')
+      expect(text).toContain('key loaded (env)')
     })
 
     it('should not display the unauthenticated message when API key is present', () => {
@@ -130,14 +129,13 @@ describe('Phase 1: CLI Help & Discovery', () => {
       expect(text).toContain('docs.aixbt.tech')
     })
 
-    it('should not display authenticated status when no API key is set', () => {
+    it('should not display key loaded status when no API key is set', () => {
       delete process.env.AIXBT_API_KEY
       const program = createProgram()
       const raw = captureHelpOutput(program)
       const text = stripAnsi(raw)
 
-      expect(text).not.toContain('authenticated')
-      expect(text).not.toContain('real-time data')
+      expect(text).not.toContain('key loaded')
     })
   })
 
@@ -153,7 +151,7 @@ describe('Phase 1: CLI Help & Discovery', () => {
       process.env.AIXBT_API_KEY = 'test-key'
       const program2 = createProgram()
       const text2 = stripAnsi(captureHelpOutput(program2))
-      expect(text2).toContain('authenticated')
+      expect(text2).toContain('key loaded')
     })
   })
 

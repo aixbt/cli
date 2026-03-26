@@ -204,8 +204,8 @@ describe('config', () => {
       expect(resolved.scopes).toEqual([])
     })
 
-    it('should preserve scopes from config when set', () => {
-      writeConfig({ scopes: ['admin', 'read', 'write'] })
+    it('should preserve scopes from config when key matches', () => {
+      writeConfig({ apiKey: 'test', scopes: ['admin', 'read', 'write'] })
 
       const resolved = resolveConfig()
       expect(resolved.scopes).toEqual(['admin', 'read', 'write'])

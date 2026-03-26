@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 import { password } from '@inquirer/prompts'
-import { readConfig, writeConfig, resolveConfig, resolveFormat } from '../lib/config.js'
-import { validateApiKey, formatExpiry, isExpiringSoon } from '../lib/auth.js'
+import { readConfig, writeConfig, resolveConfig, resolveFormat, detectAllKeys } from '../lib/config.js'
+import { validateApiKey, formatExpiry, isExpired, isExpiringSoon, formatTimeRemaining, parseX402Period } from '../lib/auth.js'
 import * as output from '../lib/output.js'
 import { CliError } from '../lib/errors.js'
 import { handlePurchasePass, fetchPassPricing } from '../lib/x402.js'
@@ -103,6 +103,7 @@ export function registerLoginCommand(program: Command): void {
       const config = readConfig()
       config.apiKey = apiKey
       config.keyType = keyInfo.type
+      config.keyName = keyInfo.name
       config.expiresAt = keyInfo.expiresAt
       config.scopes = keyInfo.scopes
       writeConfig(config)
@@ -111,14 +112,20 @@ export function registerLoginCommand(program: Command): void {
         output.outputStructured({
           status: 'authenticated',
           keyType: keyInfo.type,
-          scopes: keyInfo.scopes,
           expiresAt: keyInfo.expiresAt,
         }, outputFormat)
       } else {
         console.log(`${output.fmt.brand('✓')} API key validated`)
-        console.log(`  Key type: ${keyInfo.type}`)
-        console.log(`  Scopes: ${keyInfo.scopes.join(', ') || 'none'}`)
+        console.log(`  Key type: ${keyInfo.type ?? 'unknown'}`)
         console.log(`  Expires: ${formatExpiry(keyInfo.expiresAt)}`)
+
+        // Warn if env key will shadow this stored key
+        const envKey = process.env.AIXBT_API_KEY
+        if (envKey && envKey !== apiKey) {
+          console.log()
+          output.warn('AIXBT_API_KEY is set in your environment and will take precedence.')
+          console.log(`  Run ${output.fmt.dim('unset AIXBT_API_KEY')} to use this key.`)
+        }
       }
     })
 
@@ -133,6 +140,7 @@ export function registerLoginCommand(program: Command): void {
       const config = readConfig()
       delete config.apiKey
       delete config.keyType
+      delete config.keyName
       delete config.expiresAt
       delete config.scopes
       writeConfig(config)
@@ -154,17 +162,9 @@ export function registerLoginCommand(program: Command): void {
       const opts = cmd.optsWithGlobals()
       const outputFormat = resolveFormat(opts.format as string | undefined)
 
-      const resolved = resolveConfig({
-        apiKey: opts.apiKey as string | undefined,
-        apiUrl: opts.apiUrl as string | undefined,
-      })
+      const allKeys = detectAllKeys(opts.apiKey as string | undefined)
 
-      // Determine key source
-      const flagKey = opts.apiKey as string | undefined
-      const envKey = process.env.AIXBT_API_KEY
-      const source = flagKey ? '--api-key flag' : envKey ? 'AIXBT_API_KEY env' : 'config'
-
-      if (!resolved.apiKey) {
+      if (allKeys.length === 0) {
         if (output.isStructuredFormat(outputFormat)) {
           output.outputStructured({ authenticated: false }, outputFormat)
         } else {
@@ -173,7 +173,12 @@ export function registerLoginCommand(program: Command): void {
         return
       }
 
-      // Always validate against API
+      const resolved = resolveConfig({
+        apiKey: opts.apiKey as string | undefined,
+        apiUrl: opts.apiUrl as string | undefined,
+      })
+
+      // Validate the active key
       const keyInfo = await output.withSpinner(
         'Checking authentication...',
         outputFormat,
@@ -181,25 +186,77 @@ export function registerLoginCommand(program: Command): void {
         'Authentication check failed',
       )
 
-      // Check expiry warning
-      const expiryWarning = isExpiringSoon(keyInfo.expiresAt)
+      // Update config metadata if the validated key is the config key
+      const config = readConfig()
+      if (resolved.apiKey === config.apiKey) {
+        config.keyType = keyInfo.type
+        config.keyName = keyInfo.name
+        config.expiresAt = keyInfo.expiresAt
+        config.scopes = keyInfo.scopes
+        writeConfig(config)
+      }
+
+      // Determine active key index (first non-expired, or first)
+      const activeIdx = allKeys.findIndex(k => !k.expiresAt || !isExpired(k.expiresAt))
+      const effectiveActiveIdx = activeIdx >= 0 ? activeIdx : 0
 
       if (output.isStructuredFormat(outputFormat)) {
         output.outputStructured({
           authenticated: true,
-          key: output.maskApiKey(resolved.apiKey),
-          source,
-          keyType: keyInfo.type,
-          expiresAt: keyInfo.expiresAt,
-          expiringSoon: expiryWarning,
+          activeKey: {
+            key: output.maskApiKey(resolved.apiKey!),
+            source: resolved.keySource,
+            keyType: keyInfo.type,
+            name: keyInfo.name,
+            expiresAt: keyInfo.expiresAt,
+            period: parseX402Period(keyInfo.name),
+            expiringSoon: isExpiringSoon(keyInfo.expiresAt, keyInfo.name),
+          },
+          allKeys: allKeys.map((k, i) => ({
+            source: k.source,
+            key: output.maskApiKey(k.key),
+            active: i === effectiveActiveIdx,
+            keyType: k.keyType,
+            expiresAt: k.expiresAt,
+          })),
         }, outputFormat)
       } else {
-        output.keyValue('Key', output.maskApiKey(resolved.apiKey))
-        output.keyValue('Source', source)
-        output.keyValue('Key type', keyInfo.type)
-        output.keyValue('Expires', formatExpiry(keyInfo.expiresAt))
-        if (expiryWarning) {
-          output.warn('API key expires in less than 24 hours!')
+        for (let i = 0; i < allKeys.length; i++) {
+          const k = allKeys[i]
+          const isActive = i === effectiveActiveIdx
+          // For the active key, use the validated info
+          const type = isActive ? (keyInfo.type ?? '') : (k.keyType ?? '')
+          const name = isActive ? keyInfo.name : k.keyName
+          const expiresAt = isActive ? keyInfo.expiresAt : k.expiresAt
+          const period = parseX402Period(name)
+
+          const parts: string[] = [
+            k.source.padEnd(8),
+            output.maskApiKey(k.key).padEnd(16),
+          ]
+          if (type) parts.push(type + (period ? ` ${period}` : ''))
+          if (expiresAt && isExpired(expiresAt)) {
+            parts.push(output.fmt.red('expired'))
+          } else if (expiresAt && expiresAt !== 'never') {
+            const remaining = formatTimeRemaining(expiresAt)
+            if (isExpiringSoon(expiresAt, name)) {
+              parts.push(output.fmt.yellow(remaining))
+            } else {
+              parts.push(remaining)
+            }
+          } else if (expiresAt === 'never') {
+            parts.push('never expires')
+          }
+          if (isActive && allKeys.length > 1) parts.push(output.fmt.brand('active'))
+
+          const line = parts.join('  ')
+          console.log(isActive ? line : output.fmt.dim(line))
+        }
+
+        // Expiry warning for active key
+        if (keyInfo.expiresAt && isExpiringSoon(keyInfo.expiresAt, keyInfo.name)) {
+          console.log()
+          output.warn(`API key ${formatTimeRemaining(keyInfo.expiresAt)}`)
         }
       }
     })

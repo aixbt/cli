@@ -115,7 +115,7 @@ export class NoApiKeyError extends CliError {
           mode: 'purchase-pass',
           action: 'aixbt login --purchase-pass',
           description: 'Purchase a time-limited pass via x402',
-          cost: { '10calls': '$0.10', '1d': '$10', '1w': '$50', '4w': '$100' },
+          cost: { '1d': '$10', '1w': '$50', '4w': '$100' },
           dataFreshness: 'real-time',
           requires: ['wallet'],
         },
@@ -246,9 +246,19 @@ export async function handleTopLevelError(err: unknown, outputFormat: OutputForm
 
       if (err instanceof AuthError) {
         if (err.code === 'API_KEY_EXPIRED') {
-          console.error('\nYour API key has expired. Run: aixbt login')
+          const envKey = process.env.AIXBT_API_KEY
+          if (envKey) {
+            console.error('\nYour AIXBT_API_KEY env var has expired. Run: unset AIXBT_API_KEY')
+          } else {
+            console.error('\nYour API key has expired. Run: aixbt login')
+          }
         } else if (err.code === 'INVALID_API_KEY') {
-          console.error('\nYour API key is invalid. Run: aixbt login')
+          const envKey = process.env.AIXBT_API_KEY
+          if (envKey) {
+            console.error('\nYour AIXBT_API_KEY env var is invalid. Run: unset AIXBT_API_KEY')
+          } else {
+            console.error('\nYour API key is invalid. Run: aixbt login')
+          }
         }
       }
       if (err instanceof RateLimitError && err.rateLimit) {
