@@ -15,6 +15,7 @@ describe('CLI', () => {
     expect(commandNames).toContain('whoami')
     expect(commandNames).toContain('projects')
     expect(commandNames).toContain('signals')
+    expect(commandNames).toContain('grounding')
     expect(commandNames).toContain('recipe')
     expect(commandNames).toContain('provider')
     expect(commandNames).toContain('help')
