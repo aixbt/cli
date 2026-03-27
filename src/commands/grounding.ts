@@ -4,6 +4,7 @@ import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 import { resolveDate } from '../lib/date.js'
+import chalk from 'chalk'
 
 interface GroundingSection {
   title: string
@@ -14,11 +15,7 @@ interface GroundingSection {
 interface GroundingData {
   createdAt: string
   windowHours: number
-  sections: {
-    narratives: GroundingSection
-    macro: GroundingSection
-    geopolitics: GroundingSection
-  }
+  sections: Record<string, GroundingSection>
 }
 
 export function registerGroundingCommand(program: Command): void {
@@ -59,20 +56,52 @@ async function handleGrounding(cmd: Command): Promise<void> {
 
   // Human output
   const data = result.data
-  const sectionOrder: (keyof typeof data.sections)[] = ['narratives', 'macro', 'geopolitics']
 
-  for (let i = 0; i < sectionOrder.length; i++) {
-    const key = sectionOrder[i]
+  // Preferred display order; unknown sections appear after in API order
+  const displayOrder = ['narratives', 'macro', 'geopolitics', 'tradfi']
+  const apiKeys = Object.keys(data.sections)
+  const orderedKeys = [
+    ...displayOrder.filter(k => k in data.sections),
+    ...apiKeys.filter(k => !displayOrder.includes(k)),
+  ]
+
+  // Known section colors; unknown sections get random colors from the palette
+  const knownColors: Record<string, (s: string) => string> = {
+    narratives: chalk.hex('#b07de3'),
+    tradfi: chalk.blue,
+    macro: chalk.cyan,
+    geopolitics: chalk.green,
+  }
+  const extraColors = [
+    chalk.yellow, chalk.red, chalk.magentaBright,
+    chalk.cyanBright, chalk.greenBright, chalk.blueBright,
+  ]
+  let extraIdx = 0
+  const getColor = (key: string) => {
+    if (knownColors[key]) return knownColors[key]
+    return extraColors[extraIdx++ % extraColors.length]
+  }
+
+  for (let i = 0; i < orderedKeys.length; i++) {
+    const key = orderedKeys[i]
     const section = data.sections[key]
     if (!section) continue
+    const color = getColor(key)
 
     if (i > 0) console.log()
-    console.log(output.fmt.boldWhite(section.title))
+    console.log(chalk.bold(color(section.title)))
     for (const item of section.items) {
-      console.log(`  ${output.fmt.dim('•')} ${item}`)
+      const wrapped = output.wrapIndented(item, '    ', 4)
+      console.log(`  ${color('•')} ${wrapped}`)
     }
   }
 
   console.log()
-  output.dim(`Refreshed every ${data.windowHours} hours`)
+  const agoMs = Date.now() - new Date(data.createdAt).getTime()
+  const agoH = Math.floor(agoMs / 3600_000)
+  const agoM = Math.floor((agoMs % 3600_000) / 60_000)
+  const agoParts = agoH > 0 ? `${agoH}h${String(agoM).padStart(2, '0')}m` : `${agoM}m`
+
+  output.dim(`Updated ${agoParts} ago · every ${data.windowHours}h`)
+
 }
