@@ -15,6 +15,7 @@ describe('CLI', () => {
     expect(commandNames).toContain('whoami')
     expect(commandNames).toContain('projects')
     expect(commandNames).toContain('signals')
+    expect(commandNames).toContain('grounding')
     expect(commandNames).toContain('recipe')
     expect(commandNames).toContain('provider')
     expect(commandNames).toContain('help')
@@ -323,9 +324,9 @@ describe('CLI', () => {
   })
 
   describe('command count', () => {
-    it('should have exactly 8 registered commands', () => {
+    it('should have exactly 9 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(8)
+      expect(program.commands).toHaveLength(9)
     })
   })
 

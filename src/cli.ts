@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { Command, Option } from 'commander'
 import { registerProjectsCommand } from './commands/projects.js'
 import { registerSignalsCommand } from './commands/signals.js'
+import { registerGroundingCommand } from './commands/grounding.js'
 // clusters is now a subcommand of signals — see signals.ts
 import { registerRecipeCommand } from './commands/recipe.js'
 import { registerLoginCommand } from './commands/login.js'
@@ -124,6 +125,7 @@ export function createProgram(): Command {
   registerLoginCommand(program)
   registerProjectsCommand(program)
   registerSignalsCommand(program)
+  registerGroundingCommand(program)
   // clusters is now a subcommand of signals
   registerRecipeCommand(program)
   registerProviderCommand(program)
