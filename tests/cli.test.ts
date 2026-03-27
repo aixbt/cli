@@ -323,9 +323,9 @@ describe('CLI', () => {
   })
 
   describe('command count', () => {
-    it('should have exactly 8 registered commands', () => {
+    it('should have exactly 9 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(8)
+      expect(program.commands).toHaveLength(9)
     })
   })
 
