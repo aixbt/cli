@@ -527,4 +527,43 @@ describe('api-client', () => {
       expect(callUrl).toMatch(/^https:\/\/custom\.api\.com\/v1\/projects/)
     })
   })
+
+  // -- pathPrefix --
+
+  describe('pathPrefix', () => {
+    it('should prepend pathPrefix to the request path', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: {} }),
+      )
+
+      await get('/v2/projects', undefined, { noAuth: true, pathPrefix: '/x402', apiUrl: 'https://api.aixbt.tech' })
+
+      const callUrl = mockFetch.mock.calls[0][0] as string
+      expect(callUrl).toContain('/x402/v2/projects')
+    })
+
+    it('should not modify path when pathPrefix is not set', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: {} }),
+      )
+
+      await get('/v2/projects', undefined, { noAuth: true, apiUrl: 'https://api.aixbt.tech' })
+
+      const callUrl = mockFetch.mock.calls[0][0] as string
+      expect(callUrl).toContain('/v2/projects')
+      expect(callUrl).not.toContain('/x402')
+    })
+
+    it('should preserve query parameters when pathPrefix is set', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: {} }),
+      )
+
+      await get('/v2/projects', { page: 1 }, { noAuth: true, pathPrefix: '/x402', apiUrl: 'https://api.aixbt.tech' })
+
+      const callUrl = mockFetch.mock.calls[0][0] as string
+      expect(callUrl).toContain('/x402/v2/projects')
+      expect(callUrl).toContain('page=1')
+    })
+  })
 })

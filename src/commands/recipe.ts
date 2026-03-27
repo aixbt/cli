@@ -676,7 +676,14 @@ export function registerRecipeCommand(program: Command): void {
     .allowUnknownOption(true)
     .action(async (name: string, _opts: unknown, cmd: Command) => {
       const { clientOpts: clientOptions } = getClientOptions(cmd)
-      const outputFormat = resolveFormat(cmd.optsWithGlobals().format as string | undefined)
+      const globalOpts = cmd.optsWithGlobals()
+      if (globalOpts.payPerUse) {
+        throw new CliError(
+          'Pay-per-use is not supported for recipes. Recipes make multiple API calls; use an API key or --delayed instead.',
+          'PAY_PER_USE_UNSUPPORTED',
+        )
+      }
+      const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
       // Resolve recipe source (same logic as info/run)
       let yaml: string
@@ -849,6 +856,14 @@ export function registerRecipeCommand(program: Command): void {
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
       const { clientOpts: clientOptions } = getClientOptions(cmd)
       const globalOpts = cmd.optsWithGlobals()
+
+      if (globalOpts.payPerUse) {
+        throw new CliError(
+          'Pay-per-use is not supported for recipes. Recipes make multiple API calls; use an API key or --delayed instead.',
+          'PAY_PER_USE_UNSUPPORTED',
+        )
+      }
+
       const verbosity = (globalOpts.verbose as number) ?? 0
       const formatFlag = globalOpts.format as string | undefined
       if (formatFlag === 'human') {

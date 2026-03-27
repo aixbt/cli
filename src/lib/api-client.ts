@@ -14,6 +14,7 @@ interface ApiClientOptions {
   apiKey?: string
   apiUrl?: string
   noAuth?: boolean
+  pathPrefix?: string
   paymentSignature?: string
   userAgent?: string
 }
@@ -50,7 +51,8 @@ export async function apiRequest<T>(
   })
 
   const baseUrl = config.apiUrl.replace(/\/$/, '')
-  const url = new URL(path, baseUrl)
+  const finalPath = options.pathPrefix ? `${options.pathPrefix}${path}` : path
+  const url = new URL(finalPath, baseUrl)
 
   if (queryParams) {
     for (const [key, value] of Object.entries(queryParams)) {
