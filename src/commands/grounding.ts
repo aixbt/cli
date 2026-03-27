@@ -35,7 +35,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
   const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
-  const params: Record<string, string | undefined> = {
+  const params: Record<string, string | number | boolean | undefined> = {
     at: resolveDate(opts.at as string | undefined),
   }
 
