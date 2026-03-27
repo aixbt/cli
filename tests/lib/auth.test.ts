@@ -94,6 +94,17 @@ describe('auth', () => {
         expect(result.config.apiUrl).toBe('https://custom.api.com')
       }
     })
+
+    it('should return pay-per-use mode when paymentSignature is present', () => {
+      const result = resolveAuthMode({ paymentSignature: 'sig-abc-123' })
+      expect(result).toEqual({ mode: 'pay-per-use' })
+    })
+
+    it('should prioritize paymentSignature over a configured API key', () => {
+      writeConfig({ apiKey: 'config-key' })
+      const result = resolveAuthMode({ paymentSignature: 'sig-abc-123' })
+      expect(result).toEqual({ mode: 'pay-per-use' })
+    })
   })
 
   // -- validateApiKey --
@@ -193,6 +204,7 @@ describe('auth', () => {
       expect(result).toEqual({
         noAuth: true,
         apiUrl: undefined,
+        pathPrefix: '/x402',
       })
     })
 
@@ -212,6 +224,7 @@ describe('auth', () => {
 
       expect(result.apiUrl).toBe('https://override.api.com')
       expect(result.noAuth).toBe(true)
+      expect(result.pathPrefix).toBe('/x402')
     })
 
     it('should use apiUrl from config for api-key mode, ignoring globalOpts', () => {
@@ -248,6 +261,10 @@ describe('auth', () => {
       const result = buildClientOptions(authMode, { paymentSignature: 'sig-xyz-789' })
 
       expect(result.paymentSignature).toBe('sig-xyz-789')
+      expect(result.apiKey).toBe('test-key')
+      expect(result.apiUrl).toBe(DEFAULT_API_URL)
+      expect(result.noAuth).toBe(true)
+      expect(result.pathPrefix).toBe('/x402')
     })
 
     it('should not include paymentSignature when not provided in globalOpts', () => {
@@ -266,6 +283,44 @@ describe('auth', () => {
       const result = buildClientOptions(authMode, {})
 
       expect(result.paymentSignature).toBeUndefined()
+    })
+
+    it('should return pathPrefix /x402 for pay-per-use mode', () => {
+      const authMode: AuthMode = { mode: 'pay-per-use' }
+      const result = buildClientOptions(authMode, {})
+      expect(result.pathPrefix).toBe('/x402')
+      expect(result.noAuth).toBe(true)
+    })
+
+    it('should return pathPrefix /x402 and noAuth when paymentSignature is present', () => {
+      const authMode: AuthMode = { mode: 'pay-per-use' }
+      const result = buildClientOptions(authMode, { paymentSignature: 'sig-xyz' })
+      expect(result.pathPrefix).toBe('/x402')
+      expect(result.noAuth).toBe(true)
+      expect(result.paymentSignature).toBe('sig-xyz')
+    })
+
+    it('should not set pathPrefix for delayed mode', () => {
+      const authMode: AuthMode = { mode: 'delayed' }
+      const result = buildClientOptions(authMode, {})
+      expect(result.pathPrefix).toBeUndefined()
+      expect(result.noAuth).toBe(true)
+    })
+
+    it('should not set pathPrefix for api-key mode without paymentSignature', () => {
+      const authMode: AuthMode = {
+        mode: 'api-key',
+        apiKey: 'test-key',
+        config: {
+          apiKey: 'test-key',
+          apiUrl: 'https://api.aixbt.tech',
+          keyType: undefined,
+          expiresAt: undefined,
+          scopes: [],
+        },
+      }
+      const result = buildClientOptions(authMode, {})
+      expect(result.pathPrefix).toBeUndefined()
     })
   })
 })

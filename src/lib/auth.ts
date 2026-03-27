@@ -14,6 +14,7 @@ export type AuthMode =
 interface AuthModeFlags {
   delayed?: boolean
   payPerUse?: boolean
+  paymentSignature?: string
   apiKey?: string
   apiUrl?: string
 }
@@ -31,6 +32,9 @@ export function resolveAuthMode(flags: AuthModeFlags, resolved?: ResolvedConfig)
     return { mode: 'delayed' }
   }
   if (flags.payPerUse) {
+    return { mode: 'pay-per-use' }
+  }
+  if (flags.paymentSignature) {
     return { mode: 'pay-per-use' }
   }
   const config = resolved ?? resolveConfig({
@@ -59,8 +63,14 @@ export function buildClientOptions(
     ? { apiKey: authMode.apiKey, apiUrl: authMode.config.apiUrl }
     : { noAuth: true, apiUrl: globalOpts.apiUrl }
 
+  if (authMode.mode === 'pay-per-use') {
+    base.pathPrefix = '/x402'
+  }
+
   if (globalOpts.paymentSignature) {
     base.paymentSignature = globalOpts.paymentSignature
+    base.pathPrefix = '/x402'
+    base.noAuth = true
   }
   return base
 }
@@ -173,6 +183,7 @@ export function getClientOptions(cmd: Command): {
   const authMode = resolveAuthMode({
     delayed: opts.delayed as boolean | undefined,
     payPerUse: opts.payPerUse as boolean | undefined,
+    paymentSignature: opts.paymentSignature as string | undefined,
   }, resolved)
 
   const clientOpts = buildClientOptions(authMode, {
