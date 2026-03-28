@@ -23,6 +23,7 @@ export function registerGroundingCommand(program: Command): void {
     .command('grounding')
     .description('Get market grounding snapshot (narratives, macro, geopolitics)')
     .option('--at <date>', 'Historical timestamp (ISO 8601 or relative: -24h, -7d)')
+    .option('--section <name>', 'Show only a specific section (e.g., narratives, macro, geopolitics, tradfi)')
     .action(async (_opts: unknown, cmd: Command) => {
       await handleGrounding(cmd)
     })
@@ -49,16 +50,29 @@ async function handleGrounding(cmd: Command): Promise<void> {
     { silent: true },
   )
 
+  const sectionFilter = opts.section as string | undefined
+  const data = result.data
+
+  // Filter to a single section if --section specified
+  if (sectionFilter) {
+    const key = sectionFilter.toLowerCase()
+    if (!data.sections[key]) {
+      const available = Object.keys(data.sections).join(', ')
+      console.error(`Unknown section "${sectionFilter}". Available: ${available}`)
+      process.exit(1)
+    }
+    data.sections = { [key]: data.sections[key] }
+  }
+
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: result.data, meta: result.meta }, outputFormat)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { summary: _, ...groundingData } = data as unknown as Record<string, unknown>
+    output.outputApiResult({ data: groundingData, meta: result.meta }, outputFormat)
     return
   }
 
-  // Human output
-  const data = result.data
-
   // Preferred display order; unknown sections appear after in API order
-  const displayOrder = ['narratives', 'macro', 'geopolitics', 'tradfi']
+  const displayOrder = ['narratives', 'tradfi', 'macro', 'geopolitics']
   const apiKeys = Object.keys(data.sections)
   const orderedKeys = [
     ...displayOrder.filter(k => k in data.sections),
@@ -100,8 +114,8 @@ async function handleGrounding(cmd: Command): Promise<void> {
   const agoMs = Date.now() - new Date(data.createdAt).getTime()
   const agoH = Math.floor(agoMs / 3600_000)
   const agoM = Math.floor((agoMs % 3600_000) / 60_000)
-  const agoParts = agoH > 0 ? `${agoH}h${String(agoM).padStart(2, '0')}m` : `${agoM}m`
+  const agoParts = agoH > 0 ? `${agoH}h ${agoM}m` : `${agoM}m`
 
-  output.dim(`Updated ${agoParts} ago · every ${data.windowHours}h`)
+  output.dim(`${agoParts} ago · updates every ${data.windowHours}h`)
 
 }

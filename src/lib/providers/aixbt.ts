@@ -7,6 +7,7 @@ export const AIXBT_ACTION_PATHS: Record<string, string> = {
   chains: '/v2/projects/chains',
   signals: '/v2/signals',
   clusters: '/v2/clusters',
+  grounding: '/v2/grounding/latest',
 }
 
 const actions: Record<string, ActionDefinition> = {
@@ -93,6 +94,14 @@ const actions: Record<string, ActionDefinition> = {
     path: '/v2/clusters',
     description: 'List all signal clusters (thematic categories)',
     hint: 'You need the list of signal cluster IDs and names for filtering signals',
+    params: [],
+    minTier: 'free',
+  },
+  grounding: {
+    method: 'GET',
+    path: '/v2/grounding/latest',
+    description: 'Get market grounding snapshot (narratives, macro, geopolitics, tradfi)',
+    hint: 'You need current market context — crypto narratives, global liquidity, geopolitics, or tradfi conditions',
     params: [],
     minTier: 'free',
   },
