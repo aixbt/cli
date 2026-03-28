@@ -174,7 +174,7 @@ describe('grounding command', () => {
     await program.parseAsync(['node', 'aixbt', 'grounding'], { from: 'node' })
 
     const allOutput = logs.join('\n')
-    expect(allOutput).toContain('Updated')
-    expect(allOutput).toContain('every 12h')
+    expect(allOutput).toContain('ago')
+    expect(allOutput).toContain('updates every 12h')
   })
 })
