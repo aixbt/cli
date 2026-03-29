@@ -4,7 +4,6 @@ import {
   buildSegments,
   validateRecipe,
   validateRecipeCollectIssues,
-  validateAnalysisContext,
   extractStepReferences,
   extractTemplateRefs,
   extractAllTemplateRefs,
