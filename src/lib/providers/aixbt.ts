@@ -30,6 +30,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'hasToken', required: false, description: 'Filter to projects with a token (true/false)' },
       { name: 'excludeStables', required: false, description: 'Exclude stablecoins (true/false)' },
       { name: 'signalSortBy', required: false, description: 'Sort order for embedded signals' },
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns data as of this point in time.' },
     ],
     minTier: 'free',
   },
@@ -41,6 +42,7 @@ const actions: Record<string, ActionDefinition> = {
     params: [
       { name: 'id', required: true, description: 'Project ID', inPath: true },
       { name: 'signalSortBy', required: false, description: 'Sort order for embedded signals' },
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns data as of this point in time.' },
     ],
     minTier: 'free',
   },
@@ -54,6 +56,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'start', required: false, description: 'Start date (ISO 8601 or relative like -7d)' },
       { name: 'end', required: false, description: 'End date (ISO 8601 or relative like -1d)' },
       { name: 'includeClusters', required: false, description: 'Include per-hour cluster breakdown (default: true, set to "false" for scores only)' },
+      { name: 'at', required: false, description: 'Historical anchor (ISO 8601). Sets the end of the momentum window; start defaults to 7 days before.' },
     ],
     minTier: 'free',
   },
@@ -86,6 +89,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'reinforcedBefore', required: false, description: 'Signals reinforced before this date (ISO 8601)' },
       { name: 'sortBy', required: false, description: 'Sort field (e.g., detectedAt, reinforcedAt)' },
       { name: 'hasOfficialSource', required: false, description: 'Filter to signals with official sources (true/false)' },
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns signals as they existed at this point in time.' },
     ],
     minTier: 'free',
   },
@@ -102,7 +106,10 @@ const actions: Record<string, ActionDefinition> = {
     path: '/v2/grounding/latest',
     description: 'Get market grounding snapshot (narratives, macro, geopolitics, tradfi)',
     hint: 'You need current market context — crypto narratives, global liquidity, geopolitics, or tradfi conditions',
-    params: [],
+    params: [
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns the grounding snapshot active at this point in time.' },
+      { name: 'section', required: false, description: 'Show only a specific section (e.g., narratives, macro, geopolitics, tradfi)' },
+    ],
     minTier: 'free',
   },
 }
