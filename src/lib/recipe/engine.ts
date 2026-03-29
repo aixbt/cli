@@ -143,6 +143,16 @@ function buildFallbackResult(
   }
 }
 
+function makeSyntheticResult(stepId: string, data: unknown): StepResult {
+  const now = new Date().toISOString()
+  return {
+    stepId,
+    data,
+    rateLimit: null,
+    timing: { startedAt: now, completedAt: now, durationMs: 0 },
+  }
+}
+
 // -- Param validation --
 
 function validateRequiredParams(
@@ -616,16 +626,7 @@ export async function executeRecipe(options: {
   // Restore carry-forward data from previous yield
   if (options.carryForward) {
     for (const [stepId, data] of Object.entries(options.carryForward)) {
-      ctx.results.set(stepId, {
-        stepId,
-        data,
-        rateLimit: null,
-        timing: {
-          startedAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
-          durationMs: 0,
-        },
-      })
+      ctx.results.set(stepId, makeSyntheticResult(stepId, data))
     }
   }
 
@@ -647,16 +648,7 @@ export async function executeRecipe(options: {
       const data = isParallelAgentStep(segment.precedingAgentStep) && ctx.agentInput._results
         ? ctx.agentInput._results
         : ctx.agentInput
-      ctx.results.set(segment.precedingAgentStep.id, {
-        stepId: segment.precedingAgentStep.id,
-        data,
-        rateLimit: null,
-        timing: {
-          startedAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
-          durationMs: 0,
-        },
-      })
+      ctx.results.set(segment.precedingAgentStep.id, makeSyntheticResult(segment.precedingAgentStep.id, data))
       ctx.agentInput = null
     }
 
