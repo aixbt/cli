@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 import {
   buildSegments,
   validateRecipe,
   validateRecipeCollectIssues,
+  validateAnalysisContext,
   extractStepReferences,
   extractTemplateRefs,
   extractAllTemplateRefs,
@@ -23,6 +24,7 @@ import type {
 function makeRecipe(
   steps: RecipeStep[],
   params?: Record<string, { type: 'string' | 'number' | 'boolean'; required?: boolean; description?: string; default?: string | number | boolean }>,
+  analysis?: Recipe['analysis'],
 ): Recipe {
   return {
     name: 'test',
@@ -30,6 +32,7 @@ function makeRecipe(
     description: '',
     params,
     steps,
+    analysis,
   }
 }
 
@@ -677,5 +680,88 @@ describe('segment boundaries with for: modifier', () => {
       agentStepWithFor('a1', 's1.data', ['s1']),
     ])
     expect(() => validateRecipe(recipe)).not.toThrow()
+  })
+})
+
+// -- validateAnalysisContext --
+
+describe('validateAnalysisContext', () => {
+  it('should not warn when all analysis.context references are valid', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const recipe = makeRecipe(
+      [apiStep('s1', 'GET /v2/projects'), agentStep('a1', ['s1'])],
+      undefined,
+      { instructions: 'test', context: ['s1'] },
+    )
+    validateRecipeCollectIssues(recipe)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('should warn for invalid analysis.context references without adding validation issues', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const recipe = makeRecipe(
+      [apiStep('s1', 'GET /v2/projects')],
+      undefined,
+      { instructions: 'test', context: ['nonexistent'] },
+    )
+    const issues = validateRecipeCollectIssues(recipe)
+    expect(issues).toEqual([])
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('nonexistent'))
+    expect(recipe.analysis!.context).toEqual(['nonexistent'])
+    spy.mockRestore()
+  })
+
+  it('should warn only for invalid references in a mixed list and not modify analysis.context', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const recipe = makeRecipe(
+      [apiStep('s1', 'GET /v2/projects'), apiStep('s2', 'GET /v2/signals')],
+      undefined,
+      { instructions: 'test', context: ['s1', 'ghost', 's2'] },
+    )
+    const issues = validateRecipeCollectIssues(recipe)
+    expect(issues).toEqual([])
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('ghost'))
+    expect(recipe.analysis!.context).toEqual(['s1', 'ghost', 's2'])
+    spy.mockRestore()
+  })
+
+  it('should not warn when analysis has no context field', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const recipe = makeRecipe(
+      [apiStep('s1', 'GET /v2/projects')],
+      undefined,
+      { instructions: 'test' },
+    )
+    validateRecipeCollectIssues(recipe)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('should not warn when recipe has no analysis block', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const recipe = makeRecipe([apiStep('s1', 'GET /v2/projects')])
+    validateRecipeCollectIssues(recipe)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('should accept cross-segment references as valid in analysis.context', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const recipe = makeRecipe(
+      [
+        apiStep('s1', 'GET /v2/projects'),
+        agentStep('a1', ['s1']),
+        apiStep('s2', 'GET /v2/signals'),
+      ],
+      undefined,
+      { instructions: 'test', context: ['s1', 's2'] },
+    )
+    const issues = validateRecipeCollectIssues(recipe)
+    expect(issues).toEqual([])
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
   })
 })
