@@ -400,9 +400,24 @@ function validateAnalysisBlock(
     })
   }
 
+  if ('context' in analysis && analysis.context !== undefined) {
+    if (
+      !Array.isArray(analysis.context) ||
+      !analysis.context.every((v: unknown) => typeof v === 'string')
+    ) {
+      issues.push({
+        path: 'analysis.context',
+        message: 'context must be an array of strings',
+      })
+    }
+  }
+
   return {
     instructions,
     ...(typeof analysis.output === 'string' ? { output: analysis.output } : {}),
+    ...(Array.isArray(analysis.context) && analysis.context.every((v: unknown) => typeof v === 'string')
+      ? { context: analysis.context as string[] }
+      : {}),
   }
 }
 

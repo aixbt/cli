@@ -545,6 +545,7 @@ export async function executeRecipe(options: {
   clientOptions: ApiClientOptions
   resumeFromStep?: string
   resumeInput?: Record<string, unknown>
+  carryForward?: Record<string, unknown>
   outputDir?: string
   outputFormat?: string
   recipeSource?: string

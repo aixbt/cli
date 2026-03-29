@@ -974,6 +974,100 @@ steps:
       const recipe = parseRecipe(yaml)
       expect(recipe.analysis).toBeUndefined()
     })
+
+    describe('analysis.context', () => {
+      it('should parse valid context array of step references', () => {
+        const yaml = `
+name: test-recipe
+steps:
+  - id: step_a
+    type: api
+    action: "GET /v2/projects"
+  - id: step_b
+    type: api
+    action: "GET /v2/signals"
+analysis:
+  instructions: "Summarize the data"
+  context:
+    - step_a
+    - step_b
+`
+        const recipe = parseRecipe(yaml)
+        expect(recipe.analysis).toBeDefined()
+        expect(recipe.analysis!.context).toEqual(['step_a', 'step_b'])
+        expect(recipe.analysis!.instructions).toBe('Summarize the data')
+      })
+
+      it('should produce a validation issue when context is not an array', () => {
+        const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: api
+    action: "GET /v2/projects"
+analysis:
+  instructions: "Summarize the data"
+  context: "not_an_array"
+`
+        const err = expectValidationError(yaml)
+        expect(issuePaths(err)).toContainEqual('analysis.context')
+        expect(issueMessages(err)).toContainEqual(
+          expect.stringContaining('context must be an array of strings'),
+        )
+      })
+
+      it('should produce a validation issue when context array contains non-strings', () => {
+        const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: api
+    action: "GET /v2/projects"
+analysis:
+  instructions: "Summarize the data"
+  context:
+    - valid
+    - 123
+`
+        const err = expectValidationError(yaml)
+        expect(issuePaths(err)).toContainEqual('analysis.context')
+        expect(issueMessages(err)).toContainEqual(
+          expect.stringContaining('context must be an array of strings'),
+        )
+      })
+
+      it('should parse without context field when context is not provided (backward compat)', () => {
+        const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: api
+    action: "GET /v2/projects"
+analysis:
+  instructions: "Summarize the data"
+`
+        const recipe = parseRecipe(yaml)
+        expect(recipe.analysis).toBeDefined()
+        expect(recipe.analysis!.instructions).toBe('Summarize the data')
+        expect(recipe.analysis!.context).toBeUndefined()
+      })
+
+      it('should accept an empty context array as valid', () => {
+        const yaml = `
+name: test-recipe
+steps:
+  - id: step1
+    type: api
+    action: "GET /v2/projects"
+analysis:
+  instructions: "Summarize the data"
+  context: []
+`
+        const recipe = parseRecipe(yaml)
+        expect(recipe.analysis).toBeDefined()
+        expect(recipe.analysis!.context).toEqual([])
+      })
+    })
   })
 
   // -- Transform blocks --
