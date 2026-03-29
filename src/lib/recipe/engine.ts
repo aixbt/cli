@@ -537,6 +537,47 @@ async function executeStep(
   }
 }
 
+// -- Carry-forward computation --
+
+/**
+ * Scan downstream consumers (agent steps in later segments + analysis block)
+ * and collect pre-yield step results that they reference in their context arrays.
+ * Returns a map of stepId -> data for results that exist in ctx.results.
+ */
+function computeCarryForward(ctx: ExecutionContext): Record<string, unknown> {
+  const neededStepIds = new Set<string>()
+
+  // Collect context refs from all remaining segments' agent steps
+  for (let i = ctx.currentSegmentIndex + 1; i < ctx.segments.length; i++) {
+    for (const step of ctx.segments[i].steps) {
+      if (isAgentStep(step)) {
+        for (const ref of step.context) {
+          neededStepIds.add(ref)
+        }
+      }
+    }
+  }
+
+  // Collect context refs from the analysis block
+  if (ctx.recipe.analysis?.context) {
+    for (const ref of ctx.recipe.analysis.context) {
+      neededStepIds.add(ref)
+    }
+  }
+
+  // Filter to only step results that actually exist in ctx.results right now
+  // (these are the pre-yield results that would be lost on resume)
+  const carryForward: Record<string, unknown> = {}
+  for (const stepId of neededStepIds) {
+    const result = ctx.results.get(stepId)
+    if (result) {
+      carryForward[stepId] = result.data
+    }
+  }
+
+  return carryForward
+}
+
 // -- Main entry point --
 
 export async function executeRecipe(options: {
@@ -570,6 +611,22 @@ export async function executeRecipe(options: {
     segments,
     agentInput: null,
     resumedFromStep: options.resumeFromStep ?? null,
+  }
+
+  // Restore carry-forward data from previous yield
+  if (options.carryForward) {
+    for (const [stepId, data] of Object.entries(options.carryForward)) {
+      ctx.results.set(stepId, {
+        stepId,
+        data,
+        rateLimit: null,
+        timing: {
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          durationMs: 0,
+        },
+      })
+    }
   }
 
   let startSegmentIndex = 0
@@ -609,10 +666,12 @@ export async function executeRecipe(options: {
     for (const layer of layers) {
       // Agent steps are always alone in their layer
       if (layer.length === 1 && isParallelAgentStep(layer[0])) {
-        return buildAwaitingParallelAgentOutput(ctx, layer[0], options.params, options.recipeSource)
+        const carryForward = computeCarryForward(ctx)
+        return buildAwaitingParallelAgentOutput(ctx, layer[0], options.params, options.recipeSource, carryForward)
       }
       if (layer.length === 1 && isAgentStep(layer[0])) {
-        return buildAwaitingAgentOutput(ctx, layer[0], options.params, options.recipeSource)
+        const carryForward = computeCarryForward(ctx)
+        return buildAwaitingAgentOutput(ctx, layer[0], options.params, options.recipeSource, carryForward)
       }
 
       if (layer.length === 1) {
