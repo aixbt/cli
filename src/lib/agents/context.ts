@@ -33,6 +33,12 @@ const ACTION_CONTEXT: Record<string, string> = {
     'Patterns: expanding (new clusters joining), sustained (stable), contracting (fading), spike (sharp rise then decline).',
   ].join(' '),
 
+  rank: [
+    'Rank: Leaderboard position (1-100) based on momentum score.',
+    'Only projects in the top 100 appear. Rank history shows position changes over time.',
+    'Rapid rank improvement signals emerging breakout; declining rank signals cooling interest.',
+  ].join(' '),
+
   clusters: [
     'Clusters: Each cluster is a distinct community segment identified via social graph analysis of follow relationships on X.',
     'When multiple unconnected clusters independently discuss the same project (convergence), it carries greater weight than high volume from a single cluster.',

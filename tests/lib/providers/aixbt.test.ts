@@ -12,13 +12,14 @@ describe('AIXBT_ACTION_PATHS', () => {
     'momentum',
     'chains',
     'signals',
+    'rank',
     'clusters',
     'grounding',
   ]
 
-  it('should have entries for all 7 action names', () => {
+  it('should have entries for all 8 action names', () => {
     const keys = Object.keys(AIXBT_ACTION_PATHS)
-    expect(keys).toHaveLength(7)
+    expect(keys).toHaveLength(8)
     for (const name of expectedActions) {
       expect(AIXBT_ACTION_PATHS).toHaveProperty(name)
     }
@@ -38,6 +39,10 @@ describe('AIXBT_ACTION_PATHS', () => {
 
   it('should include {id} parameter in momentum path', () => {
     expect(AIXBT_ACTION_PATHS.momentum).toContain('{id}')
+  })
+
+  it('should include {id} parameter in rank path', () => {
+    expect(AIXBT_ACTION_PATHS.rank).toContain('{id}')
   })
 
   it('should not include {id} in paths that do not need it', () => {
@@ -78,12 +83,13 @@ describe('aixbtProvider', () => {
   // -- Actions --
 
   describe('actions', () => {
-    it('should define all 7 actions', () => {
+    it('should define all 8 actions', () => {
       const actionNames = Object.keys(aixbtProvider.actions)
-      expect(actionNames).toHaveLength(7)
+      expect(actionNames).toHaveLength(8)
       expect(actionNames).toContain('projects')
       expect(actionNames).toContain('project')
       expect(actionNames).toContain('momentum')
+      expect(actionNames).toContain('rank')
       expect(actionNames).toContain('chains')
       expect(actionNames).toContain('signals')
       expect(actionNames).toContain('clusters')

@@ -52,6 +52,16 @@ interface MomentumData {
   }>
 }
 
+interface RankData {
+  projectId: string
+  projectName: string
+  data: Array<{
+    timestamp: string
+    rank: number
+    score?: number
+  }>
+}
+
 // -- Table column definitions --
 
 const PROJECT_LIST_COLUMNS: output.TableColumn[] = [
@@ -99,6 +109,24 @@ const MOMENTUM_COLUMNS: output.TableColumn[] = [
   { key: 'clusters', header: 'Clusters:mentions' },
 ]
 
+const RANK_COLUMNS: output.TableColumn[] = [
+  { key: 'timestamp', header: 'Time', width: 18 },
+  {
+    key: 'rank',
+    header: 'Rank',
+    width: 6,
+    align: 'right' as const,
+    format: (v: unknown) => (typeof v === 'number' ? `#${v}` : '-'),
+  },
+  {
+    key: 'score',
+    header: 'Score',
+    width: 8,
+    align: 'right' as const,
+    format: (v: unknown) => (typeof v === 'number' ? v.toFixed(3) : '-'),
+  },
+]
+
 // -- Command registration --
 
 export function registerProjectsCommand(program: Command): void {
@@ -144,9 +172,20 @@ export function registerProjectsCommand(program: Command): void {
     .description('Get momentum history for a project')
     .option('--start <date>', 'Start date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--end <date>', 'End date (ISO 8601 or relative: -7d, -24h, -30m)')
-    .option('--at <date>', 'Historical anchor (ISO 8601 or relative: -24h, -7d)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .action(async (id: string, _opts: unknown, cmd: Command) => {
       await handleMomentum(id, cmd)
+    })
+
+  // -- rank subcommand --
+  projects
+    .command('rank <id>')
+    .description('Get rank history for a project')
+    .option('--start <date>', 'Start date (ISO 8601 or relative: -7d, -24h, -30m)')
+    .option('--end <date>', 'End date (ISO 8601 or relative: -7d, -24h, -30m)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
+    .action(async (id: string, _opts: unknown, cmd: Command) => {
+      await handleRank(id, cmd)
     })
 }
 
@@ -325,6 +364,53 @@ async function handleMomentum(id: string, cmd: Command): Promise<void> {
 
   output.table(rows, MOMENTUM_COLUMNS)
 
+}
+
+async function handleRank(id: string, cmd: Command): Promise<void> {
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
+  const opts = cmd.optsWithGlobals()
+
+  const params: Record<string, string | number | boolean | undefined> = {
+    start: resolveDate(opts.start as string | undefined),
+    end: resolveDate(opts.end as string | undefined),
+    at: resolveDate(opts.at as string | undefined),
+  }
+
+  const result = await output.withSpinner(
+    'Fetching rank history...',
+    outputFormat,
+    () => withPayPerUse(
+      () => get<RankData>(`/v2/projects/${encodeURIComponent(id)}/rank`, params, clientOpts),
+      authMode,
+      reconstructCommand(`aixbt projects rank ${id}`, opts),
+      outputFormat,
+    ),
+    'Failed to fetch rank history',
+    { silent: true },
+  )
+
+  const rank = result.data
+
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputApiResult({ data: rank, meta: result.meta }, outputFormat)
+    return
+  }
+
+  output.label('Rank History', rank.projectName)
+  console.log()
+
+  if (!rank.data || rank.data.length === 0) {
+    output.dim('No rank data available (project may not have been in the top 100).')
+    return
+  }
+
+  const rows = rank.data.slice(-20).map((point) => ({
+    timestamp: point.timestamp.replace('T', ' ').replace(/:\d{2}\.\d{3}Z$/, ''),
+    rank: point.rank,
+    score: point.score,
+  }))
+
+  output.table(rows, RANK_COLUMNS)
 }
 
 async function handleChains(cmd: Command): Promise<void> {
