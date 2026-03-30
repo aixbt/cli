@@ -29,6 +29,7 @@ Four access modes: API key, x402 purchase pass, x402 pay-per-use, and delayed (f
 | `whoami` | Show current authentication status |
 | `projects` | Query tracked projects and momentum |
 | `signals` | Query real-time detected signals |
+| `grounding` | Market grounding snapshot (narratives, macro, geopolitics, tradfi) |
 | `signals clusters` | Explore signal clusters |
 | `signals categories` | List signal categories |
 | `recipe` | Build and run analysis pipelines |
