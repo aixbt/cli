@@ -175,6 +175,7 @@ describe('grounding command', () => {
 
     const allOutput = logs.join('\n')
     expect(allOutput).toContain('ago')
-    expect(allOutput).toContain('updates every 12h')
+    expect(allOutput).toContain('refreshes hourly')
+    expect(allOutput).toContain('12h window')
   })
 })
