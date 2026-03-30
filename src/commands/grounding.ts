@@ -22,7 +22,7 @@ export function registerGroundingCommand(program: Command): void {
   program
     .command('grounding')
     .description('Get market grounding snapshot (narratives, macro, geopolitics)')
-    .option('--at <date>', 'Historical timestamp (ISO 8601 or relative: -24h, -7d)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .option('--section <name>', 'Show only a specific section (e.g., narratives, macro, geopolitics, tradfi)')
     .action(async (_opts: unknown, cmd: Command) => {
       await handleGrounding(cmd)
@@ -72,7 +72,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
   }
 
   // Preferred display order; unknown sections appear after in API order
-  const displayOrder = ['narratives', 'tradfi', 'macro', 'geopolitics']
+  const displayOrder = ['crypto', 'tradfi', 'macro', 'geopolitics']
   const apiKeys = Object.keys(data.sections)
   const orderedKeys = [
     ...displayOrder.filter(k => k in data.sections),
@@ -81,7 +81,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
 
   // Known section colors; unknown sections get random colors from the palette
   const knownColors: Record<string, (s: string) => string> = {
-    narratives: chalk.hex('#b07de3'),
+    crypto: chalk.hex('#b07de3'),
     tradfi: chalk.blue,
     macro: chalk.cyan,
     geopolitics: chalk.green,

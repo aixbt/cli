@@ -121,7 +121,7 @@ export function registerProjectsCommand(program: Command): void {
     .option('--created-after <date>', 'Filter projects created after date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--created-before <date>', 'Filter projects created before date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--signal-sort <field>', 'Sort signals by field (createdAt, reinforcedAt)', 'createdAt')
-    .option('--at <date>', 'Historical timestamp (ISO 8601 or relative: -24h, -7d)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .action(async (id: string | undefined, _opts: unknown, cmd: Command) => {
       if (id) {
         await handleProjectDetail(id, cmd)
@@ -144,7 +144,7 @@ export function registerProjectsCommand(program: Command): void {
     .description('Get momentum history for a project')
     .option('--start <date>', 'Start date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--end <date>', 'End date (ISO 8601 or relative: -7d, -24h, -30m)')
-    .option('--at <date>', 'Historical anchor (ISO 8601 or relative: -24h, -7d)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .action(async (id: string, _opts: unknown, cmd: Command) => {
       await handleMomentum(id, cmd)
     })
