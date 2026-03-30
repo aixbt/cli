@@ -17,6 +17,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'address', required: true, description: 'Token contract address' },
       { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")' },
       { name: 'limit', required: false, description: 'Number of candles to return (default: 30)' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — cap chart data to this time. Auto-set from recipe --at.' },
     ],
     minTier: 'free',
     resolve: async (params, ctx) => resolveTokenOhlcvViaPool(params, ctx.request),
@@ -44,6 +45,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")' },
       { name: 'limit', required: false, description: 'Number of candles to return (default: 30, max: 366)' },
       { name: 'start', required: false, description: 'Start time (Unix timestamp, RFC3339, or date)' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — cap chart data to this time. Auto-set from recipe --at.' },
     ],
     minTier: 'free',
   },
@@ -75,11 +77,14 @@ export const dexpaprikaProvider: Provider = {
     result.limit = limit
     if (!result.start) {
       const intervalMs = tf === 'minute' ? 60_000 : tf === 'hour' ? 3_600_000 : 86_400_000
-      const end = new Date()
+      const end = result.before_timestamp
+        ? new Date(Number(result.before_timestamp) * 1000)
+        : new Date()
       const start = new Date(end.getTime() - limit * intervalMs)
       result.start = start.toISOString()
       result.end = end.toISOString()
     }
+    delete result.before_timestamp
 
     return result
   },

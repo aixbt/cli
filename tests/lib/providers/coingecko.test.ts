@@ -76,6 +76,7 @@ describe('coingeckoProvider', () => {
       'token-ohlcv',
       'pool-ohlcv',
       'chart',
+      'ohlc-range',
     ]
 
     const COINGECKO_ONLY_ACTIONS = [
@@ -101,9 +102,9 @@ describe('coingeckoProvider', () => {
       'chart',
     ]
 
-    it('should define all 13 actions', () => {
+    it('should define all 14 actions', () => {
       const actionNames = Object.keys(coingeckoProvider.actions)
-      expect(actionNames).toHaveLength(13)
+      expect(actionNames).toHaveLength(14)
       for (const name of ALL_ACTION_NAMES) {
         expect(coingeckoProvider.actions).toHaveProperty(name)
       }

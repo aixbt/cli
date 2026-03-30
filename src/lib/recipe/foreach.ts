@@ -2,7 +2,8 @@ import type {
   ExecutionContext, ApiStep, ForeachResult,
   ForeachFailure, RateLimitInfo,
 } from '../../types.js'
-import { resolveActionPath, flattenParams, substitutePathParams } from './template.js'
+import { resolveActionPath, flattenParams, substitutePathParams, resolveRelativeTime } from './template.js'
+import { AT_SUPPORTED_ACTIONS } from '../providers/aixbt.js'
 import { applyTransforms } from '../transforms.js'
 import { get, sleep } from '../api-client.js'
 import { CliError } from '../errors.js'
@@ -262,6 +263,14 @@ export async function executeForeach(options: ForeachOptions): Promise<ForeachRe
 
       const actionPath = AIXBT_ACTION_PATHS[step.action] ?? step.action
       const resolvedParams = flattenParams(step.params, ctx, item)
+
+      // Auto-inject `at` from recipe-level params (same as engine.ts)
+      if (ctx.params.at && resolvedParams.at === undefined) {
+        if (AT_SUPPORTED_ACTIONS.has(step.action)) {
+          resolvedParams.at = resolveRelativeTime(ctx.params.at)
+        }
+      }
+
       const substitutedPath = substitutePathParams(actionPath, resolvedParams)
       const { path } = resolveActionPath(substitutedPath, ctx, item)
 

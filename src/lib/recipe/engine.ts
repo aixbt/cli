@@ -9,7 +9,8 @@ import { parseRecipe } from './parser.js'
 import { validateRecipe, buildSegments, extractStepReferences } from './validator.js'
 import { get, type ApiClientOptions } from '../api-client.js'
 import { CliError } from '../errors.js'
-import { resolveValue, resolveActionPath, flattenParams, substitutePathParams } from './template.js'
+import { resolveValue, resolveActionPath, flattenParams, substitutePathParams, resolveRelativeTime } from './template.js'
+import { AT_SUPPORTED_ACTIONS } from '../providers/aixbt.js'
 import { executeForeach, type ForeachProgressEvent } from './foreach.js'
 export type { ForeachProgressEvent } from './foreach.js'
 import { paginateApiStep, MAX_PAGE_LIMIT } from './pagination.js'
@@ -470,6 +471,15 @@ async function executeStep(
       actionPath = step.action
     }
     const resolvedParams = !isAgentStep(step) ? flattenParams(step.params, ctx) : {}
+
+    // Auto-inject `at` from recipe-level params into AIXBT API steps that support it,
+    // unless the step already sets its own `at` value.
+    if (!isAgentStep(step) && ctx.params.at && resolvedParams.at === undefined) {
+      if (AT_SUPPORTED_ACTIONS.has(step.action)) {
+        resolvedParams.at = resolveRelativeTime(ctx.params.at)
+      }
+    }
+
     const substitutedPath = substitutePathParams(actionPath, resolvedParams)
     const { path } = resolveActionPath(substitutedPath, ctx)
 

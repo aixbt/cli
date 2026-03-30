@@ -8,6 +8,7 @@ import { getTracker, recordRequest } from './rate-limit.js'
 import { CliError, ApiError, NetworkError, RateLimitError } from '../errors.js'
 import { sleep } from '../api-client.js'
 import { flattenParams } from '../recipe/template.js'
+import { resolveRelativeTime } from '../date.js'
 
 const MAX_RATE_LIMIT_WAIT = 120_000 // give up after 2 min total wait on 429s
 const USER_AGENT = '@aixbt/cli'
@@ -198,8 +199,52 @@ export async function dispatchProviderStep(
   const { providerName, hint } = parseSource(source)
   const provider = getProvider(providerName)
   const params = stepParams ? flattenParams(stepParams, ctx, foreachItem) : {}
+
+  // Auto-inject `at` from recipe-level params into API steps that support it,
+  // unless the step already sets its own `at` value.
+  if (ctx.params.at) {
+    const action = provider.actions[actionName]
+    if (action) {
+      const resolved = resolveRelativeTime(ctx.params.at)
+      if (params.at === undefined && action.params.some(p => p.name === 'at')) {
+        params.at = resolved
+      }
+      // Cap chart/OHLCV data to the `at` timestamp via before_timestamp
+      if (params.before_timestamp === undefined && action.params.some(p => p.name === 'before_timestamp')) {
+        const ts = new Date(resolved).getTime()
+        if (Number.isNaN(ts)) {
+          throw new CliError(
+            `Invalid --at value "${ctx.params.at}": could not parse as a date`,
+            'INVALID_DATE',
+          )
+        }
+        params.before_timestamp = Math.floor(ts / 1000)
+      }
+    }
+  }
+
+  // Capture before the request — resolve chains may transform or strip these params.
+  const beforeTs = params.before_timestamp !== undefined ? Number(params.before_timestamp) : undefined
+  const requestedDays = params.limit !== undefined ? Number(params.limit)
+    : params.days !== undefined ? Number(params.days)
+    : undefined
+
   const response = await providerRequest({ provider, actionName, params, hint })
-  return response.data
+  let { data } = response
+
+  // Client-side filtering: crop OHLC candles to the [at - days, at] window when the
+  // API couldn't do it server-side (e.g. CoinGecko free-tier ohlc where we expanded
+  // the days param to reach far enough back, then crop both ends here).
+  // CoinGecko ohlc returns [[timestamp_ms, o, h, l, c], ...].
+  if (beforeTs && Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
+    const ceilMs = beforeTs * 1000
+    const floorMs = requestedDays ? ceilMs - requestedDays * 86_400_000 : 0
+    data = (data as unknown[][]).filter(
+      c => typeof c[0] === 'number' && c[0] >= floorMs && c[0] <= ceilMs,
+    )
+  }
+
+  return data
 }
 
 function resolveActionPath(
