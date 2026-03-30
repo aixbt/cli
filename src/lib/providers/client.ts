@@ -8,6 +8,7 @@ import { getTracker, recordRequest } from './rate-limit.js'
 import { CliError, ApiError, NetworkError, RateLimitError } from '../errors.js'
 import { sleep } from '../api-client.js'
 import { flattenParams } from '../recipe/template.js'
+import { resolveRelativeTime } from '../date.js'
 
 const MAX_RATE_LIMIT_WAIT = 120_000 // give up after 2 min total wait on 429s
 const USER_AGENT = '@aixbt/cli'
@@ -198,6 +199,16 @@ export async function dispatchProviderStep(
   const { providerName, hint } = parseSource(source)
   const provider = getProvider(providerName)
   const params = stepParams ? flattenParams(stepParams, ctx, foreachItem) : {}
+
+  // Auto-inject `at` from recipe-level params into API steps that support it,
+  // unless the step already sets its own `at` value.
+  if (ctx.params.at && params.at === undefined) {
+    const action = provider.actions[actionName]
+    if (action?.params.some(p => p.name === 'at')) {
+      params.at = resolveRelativeTime(ctx.params.at)
+    }
+  }
+
   const response = await providerRequest({ provider, actionName, params, hint })
   return response.data
 }
