@@ -38,7 +38,7 @@ export function registerSignalsCommand(program: Command): void {
     .option('--reinforced-before <date>', 'Reinforced before date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--official', 'Show only signals with official sources')
     .option('--sort-by <field>', 'Sort by field (createdAt, reinforcedAt)', 'createdAt')
-    .option('--at <date>', 'Historical timestamp (ISO 8601 or relative: -24h, -7d)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .action(async (_opts: unknown, cmd: Command) => {
       await handleSignalList(cmd)
     })
