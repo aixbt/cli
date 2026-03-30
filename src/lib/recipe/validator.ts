@@ -335,6 +335,20 @@ export function validateProviderActions(
   return issues
 }
 
+export function validateAnalysisContext(recipe: Recipe): void {
+  if (!recipe.analysis?.context || recipe.analysis.context.length === 0) {
+    return
+  }
+
+  const allStepIds = new Set<string>(recipe.steps.map((s) => s.id))
+
+  for (const ref of recipe.analysis.context) {
+    if (!allStepIds.has(ref)) {
+      console.error(`warning: analysis.context references unknown step "${ref}"`)
+    }
+  }
+}
+
 export function validateRecipeCollectIssues(
   recipe: Recipe,
 ): Array<{ path: string; message: string }> {
@@ -344,6 +358,9 @@ export function validateRecipeCollectIssues(
   validateSegmentBoundaries(recipe, segments, issues)
   validateVariableReferences(recipe, segments, issues)
   issues.push(...validateProviderActions(recipe))
+
+  // Warn (not error) on invalid analysis.context references
+  validateAnalysisContext(recipe)
 
   return issues
 }

@@ -2550,4 +2550,491 @@ steps:
       expect(awaiting.progress.stepsCompleted).toBe(2)
     })
   })
+
+  // -- Carry-forward computation (Task 3.5) --
+
+  describe('carry-forward computation', () => {
+    const CF_SINGLE_SEGMENT_RECIPE = `
+name: cf-single
+version: "1.0"
+description: Single agent step, no downstream consumers
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: analyze
+    type: agent
+    context: [projects]
+    instructions: "Analyze projects"
+    returns:
+      summary: "string"
+`
+
+    const CF_ANALYSIS_CONTEXT_RECIPE = `
+name: cf-analysis-context
+version: "1.0"
+description: Agent step with analysis.context referencing pre-yield step
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: signals
+    type: api
+    action: "GET /v2/signals"
+  - id: analyze
+    type: agent
+    context: [projects, signals]
+    instructions: "Analyze"
+    returns:
+      summary: "string"
+  - id: enrichment
+    type: api
+    action: "GET /v2/projects"
+analysis:
+  instructions: "Final analysis"
+  context: [projects, signals]
+`
+
+    const CF_DOWNSTREAM_AGENT_RECIPE = `
+name: cf-downstream-agent
+version: "1.0"
+description: Two agent steps with analysis.context referencing pre-first-yield step
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: filter
+    type: agent
+    context: [projects]
+    instructions: "Filter"
+    returns:
+      projectIds: "string[]"
+  - id: signals
+    type: api
+    action: "GET /v2/signals"
+  - id: analyze
+    type: agent
+    context: [filter, signals]
+    instructions: "Analyze"
+    returns:
+      summary: "string"
+  - id: deep
+    type: api
+    action: "GET /v2/signals"
+analysis:
+  instructions: "Final analysis"
+  context: [projects, signals]
+`
+
+    const CF_NO_ANALYSIS_CONTEXT_RECIPE = `
+name: cf-no-context
+version: "1.0"
+description: Agent step at end, analysis without context
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: signals
+    type: api
+    action: "GET /v2/signals"
+  - id: analyze
+    type: agent
+    context: [projects, signals]
+    instructions: "Analyze"
+    returns:
+      summary: "string"
+analysis:
+  instructions: "Final analysis"
+`
+
+    const CF_MULTI_ACCUMULATION_RECIPE = `
+name: cf-multi-accumulation
+version: "1.0"
+description: Multiple agent steps, carry-forward accumulates across yields
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: filter
+    type: agent
+    context: [projects]
+    instructions: "Filter"
+    returns:
+      projectIds: "string[]"
+  - id: signals
+    type: api
+    action: "GET /v2/signals"
+  - id: analyze
+    type: agent
+    context: [signals]
+    instructions: "Analyze"
+    returns:
+      summary: "string"
+  - id: deep
+    type: api
+    action: "GET /v2/signals"
+analysis:
+  instructions: "Final analysis"
+  context: [projects, signals]
+`
+
+    it('should return empty carryForward for single-segment recipe with no downstream consumers', async () => {
+      const projectsData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: CF_SINGLE_SEGMENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { carryForward?: Record<string, unknown> }
+      // No downstream agent steps and no analysis.context => carryForward omitted
+      expect(awaiting.carryForward).toBeUndefined()
+    })
+
+    it('should carry forward pre-yield steps referenced by analysis.context', async () => {
+      const projectsData = [{ id: 'p1', name: 'Project 1' }]
+      const signalsData = [{ id: 's1', signal: 'bullish' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: CF_ANALYSIS_CONTEXT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { carryForward?: Record<string, unknown> }
+      expect(awaiting.carryForward).toBeDefined()
+      expect(awaiting.carryForward!.projects).toEqual(projectsData)
+      expect(awaiting.carryForward!.signals).toEqual(signalsData)
+    })
+
+    it('should carry forward steps referenced by analysis.context at first yield', async () => {
+      const projectsData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: CF_DOWNSTREAM_AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting.step).toBe('filter')
+      // 'projects' is referenced by analysis.context and exists in results
+      expect(awaiting.carryForward).toBeDefined()
+      expect(awaiting.carryForward!.projects).toEqual(projectsData)
+      // 'signals' is referenced by analysis.context but does not exist yet (post-yield)
+      expect(awaiting.carryForward!.signals).toBeUndefined()
+    })
+
+    it('should omit carryForward when no analysis.context and no downstream agent references pre-yield steps', async () => {
+      const projectsData = [{ id: 'p1' }]
+      const signalsData = [{ id: 's1' }]
+
+      mockGet
+        .mockResolvedValueOnce(mockApiResponse(projectsData))
+        .mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: CF_NO_ANALYSIS_CONTEXT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { carryForward?: Record<string, unknown> }
+      // analyze is at end, no downstream agent steps, analysis has no context
+      expect(awaiting.carryForward).toBeUndefined()
+    })
+
+    it('should accumulate carry-forward across multiple yields', async () => {
+      // First yield: at 'filter' step
+      const projectsData = [{ id: 'p1', name: 'Alpha' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result1 = await executeRecipe({
+        yaml: CF_MULTI_ACCUMULATION_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result1.status).toBe('awaiting_agent')
+      const awaiting1 = result1 as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting1.step).toBe('filter')
+      // projects is referenced by analysis.context, exists in results
+      expect(awaiting1.carryForward).toBeDefined()
+      expect(awaiting1.carryForward!.projects).toEqual(projectsData)
+      // signals does not exist yet
+      expect(awaiting1.carryForward!.signals).toBeUndefined()
+
+      // Second yield: resume from filter, yield at analyze
+      mockGet.mockReset()
+      const signalsData = [{ id: 's1', signal: 'rising' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result2 = await executeRecipe({
+        yaml: CF_MULTI_ACCUMULATION_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1'] },
+        carryForward: awaiting1.carryForward,
+      })
+
+      expect(result2.status).toBe('awaiting_agent')
+      const awaiting2 = result2 as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting2.step).toBe('analyze')
+      // Both projects (restored from carry-forward) and signals (just computed) are now needed by analysis.context
+      expect(awaiting2.carryForward).toBeDefined()
+      expect(awaiting2.carryForward!.projects).toEqual(projectsData)
+      expect(awaiting2.carryForward!.signals).toEqual(signalsData)
+    })
+
+    it('should not include steps that have no result in ctx.results', async () => {
+      // CF_DOWNSTREAM_AGENT_RECIPE has analysis.context: [projects, signals]
+      // At first yield (filter), only 'projects' has a result; 'signals' does not
+      const projectsData = [{ id: 'p1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result = await executeRecipe({
+        yaml: CF_DOWNSTREAM_AGENT_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { carryForward?: Record<string, unknown> }
+      // Only projects should be in carry-forward, signals has no result yet
+      const cfKeys = Object.keys(awaiting.carryForward ?? {})
+      expect(cfKeys).toContain('projects')
+      expect(cfKeys).not.toContain('signals')
+    })
+  })
+
+  // -- Carry-forward restoration (Task 3.6) --
+
+  describe('carry-forward restoration', () => {
+    const CF_RESTORE_RECIPE = `
+name: cf-restore
+version: "1.0"
+description: Recipe to test carry-forward restoration
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: filter
+    type: agent
+    context: [projects]
+    instructions: "Filter"
+    returns:
+      projectIds: "string[]"
+  - id: signals
+    type: api
+    action: "GET /v2/signals"
+    params:
+      projectIds: "{filter.data.projectIds}"
+  - id: analyze
+    type: agent
+    context: [filter, signals]
+    instructions: "Analyze using post-yield data"
+    returns:
+      summary: "string"
+  - id: deep
+    type: api
+    action: "GET /v2/signals"
+analysis:
+  instructions: "Final analysis"
+  context: [projects, signals]
+`
+
+    it('should restore carry-forward entries into results on resume', async () => {
+      const signalsData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const carryForward = { projects: [{ id: 'p1', name: 'Carried Project' }] }
+
+      const result = await executeRecipe({
+        yaml: CF_RESTORE_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1'] },
+        carryForward,
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting.step).toBe('analyze')
+      // The 'projects' data was restored from carry-forward and is re-carried
+      // (analysis.context references projects, so it gets carried forward again)
+      expect(awaiting.carryForward).toBeDefined()
+      expect(awaiting.carryForward!.projects).toEqual([{ id: 'p1', name: 'Carried Project' }])
+      // signals was just computed and is also referenced by analysis.context
+      expect(awaiting.carryForward!.signals).toEqual(signalsData)
+    })
+
+    it('should be a no-op when carryForward is undefined', async () => {
+      const signalsData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: CF_RESTORE_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1'] },
+        // no carryForward
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting.step).toBe('analyze')
+      // Without carry-forward, 'projects' is not in ctx.results, so carryForward
+      // at the second yield should only contain 'signals' (which was just computed)
+      expect(awaiting.carryForward).toBeDefined()
+      expect(awaiting.carryForward!.signals).toEqual(signalsData)
+      // 'projects' was not restored, so it cannot be re-carried
+      expect(awaiting.carryForward!.projects).toBeUndefined()
+    })
+
+    it('should be a no-op when carryForward is an empty object', async () => {
+      const signalsData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result = await executeRecipe({
+        yaml: CF_RESTORE_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1'] },
+        carryForward: {},
+      })
+
+      expect(result.status).toBe('awaiting_agent')
+      const awaiting = result as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting.step).toBe('analyze')
+      // Empty carry-forward is equivalent to no carry-forward
+      expect(awaiting.carryForward).toBeDefined()
+      expect(awaiting.carryForward!.signals).toEqual(signalsData)
+      expect(awaiting.carryForward!.projects).toBeUndefined()
+    })
+
+    it('should create synthetic StepResults with zeroed timing for restored entries', async () => {
+      // Test the full flow: carry-forward at first yield, restore and verify at completion
+      const CF_COMPLETE_RECIPE = `
+name: cf-complete
+version: "1.0"
+description: Recipe to verify restored entries reach completion output
+steps:
+  - id: projects
+    type: api
+    action: "GET /v2/projects"
+  - id: filter
+    type: agent
+    context: [projects]
+    instructions: "Filter"
+    returns:
+      projectIds: "string[]"
+  - id: deep
+    type: api
+    action: "GET /v2/signals"
+`
+
+      const deepData = [{ id: 'd1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(deepData))
+
+      const carryForward = { projects: [{ id: 'p1' }] }
+
+      const result = await executeRecipe({
+        yaml: CF_COMPLETE_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1'] },
+        carryForward,
+      })
+
+      expect(result.status).toBe('complete')
+      const data = (result as { data: Record<string, unknown> }).data
+      // 'projects' was restored from carry-forward and appears in completion data
+      expect(data.projects).toEqual([{ id: 'p1' }])
+      // filter was injected from agent input
+      expect(data.filter).toEqual({ projectIds: ['p1'] })
+      // deep was freshly executed
+      expect(data.deep).toEqual(deepData)
+    })
+
+    it('should make restored carry-forward data available for full end-to-end flow', async () => {
+      // Simulate a complete 3-invocation flow with carry-forward
+
+      // Invocation 1: initial run -> yields at filter
+      const projectsData = [{ id: 'p1', name: 'Alpha' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(projectsData))
+
+      const result1 = await executeRecipe({
+        yaml: CF_RESTORE_RECIPE,
+        params: {},
+        clientOptions: {},
+      })
+
+      expect(result1.status).toBe('awaiting_agent')
+      const awaiting1 = result1 as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting1.step).toBe('filter')
+      // projects is referenced by analysis.context and exists in results
+      expect(awaiting1.carryForward).toBeDefined()
+      expect(awaiting1.carryForward!.projects).toEqual(projectsData)
+
+      // Invocation 2: resume from filter with carry-forward -> yields at analyze
+      mockGet.mockReset()
+      const signalsData = [{ id: 's1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(signalsData))
+
+      const result2 = await executeRecipe({
+        yaml: CF_RESTORE_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'filter',
+        resumeInput: { projectIds: ['p1'] },
+        carryForward: awaiting1.carryForward,
+      })
+
+      expect(result2.status).toBe('awaiting_agent')
+      const awaiting2 = result2 as { step: string; carryForward?: Record<string, unknown> }
+      expect(awaiting2.step).toBe('analyze')
+      // Both projects (restored) and signals (fresh) are re-carried for analysis.context
+      expect(awaiting2.carryForward).toBeDefined()
+      expect(awaiting2.carryForward!.projects).toEqual(projectsData)
+      expect(awaiting2.carryForward!.signals).toEqual(signalsData)
+
+      // Invocation 3: resume from analyze with carry-forward -> completes
+      mockGet.mockReset()
+      const deepData = [{ id: 'd1' }]
+      mockGet.mockResolvedValueOnce(mockApiResponse(deepData))
+
+      const result3 = await executeRecipe({
+        yaml: CF_RESTORE_RECIPE,
+        params: {},
+        clientOptions: {},
+        resumeFromStep: 'analyze',
+        resumeInput: { summary: 'Done' },
+        carryForward: awaiting2.carryForward,
+      })
+
+      expect(result3.status).toBe('complete')
+      const data = (result3 as { data: Record<string, unknown> }).data
+      expect(data.deep).toEqual(deepData)
+      expect(data.analyze).toEqual({ summary: 'Done' })
+      // Restored carry-forward data should appear in completion output
+      expect(data.projects).toEqual(projectsData)
+      expect(data.signals).toEqual(signalsData)
+    })
+  })
 })

@@ -1098,6 +1098,7 @@ export function registerRecipeCommand(program: Command): void {
             recipeSource: opts.stdin ? undefined : source,
             onProgress: handleRunProgress,
             verbosity,
+            carryForward: awaiting.carryForward,
           })
         } else {
           // Visual mode: AIXBT spinner for recipe resume
@@ -1119,6 +1120,7 @@ export function registerRecipeCommand(program: Command): void {
               recipeSource: opts.stdin ? undefined : source,
               onProgress: handleRunProgress,
               verbosity,
+              carryForward: awaiting.carryForward,
             })
             if (resumeTick) clearInterval(resumeTick)
             if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
