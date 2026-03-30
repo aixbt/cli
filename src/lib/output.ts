@@ -4,6 +4,11 @@ import type { Ora } from 'ora'
 import { encode } from '@toon-format/toon'
 import type { ActivityEntry, FreeTierMeta } from '../types.js'
 
+/** Cached update info, set by cli.ts at startup. */
+let _updateInfo: { current: string; latest: string; type: string } | undefined
+export function setUpdateInfo(info: typeof _updateInfo): void { _updateInfo = info }
+export function getUpdateInfo(): typeof _updateInfo { return _updateInfo }
+
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*m/g
 
@@ -694,8 +699,13 @@ export function outputApiResult(
 
   const apiMeta = (result.meta ?? {}) as Record<string, unknown>
   const hasHints = result.hints && result.hints.length > 0
-  if (result.meta || hasHints) {
-    out.meta = { ...apiMeta, ...(hasHints ? { hints: result.hints } : {}) }
+  const update = getUpdateInfo()
+  if (result.meta || hasHints || update) {
+    out.meta = {
+      ...apiMeta,
+      ...(hasHints ? { hints: result.hints } : {}),
+      ...(update ? { update } : {}),
+    }
   }
 
   outputStructured(out, outputFormat)
