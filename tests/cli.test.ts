@@ -15,6 +15,7 @@ describe('CLI', () => {
     expect(commandNames).toContain('whoami')
     expect(commandNames).toContain('projects')
     expect(commandNames).toContain('signals')
+    expect(commandNames).toContain('grounding')
     expect(commandNames).toContain('recipe')
     expect(commandNames).toContain('provider')
     expect(commandNames).toContain('help')
@@ -30,7 +31,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = output.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.3')
+      expect(stripped).toContain('v0.1.4')
     })
   })
 
@@ -231,7 +232,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.3')
+      expect(stripped).toContain('v0.1.4')
     })
 
     it('should have writeOut configured to use process.stdout.write', () => {
@@ -323,9 +324,9 @@ describe('CLI', () => {
   })
 
   describe('command count', () => {
-    it('should have exactly 8 registered commands', () => {
+    it('should have exactly 9 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(8)
+      expect(program.commands).toHaveLength(9)
     })
   })
 

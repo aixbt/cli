@@ -5,6 +5,7 @@ import { coingeckoProvider } from './coingecko.js'
 import { dexpaprikaProvider } from './dexpaprika.js'
 import { goplusProvider } from './goplus.js'
 import { defillamaProvider } from './defillama.js'
+import { resolveGeckoOhlc } from './aixbt.js'
 
 // ---------------------------------------------------------------------------
 // market — on-chain price/pool/OHLCV data
@@ -47,6 +48,7 @@ marketActions['chart'] = {
     { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")' },
     { name: 'limit', required: false, description: 'Number of candles / days of data (default: 30)' },
     { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
+    { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — cap chart data to this time. Auto-set from recipe --at.' },
   ],
   minTier: 'free',
   resolve: (params, ctx) => {
@@ -62,20 +64,18 @@ marketActions['chart'] = {
           timeframe: params.timeframe ?? 'day',
           limit: params.limit,
           currency: params.currency,
+          before_timestamp: params.before_timestamp,
         },
       }
     }
     // CEX path: CoinGecko OHLC (requires geckoId, always CoinGecko)
     if (hasValue(params.geckoId)) {
-      return {
-        provider: 'coingecko',
-        action: 'ohlc',
-        params: {
-          id: params.geckoId,
-          vs_currency: params.currency ?? 'usd',
-          days: params.limit ?? 30,
-        },
-      }
+      const resolved = resolveGeckoOhlc(
+        params.geckoId,
+        { days: params.limit, beforeTs: params.before_timestamp, currency: params.currency },
+        ctx.tier,
+      )
+      return { provider: 'coingecko', ...resolved }
     }
     return { error: 'no on-chain address or geckoId available for this project' }
   },

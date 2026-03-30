@@ -128,6 +128,7 @@ export interface RecipeHints {
 export interface RecipeAnalysis {
   instructions: string
   output?: string
+  context?: string[]
 }
 
 // -- Transform block types --
@@ -252,6 +253,8 @@ export interface RecipeAwaitingAgent {
   parallelExecution?: string
   /** Domain context blocks resolved from recipe actions */
   contextHints?: string[]
+  /** Pre-yield step data needed by downstream consumers (agent steps, analysis) */
+  carryForward?: Record<string, unknown>
 }
 
 export interface RecipeComplete {

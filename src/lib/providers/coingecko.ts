@@ -3,6 +3,7 @@ import { flattenJsonApiResponse } from './normalize.js'
 import { hasValue } from './utils.js'
 import { toGeckoTerminalNetwork } from './chains.js'
 import { resolveTokenOhlcvViaPool } from './alias.js'
+import { resolveGeckoOhlc } from './aixbt.js'
 
 const GECKOTERMINAL_ACTIONS = new Set([
   'token-price', 'pool', 'token-pools', 'trending-pools', 'token-ohlcv', 'pool-ohlcv',
@@ -79,8 +80,23 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'vs_currency', required: false, description: 'Target currency (default: "usd")' },
       { name: 'days', required: false, description: 'Data range in days (1, 7, 14, 30, 90, 180, 365)' },
       { name: 'interval', required: false, description: 'Candle interval (daily)' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — filter candles after this time client-side. Auto-set from recipe --at.' },
     ],
     minTier: 'free',
+  },
+  'ohlc-range': {
+    method: 'GET',
+    path: '/coins/{id}/ohlc/range',
+    description: 'Get OHLC candlestick data for a coin within a specific date range (paid tier only)',
+    hint: 'You need historical price candles for a specific date range',
+    params: [
+      { name: 'id', required: true, description: 'CoinGecko coin ID', inPath: true },
+      { name: 'vs_currency', required: false, description: 'Target currency (default: "usd")' },
+      { name: 'from', required: true, description: 'Start of range (Unix timestamp)' },
+      { name: 'to', required: true, description: 'End of range (Unix timestamp)' },
+      { name: 'interval', required: false, description: 'Candle interval: "daily" or "hourly"' },
+    ],
+    minTier: 'paid',
   },
   categories: {
     method: 'GET',
@@ -162,7 +178,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'address', required: true, description: 'Token contract address', inPath: true },
       { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")', inPath: true },
       { name: 'aggregate', required: false, description: 'Number of intervals to aggregate (e.g., 1 for daily, 4 for 4-hour)' },
-      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time. Auto-set from recipe --at.' },
       { name: 'limit', required: false, description: 'Number of candles to return' },
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
@@ -186,7 +202,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'address', required: true, description: 'Pool contract address', inPath: true },
       { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")', inPath: true },
       { name: 'aggregate', required: false, description: 'Number of intervals to aggregate' },
-      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time. Auto-set from recipe --at.' },
       { name: 'limit', required: false, description: 'Number of candles to return' },
     ],
     minTier: 'free',
@@ -204,7 +220,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
     minTier: 'free',
-    resolve: (params) => {
+    resolve: (params, ctx) => {
       if (hasValue(params.network) && hasValue(params.address)) {
         return {
           action: 'token-ohlcv',
@@ -214,19 +230,17 @@ const actions: Record<string, ActionDefinition> = {
             timeframe: params.timeframe ?? 'day',
             limit: params.limit,
             currency: params.currency,
+            before_timestamp: params.before_timestamp,
           },
         }
       }
 
       if (hasValue(params.geckoId)) {
-        return {
-          action: 'ohlc',
-          params: {
-            id: params.geckoId,
-            vs_currency: params.currency ?? 'usd',
-            days: params.limit ?? 30,
-          },
-        }
+        return resolveGeckoOhlc(
+          params.geckoId,
+          { days: params.limit, beforeTs: params.before_timestamp, currency: params.currency },
+          ctx.tier,
+        )
       }
 
       return { error: 'no on-chain address or geckoId available for this project' }
@@ -284,6 +298,18 @@ export const coingeckoProvider: Provider = {
     if ((actionName === 'token-ohlcv' || actionName === 'pool-ohlcv') && !result.timeframe) {
       result = result === params ? { ...result, timeframe: 'day' } : result
       result.timeframe = 'day'
+    }
+
+    // For ohlc with before_timestamp: expand the days window so it reaches back
+    // to (at - days), then strip before_timestamp (CoinGecko doesn't accept it).
+    // Client-side filtering in dispatchProviderStep crops both ends.
+    if (actionName === 'ohlc' && result.before_timestamp !== undefined) {
+      result = result === params ? { ...result } : result
+      const daysAgo = Math.ceil((Date.now() / 1000 - Number(result.before_timestamp)) / 86400)
+      const needed = daysAgo + Number(result.days || 30)
+      const VALID_DAYS = [1, 7, 14, 30, 90, 180, 365]
+      result.days = VALID_DAYS.find(d => d >= needed) ?? 365
+      delete result.before_timestamp
     }
 
     return result

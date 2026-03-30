@@ -4,6 +4,8 @@ import { readConfig, resolveConfig, type KeySource, type ResolvedConfig } from '
 import { NoApiKeyError, AuthError } from './errors.js'
 import { get, type ApiClientOptions } from './api-client.js'
 import type { OutputFormat } from './output.js'
+import { setTimeAnchor } from './output.js'
+import { resolveDate } from './date.js'
 
 // Auth mode discriminated union
 export type AuthMode =
@@ -14,6 +16,7 @@ export type AuthMode =
 interface AuthModeFlags {
   delayed?: boolean
   payPerUse?: boolean
+  paymentSignature?: string
   apiKey?: string
   apiUrl?: string
 }
@@ -31,6 +34,9 @@ export function resolveAuthMode(flags: AuthModeFlags, resolved?: ResolvedConfig)
     return { mode: 'delayed' }
   }
   if (flags.payPerUse) {
+    return { mode: 'pay-per-use' }
+  }
+  if (flags.paymentSignature) {
     return { mode: 'pay-per-use' }
   }
   const config = resolved ?? resolveConfig({
@@ -59,8 +65,14 @@ export function buildClientOptions(
     ? { apiKey: authMode.apiKey, apiUrl: authMode.config.apiUrl }
     : { noAuth: true, apiUrl: globalOpts.apiUrl }
 
+  if (authMode.mode === 'pay-per-use') {
+    base.pathPrefix = '/x402'
+  }
+
   if (globalOpts.paymentSignature) {
     base.paymentSignature = globalOpts.paymentSignature
+    base.pathPrefix = '/x402'
+    base.noAuth = true
   }
   return base
 }
@@ -173,12 +185,20 @@ export function getClientOptions(cmd: Command): {
   const authMode = resolveAuthMode({
     delayed: opts.delayed as boolean | undefined,
     payPerUse: opts.payPerUse as boolean | undefined,
+    paymentSignature: opts.paymentSignature as string | undefined,
   }, resolved)
 
   const clientOpts = buildClientOptions(authMode, {
     apiUrl: opts.apiUrl as string | undefined,
     paymentSignature: opts.paymentSignature as string | undefined,
   })
+
+  // Set time anchor for relative displays when --at is active
+  const atValue = resolveDate(opts.at as string | undefined)
+  if (atValue) {
+    const anchor = new Date(atValue)
+    if (!isNaN(anchor.getTime())) setTimeAnchor(anchor)
+  }
 
   return { clientOpts, authMode, outputFormat, verbosity, limit }
 }

@@ -4,9 +4,11 @@ export const AIXBT_ACTION_PATHS: Record<string, string> = {
   projects: '/v2/projects',
   project: '/v2/projects/{id}',
   momentum: '/v2/projects/{id}/momentum',
+  rank: '/v2/projects/{id}/rank',
   chains: '/v2/projects/chains',
   signals: '/v2/signals',
   clusters: '/v2/clusters',
+  grounding: '/v2/grounding/latest',
 }
 
 const actions: Record<string, ActionDefinition> = {
@@ -29,6 +31,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'hasToken', required: false, description: 'Filter to projects with a token (true/false)' },
       { name: 'excludeStables', required: false, description: 'Exclude stablecoins (true/false)' },
       { name: 'signalSortBy', required: false, description: 'Sort order for embedded signals' },
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns data as of this point in time.' },
     ],
     minTier: 'free',
   },
@@ -40,6 +43,7 @@ const actions: Record<string, ActionDefinition> = {
     params: [
       { name: 'id', required: true, description: 'Project ID', inPath: true },
       { name: 'signalSortBy', required: false, description: 'Sort order for embedded signals' },
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns data as of this point in time.' },
     ],
     minTier: 'free',
   },
@@ -53,6 +57,20 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'start', required: false, description: 'Start date (ISO 8601 or relative like -7d)' },
       { name: 'end', required: false, description: 'End date (ISO 8601 or relative like -1d)' },
       { name: 'includeClusters', required: false, description: 'Include per-hour cluster breakdown (default: true, set to "false" for scores only)' },
+      { name: 'at', required: false, description: 'Historical anchor (ISO 8601). Sets the end of the momentum window; start defaults to 7 days before.' },
+    ],
+    minTier: 'free',
+  },
+  rank: {
+    method: 'GET',
+    path: '/v2/projects/{id}/rank',
+    description: 'Get rank position history for a project',
+    hint: 'You need historical leaderboard rank data for a project over a time window',
+    params: [
+      { name: 'id', required: true, description: 'Project ID', inPath: true },
+      { name: 'start', required: false, description: 'Start date (ISO 8601 or relative like -7d)' },
+      { name: 'end', required: false, description: 'End date (ISO 8601 or relative like -1d)' },
+      { name: 'at', required: false, description: 'Historical anchor (ISO 8601). Sets the end of the rank window; start defaults to 7 days before.' },
     ],
     minTier: 'free',
   },
@@ -85,6 +103,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'reinforcedBefore', required: false, description: 'Signals reinforced before this date (ISO 8601)' },
       { name: 'sortBy', required: false, description: 'Sort field (e.g., detectedAt, reinforcedAt)' },
       { name: 'hasOfficialSource', required: false, description: 'Filter to signals with official sources (true/false)' },
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns signals as they existed at this point in time.' },
     ],
     minTier: 'free',
   },
@@ -96,6 +115,62 @@ const actions: Record<string, ActionDefinition> = {
     params: [],
     minTier: 'free',
   },
+  grounding: {
+    method: 'GET',
+    path: '/v2/grounding/latest',
+    description: 'Get market grounding snapshot (narratives, macro, geopolitics, tradfi)',
+    hint: 'You need current market context — crypto narratives, global liquidity, geopolitics, or tradfi conditions',
+    params: [
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns the grounding snapshot active at this point in time.' },
+      { name: 'section', required: false, description: 'Show only a specific section (e.g., narratives, macro, geopolitics, tradfi)' },
+    ],
+    minTier: 'free',
+  },
+}
+
+/** Actions that accept the `at` query param for historical queries. */
+export const AT_SUPPORTED_ACTIONS = new Set(
+  Object.entries(actions)
+    .filter(([, a]) => a.params.some(p => p.name === 'at'))
+    .map(([name]) => name),
+)
+
+/**
+ * Resolve CoinGecko CEX OHLC routing based on tier and before_timestamp.
+ * Paid tier → ohlc-range with precise from/to.
+ * Free/demo → ohlc with before_timestamp passthrough (mapParams expands days, client crops).
+ */
+export function resolveGeckoOhlc(
+  geckoId: string | number | boolean,
+  params: { days: string | number | boolean | undefined; beforeTs: string | number | boolean | undefined; currency: string | number | boolean | undefined },
+  tier: string,
+): { action: string; params: Record<string, string | number | boolean | undefined> } {
+  const days = params.days ?? 30
+
+  if (tier === 'paid' && params.beforeTs !== undefined && params.beforeTs !== '') {
+    const to = Number(params.beforeTs)
+    const from = to - Number(days) * 86400
+    return {
+      action: 'ohlc-range',
+      params: {
+        id: geckoId,
+        vs_currency: params.currency ?? 'usd',
+        from,
+        to,
+        interval: 'daily',
+      },
+    }
+  }
+
+  return {
+    action: 'ohlc',
+    params: {
+      id: geckoId,
+      vs_currency: params.currency ?? 'usd',
+      days,
+      before_timestamp: params.beforeTs,
+    },
+  }
 }
 
 export const aixbtProvider: Provider = {

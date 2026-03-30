@@ -80,6 +80,7 @@ export function buildAwaitingAgentOutput(
   agentStep: AgentStep,
   originalParams: Record<string, string>,
   recipeSource?: string,
+  carryForward?: Record<string, unknown>,
 ): RecipeAwaitingAgent {
   const data: Record<string, unknown> = {}
   for (const ref of agentStep.context) {
@@ -127,6 +128,7 @@ export function buildAwaitingAgentOutput(
     progress,
     remaining,
     ...(contextHints.length > 0 ? { contextHints } : {}),
+    ...(carryForward && Object.keys(carryForward).length > 0 ? { carryForward } : {}),
   }
 }
 
@@ -135,6 +137,7 @@ export function buildAwaitingParallelAgentOutput(
   agentStep: AgentStep & { 'for': string },
   originalParams: Record<string, string>,
   recipeSource?: string,
+  carryForward?: Record<string, unknown>,
 ): RecipeAwaitingAgent {
   // Resolve for: items
   const resolved = resolveExpression(agentStep['for'], ctx)
@@ -233,6 +236,7 @@ export function buildAwaitingParallelAgentOutput(
     parallel,
     parallelExecution,
     ...(contextHints.length > 0 ? { contextHints } : {}),
+    ...(carryForward && Object.keys(carryForward).length > 0 ? { carryForward } : {}),
   }
 }
 

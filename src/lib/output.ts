@@ -4,6 +4,16 @@ import type { Ora } from 'ora'
 import { encode } from '@toon-format/toon'
 import type { ActivityEntry, FreeTierMeta } from '../types.js'
 
+/** Cached update info, set by cli.ts at startup. */
+let _updateInfo: { current: string; latest: string; type: string } | undefined
+export function setUpdateInfo(info: typeof _updateInfo): void { _updateInfo = info }
+export function getUpdateInfo(): typeof _updateInfo { return _updateInfo }
+
+/** When --at is active, timeAgo should be relative to this anchor instead of now. */
+let _timeAnchor: Date | undefined
+export function setTimeAnchor(anchor: Date | undefined): void { _timeAnchor = anchor }
+export function getTimeAnchor(): Date | undefined { return _timeAnchor }
+
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*m/g
 
@@ -184,8 +194,9 @@ export function formatActivity(
 
 // -- Time formatting --
 
-export function timeAgo(dateStr: string): string {
-  const now = Date.now()
+export function timeAgo(dateStr: string, relativeTo?: Date): string {
+  const anchor = relativeTo ?? _timeAnchor
+  const now = anchor ? anchor.getTime() : Date.now()
   const then = new Date(dateStr).getTime()
   if (isNaN(then)) return dateStr
 
@@ -694,8 +705,13 @@ export function outputApiResult(
 
   const apiMeta = (result.meta ?? {}) as Record<string, unknown>
   const hasHints = result.hints && result.hints.length > 0
-  if (result.meta || hasHints) {
-    out.meta = { ...apiMeta, ...(hasHints ? { hints: result.hints } : {}) }
+  const update = getUpdateInfo()
+  if (result.meta || hasHints || update) {
+    out.meta = {
+      ...apiMeta,
+      ...(hasHints ? { hints: result.hints } : {}),
+      ...(update ? { update: { ...update, message: `A newer version of @aixbt/cli is available (${update.current} → ${update.latest}). Run: npm i -g @aixbt/cli` } } : {}),
+    }
   }
 
   outputStructured(out, outputFormat)
