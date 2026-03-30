@@ -404,7 +404,7 @@ async function handleRank(id: string, cmd: Command): Promise<void> {
     return
   }
 
-  const rows = rank.data.slice(-20).map((point) => ({
+  const rows = rank.data.map((point) => ({
     timestamp: point.timestamp.replace('T', ' ').replace(/:\d{2}\.\d{3}Z$/, ''),
     rank: point.rank,
     score: point.score,
