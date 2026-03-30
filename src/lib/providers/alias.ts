@@ -83,6 +83,7 @@ export async function resolveTokenOhlcvViaPool(
           address: poolAddress,
           timeframe: params.timeframe ?? 'day',
           limit: params.limit,
+          before_timestamp: params.before_timestamp,
         },
       }
     }

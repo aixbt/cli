@@ -47,6 +47,7 @@ marketActions['chart'] = {
     { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")' },
     { name: 'limit', required: false, description: 'Number of candles / days of data (default: 30)' },
     { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
+    { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — cap chart data to this time. Auto-set from recipe --at.' },
   ],
   minTier: 'free',
   resolve: (params, ctx) => {
@@ -62,6 +63,7 @@ marketActions['chart'] = {
           timeframe: params.timeframe ?? 'day',
           limit: params.limit,
           currency: params.currency,
+          before_timestamp: params.before_timestamp,
         },
       }
     }

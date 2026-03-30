@@ -162,7 +162,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'address', required: true, description: 'Token contract address', inPath: true },
       { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")', inPath: true },
       { name: 'aggregate', required: false, description: 'Number of intervals to aggregate (e.g., 1 for daily, 4 for 4-hour)' },
-      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time. Auto-set from recipe --at.' },
       { name: 'limit', required: false, description: 'Number of candles to return' },
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
@@ -186,7 +186,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'address', required: true, description: 'Pool contract address', inPath: true },
       { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")', inPath: true },
       { name: 'aggregate', required: false, description: 'Number of intervals to aggregate' },
-      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — return candles before this time. Auto-set from recipe --at.' },
       { name: 'limit', required: false, description: 'Number of candles to return' },
     ],
     minTier: 'free',
@@ -214,6 +214,7 @@ const actions: Record<string, ActionDefinition> = {
             timeframe: params.timeframe ?? 'day',
             limit: params.limit,
             currency: params.currency,
+            before_timestamp: params.before_timestamp,
           },
         }
       }

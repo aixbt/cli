@@ -202,10 +202,17 @@ export async function dispatchProviderStep(
 
   // Auto-inject `at` from recipe-level params into API steps that support it,
   // unless the step already sets its own `at` value.
-  if (ctx.params.at && params.at === undefined) {
+  if (ctx.params.at) {
     const action = provider.actions[actionName]
-    if (action?.params.some(p => p.name === 'at')) {
-      params.at = resolveRelativeTime(ctx.params.at)
+    if (action) {
+      if (params.at === undefined && action.params.some(p => p.name === 'at')) {
+        params.at = resolveRelativeTime(ctx.params.at)
+      }
+      // Cap chart/OHLCV data to the `at` timestamp via before_timestamp
+      if (params.before_timestamp === undefined && action.params.some(p => p.name === 'before_timestamp')) {
+        const resolved = resolveRelativeTime(ctx.params.at)
+        params.before_timestamp = Math.floor(new Date(resolved).getTime() / 1000)
+      }
     }
   }
 
