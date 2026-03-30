@@ -205,13 +205,20 @@ export async function dispatchProviderStep(
   if (ctx.params.at) {
     const action = provider.actions[actionName]
     if (action) {
+      const resolved = resolveRelativeTime(ctx.params.at)
       if (params.at === undefined && action.params.some(p => p.name === 'at')) {
-        params.at = resolveRelativeTime(ctx.params.at)
+        params.at = resolved
       }
       // Cap chart/OHLCV data to the `at` timestamp via before_timestamp
       if (params.before_timestamp === undefined && action.params.some(p => p.name === 'before_timestamp')) {
-        const resolved = resolveRelativeTime(ctx.params.at)
-        params.before_timestamp = Math.floor(new Date(resolved).getTime() / 1000)
+        const ts = new Date(resolved).getTime()
+        if (Number.isNaN(ts)) {
+          throw new CliError(
+            `Invalid --at value "${ctx.params.at}": could not parse as a date`,
+            'INVALID_DATE',
+          )
+        }
+        params.before_timestamp = Math.floor(ts / 1000)
       }
     }
   }

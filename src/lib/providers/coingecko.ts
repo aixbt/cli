@@ -3,6 +3,7 @@ import { flattenJsonApiResponse } from './normalize.js'
 import { hasValue } from './utils.js'
 import { toGeckoTerminalNetwork } from './chains.js'
 import { resolveTokenOhlcvViaPool } from './alias.js'
+import { resolveGeckoOhlc } from './aixbt.js'
 
 const GECKOTERMINAL_ACTIONS = new Set([
   'token-price', 'pool', 'token-pools', 'trending-pools', 'token-ohlcv', 'pool-ohlcv',
@@ -235,36 +236,11 @@ const actions: Record<string, ActionDefinition> = {
       }
 
       if (hasValue(params.geckoId)) {
-        const days = params.limit ?? 30
-        const beforeTs = params.before_timestamp
-
-        // Paid tier: use ohlc-range for precise date windows
-        if (ctx.tier === 'paid' && hasValue(beforeTs)) {
-          const to = Number(beforeTs)
-          const from = to - Number(days) * 86400
-          return {
-            action: 'ohlc-range',
-            params: {
-              id: params.geckoId,
-              vs_currency: params.currency ?? 'usd',
-              from,
-              to,
-              interval: 'daily',
-            },
-          }
-        }
-
-        // Free/demo: pass before_timestamp through — mapParams handles days expansion
-        // and strips before_timestamp; dispatchProviderStep crops both ends client-side.
-        return {
-          action: 'ohlc',
-          params: {
-            id: params.geckoId,
-            vs_currency: params.currency ?? 'usd',
-            days,
-            before_timestamp: beforeTs,
-          },
-        }
+        return resolveGeckoOhlc(
+          params.geckoId,
+          { days: params.limit, beforeTs: params.before_timestamp, currency: params.currency },
+          ctx.tier,
+        )
       }
 
       return { error: 'no on-chain address or geckoId available for this project' }
@@ -332,7 +308,7 @@ export const coingeckoProvider: Provider = {
       const daysAgo = Math.ceil((Date.now() / 1000 - Number(result.before_timestamp)) / 86400)
       const needed = daysAgo + Number(result.days || 30)
       const VALID_DAYS = [1, 7, 14, 30, 90, 180, 365]
-      result.days = VALID_DAYS.find(d => d >= needed) ?? 'max'
+      result.days = VALID_DAYS.find(d => d >= needed) ?? 365
       delete result.before_timestamp
     }
 

@@ -5,6 +5,7 @@ import { coingeckoProvider } from './coingecko.js'
 import { dexpaprikaProvider } from './dexpaprika.js'
 import { goplusProvider } from './goplus.js'
 import { defillamaProvider } from './defillama.js'
+import { resolveGeckoOhlc } from './aixbt.js'
 
 // ---------------------------------------------------------------------------
 // market — on-chain price/pool/OHLCV data
@@ -69,38 +70,12 @@ marketActions['chart'] = {
     }
     // CEX path: CoinGecko OHLC (requires geckoId, always CoinGecko)
     if (hasValue(params.geckoId)) {
-      const days = params.limit ?? 30
-      const beforeTs = params.before_timestamp
-
-      // Paid tier: use ohlc-range for precise date windows
-      if (ctx.tier === 'paid' && hasValue(beforeTs)) {
-        const to = Number(beforeTs)
-        const from = to - Number(days) * 86400
-        return {
-          provider: 'coingecko',
-          action: 'ohlc-range',
-          params: {
-            id: params.geckoId,
-            vs_currency: params.currency ?? 'usd',
-            from,
-            to,
-            interval: 'daily',
-          },
-        }
-      }
-
-      // Free/demo: pass before_timestamp through — mapParams handles days expansion
-      // and strips before_timestamp; dispatchProviderStep crops both ends client-side.
-      return {
-        provider: 'coingecko',
-        action: 'ohlc',
-        params: {
-          id: params.geckoId,
-          vs_currency: params.currency ?? 'usd',
-          days,
-          before_timestamp: beforeTs,
-        },
-      }
+      const resolved = resolveGeckoOhlc(
+        params.geckoId,
+        { days: params.limit, beforeTs: params.before_timestamp, currency: params.currency },
+        ctx.tier,
+      )
+      return { provider: 'coingecko', ...resolved }
     }
     return { error: 'no on-chain address or geckoId available for this project' }
   },

@@ -114,6 +114,51 @@ const actions: Record<string, ActionDefinition> = {
   },
 }
 
+/** Actions that accept the `at` query param for historical queries. */
+export const AT_SUPPORTED_ACTIONS = new Set(
+  Object.entries(actions)
+    .filter(([, a]) => a.params.some(p => p.name === 'at'))
+    .map(([name]) => name),
+)
+
+/**
+ * Resolve CoinGecko CEX OHLC routing based on tier and before_timestamp.
+ * Paid tier → ohlc-range with precise from/to.
+ * Free/demo → ohlc with before_timestamp passthrough (mapParams expands days, client crops).
+ */
+export function resolveGeckoOhlc(
+  geckoId: string | number | boolean,
+  params: { days: string | number | boolean | undefined; beforeTs: string | number | boolean | undefined; currency: string | number | boolean | undefined },
+  tier: string,
+): { action: string; params: Record<string, string | number | boolean | undefined> } {
+  const days = params.days ?? 30
+
+  if (tier === 'paid' && params.beforeTs !== undefined && params.beforeTs !== '') {
+    const to = Number(params.beforeTs)
+    const from = to - Number(days) * 86400
+    return {
+      action: 'ohlc-range',
+      params: {
+        id: geckoId,
+        vs_currency: params.currency ?? 'usd',
+        from,
+        to,
+        interval: 'daily',
+      },
+    }
+  }
+
+  return {
+    action: 'ohlc',
+    params: {
+      id: geckoId,
+      vs_currency: params.currency ?? 'usd',
+      days,
+      before_timestamp: params.beforeTs,
+    },
+  }
+}
+
 export const aixbtProvider: Provider = {
   name: 'aixbt',
   displayName: 'AIXBT',
