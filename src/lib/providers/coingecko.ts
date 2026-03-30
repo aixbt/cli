@@ -254,7 +254,8 @@ const actions: Record<string, ActionDefinition> = {
           }
         }
 
-        // Free/demo: pass before_timestamp for client-side filtering
+        // Free/demo: pass before_timestamp through — mapParams handles days expansion
+        // and strips before_timestamp; dispatchProviderStep crops both ends client-side.
         return {
           action: 'ohlc',
           params: {
@@ -323,10 +324,15 @@ export const coingeckoProvider: Provider = {
       result.timeframe = 'day'
     }
 
-    // Strip before_timestamp from ohlc — CoinGecko doesn't accept it as a query param.
-    // Client-side filtering happens in dispatchProviderStep after the response.
+    // For ohlc with before_timestamp: expand the days window so it reaches back
+    // to (at - days), then strip before_timestamp (CoinGecko doesn't accept it).
+    // Client-side filtering in dispatchProviderStep crops both ends.
     if (actionName === 'ohlc' && result.before_timestamp !== undefined) {
       result = result === params ? { ...result } : result
+      const daysAgo = Math.ceil((Date.now() / 1000 - Number(result.before_timestamp)) / 86400)
+      const needed = daysAgo + Number(result.days || 30)
+      const VALID_DAYS = [1, 7, 14, 30, 90, 180, 365]
+      result.days = VALID_DAYS.find(d => d >= needed) ?? 'max'
       delete result.before_timestamp
     }
 

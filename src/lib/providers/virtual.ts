@@ -89,6 +89,8 @@ marketActions['chart'] = {
         }
       }
 
+      // Free/demo: pass before_timestamp through — mapParams handles days expansion
+      // and strips before_timestamp; dispatchProviderStep crops both ends client-side.
       return {
         provider: 'coingecko',
         action: 'ohlc',

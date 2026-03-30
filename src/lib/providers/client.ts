@@ -216,22 +216,25 @@ export async function dispatchProviderStep(
     }
   }
 
-  // Capture before_timestamp before the request (mapParams may strip it for providers
-  // that don't accept it as a query param, e.g. CoinGecko ohlc on free tier).
+  // Capture before the request — resolve chains may transform or strip these params.
   const beforeTs = params.before_timestamp !== undefined ? Number(params.before_timestamp) : undefined
+  const requestedDays = params.limit !== undefined ? Number(params.limit)
+    : params.days !== undefined ? Number(params.days)
+    : undefined
 
   const response = await providerRequest({ provider, actionName, params, hint })
   let { data } = response
 
-  // Client-side filtering: cap OHLC candles to before_timestamp when the API
-  // couldn't do it server-side (e.g. CoinGecko free-tier ohlc).
+  // Client-side filtering: crop OHLC candles to the [at - days, at] window when the
+  // API couldn't do it server-side (e.g. CoinGecko free-tier ohlc where we expanded
+  // the days param to reach far enough back, then crop both ends here).
   // CoinGecko ohlc returns [[timestamp_ms, o, h, l, c], ...].
-  if (beforeTs && Array.isArray(data)) {
-    const cutoffMs = beforeTs * 1000
-    const filtered = (data as unknown[][]).filter(c => typeof c[0] === 'number' && c[0] <= cutoffMs)
-    if (filtered.length < data.length) {
-      data = filtered
-    }
+  if (beforeTs && Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
+    const ceilMs = beforeTs * 1000
+    const floorMs = requestedDays ? ceilMs - requestedDays * 86_400_000 : 0
+    data = (data as unknown[][]).filter(
+      c => typeof c[0] === 'number' && c[0] >= floorMs && c[0] <= ceilMs,
+    )
   }
 
   return data
