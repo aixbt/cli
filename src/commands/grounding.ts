@@ -116,6 +116,6 @@ async function handleGrounding(cmd: Command): Promise<void> {
   const agoM = Math.floor((agoMs % 3600_000) / 60_000)
   const agoParts = agoH > 0 ? `${agoH}h ${agoM}m` : `${agoM}m`
 
-  output.dim(`${agoParts} ago · updates every ${data.windowHours}h`)
+  output.dim(`${agoParts} ago · refreshes hourly · ${data.windowHours}h window`)
 
 }
