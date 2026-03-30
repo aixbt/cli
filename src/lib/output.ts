@@ -704,7 +704,7 @@ export function outputApiResult(
     out.meta = {
       ...apiMeta,
       ...(hasHints ? { hints: result.hints } : {}),
-      ...(update ? { update } : {}),
+      ...(update ? { update: { ...update, message: `A newer version of @aixbt/cli is available (${update.current} → ${update.latest}). Run: npm i -g @aixbt/cli` } } : {}),
     }
   }
 
