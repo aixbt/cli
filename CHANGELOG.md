@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- **Fixes** — rank display shows full history instead of last 20 points, null for drop-outs
+
 ## 0.1.4
 
 - **Grounding command** — `aixbt grounding` with section filters
