@@ -216,8 +216,25 @@ export async function dispatchProviderStep(
     }
   }
 
+  // Capture before_timestamp before the request (mapParams may strip it for providers
+  // that don't accept it as a query param, e.g. CoinGecko ohlc on free tier).
+  const beforeTs = params.before_timestamp !== undefined ? Number(params.before_timestamp) : undefined
+
   const response = await providerRequest({ provider, actionName, params, hint })
-  return response.data
+  let { data } = response
+
+  // Client-side filtering: cap OHLC candles to before_timestamp when the API
+  // couldn't do it server-side (e.g. CoinGecko free-tier ohlc).
+  // CoinGecko ohlc returns [[timestamp_ms, o, h, l, c], ...].
+  if (beforeTs && Array.isArray(data)) {
+    const cutoffMs = beforeTs * 1000
+    const filtered = (data as unknown[][]).filter(c => typeof c[0] === 'number' && c[0] <= cutoffMs)
+    if (filtered.length < data.length) {
+      data = filtered
+    }
+  }
+
+  return data
 }
 
 function resolveActionPath(

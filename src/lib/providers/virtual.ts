@@ -69,13 +69,34 @@ marketActions['chart'] = {
     }
     // CEX path: CoinGecko OHLC (requires geckoId, always CoinGecko)
     if (hasValue(params.geckoId)) {
+      const days = params.limit ?? 30
+      const beforeTs = params.before_timestamp
+
+      // Paid tier: use ohlc-range for precise date windows
+      if (ctx.tier === 'paid' && hasValue(beforeTs)) {
+        const to = Number(beforeTs)
+        const from = to - Number(days) * 86400
+        return {
+          provider: 'coingecko',
+          action: 'ohlc-range',
+          params: {
+            id: params.geckoId,
+            vs_currency: params.currency ?? 'usd',
+            from,
+            to,
+            interval: 'daily',
+          },
+        }
+      }
+
       return {
         provider: 'coingecko',
         action: 'ohlc',
         params: {
           id: params.geckoId,
           vs_currency: params.currency ?? 'usd',
-          days: params.limit ?? 30,
+          days,
+          before_timestamp: beforeTs,
         },
       }
     }

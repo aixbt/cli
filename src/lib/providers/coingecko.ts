@@ -79,8 +79,23 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'vs_currency', required: false, description: 'Target currency (default: "usd")' },
       { name: 'days', required: false, description: 'Data range in days (1, 7, 14, 30, 90, 180, 365)' },
       { name: 'interval', required: false, description: 'Candle interval (daily)' },
+      { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — filter candles after this time client-side. Auto-set from recipe --at.' },
     ],
     minTier: 'free',
+  },
+  'ohlc-range': {
+    method: 'GET',
+    path: '/coins/{id}/ohlc/range',
+    description: 'Get OHLC candlestick data for a coin within a specific date range (paid tier only)',
+    hint: 'You need historical price candles for a specific date range',
+    params: [
+      { name: 'id', required: true, description: 'CoinGecko coin ID', inPath: true },
+      { name: 'vs_currency', required: false, description: 'Target currency (default: "usd")' },
+      { name: 'from', required: true, description: 'Start of range (Unix timestamp)' },
+      { name: 'to', required: true, description: 'End of range (Unix timestamp)' },
+      { name: 'interval', required: false, description: 'Candle interval: "daily" or "hourly"' },
+    ],
+    minTier: 'paid',
   },
   categories: {
     method: 'GET',
@@ -204,7 +219,7 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
     ],
     minTier: 'free',
-    resolve: (params) => {
+    resolve: (params, ctx) => {
       if (hasValue(params.network) && hasValue(params.address)) {
         return {
           action: 'token-ohlcv',
@@ -220,12 +235,33 @@ const actions: Record<string, ActionDefinition> = {
       }
 
       if (hasValue(params.geckoId)) {
+        const days = params.limit ?? 30
+        const beforeTs = params.before_timestamp
+
+        // Paid tier: use ohlc-range for precise date windows
+        if (ctx.tier === 'paid' && hasValue(beforeTs)) {
+          const to = Number(beforeTs)
+          const from = to - Number(days) * 86400
+          return {
+            action: 'ohlc-range',
+            params: {
+              id: params.geckoId,
+              vs_currency: params.currency ?? 'usd',
+              from,
+              to,
+              interval: 'daily',
+            },
+          }
+        }
+
+        // Free/demo: pass before_timestamp for client-side filtering
         return {
           action: 'ohlc',
           params: {
             id: params.geckoId,
             vs_currency: params.currency ?? 'usd',
-            days: params.limit ?? 30,
+            days,
+            before_timestamp: beforeTs,
           },
         }
       }
@@ -285,6 +321,13 @@ export const coingeckoProvider: Provider = {
     if ((actionName === 'token-ohlcv' || actionName === 'pool-ohlcv') && !result.timeframe) {
       result = result === params ? { ...result, timeframe: 'day' } : result
       result.timeframe = 'day'
+    }
+
+    // Strip before_timestamp from ohlc — CoinGecko doesn't accept it as a query param.
+    // Client-side filtering happens in dispatchProviderStep after the response.
+    if (actionName === 'ohlc' && result.before_timestamp !== undefined) {
+      result = result === params ? { ...result } : result
+      delete result.before_timestamp
     }
 
     return result
