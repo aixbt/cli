@@ -4,6 +4,8 @@ import { readConfig, resolveConfig, type KeySource, type ResolvedConfig } from '
 import { NoApiKeyError, AuthError } from './errors.js'
 import { get, type ApiClientOptions } from './api-client.js'
 import type { OutputFormat } from './output.js'
+import { setTimeAnchor } from './output.js'
+import { resolveDate } from './date.js'
 
 // Auth mode discriminated union
 export type AuthMode =
@@ -190,6 +192,13 @@ export function getClientOptions(cmd: Command): {
     apiUrl: opts.apiUrl as string | undefined,
     paymentSignature: opts.paymentSignature as string | undefined,
   })
+
+  // Set time anchor for relative displays when --at is active
+  const atValue = resolveDate(opts.at as string | undefined)
+  if (atValue) {
+    const anchor = new Date(atValue)
+    if (!isNaN(anchor.getTime())) setTimeAnchor(anchor)
+  }
 
   return { clientOpts, authMode, outputFormat, verbosity, limit }
 }
