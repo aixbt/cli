@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import chalk from 'chalk'
+import updateNotifier from 'update-notifier'
 import { readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -267,6 +268,7 @@ async function main(): Promise<void> {
 const isDirectRun = process.argv[1] && realpathSync(resolve(process.argv[1])) === fileURLToPath(import.meta.url)
 
 if (isDirectRun) {
+  updateNotifier({ pkg }).notify()
   main().catch(async (err: unknown) => {
     await handleTopLevelError(err, 'human')
   })
