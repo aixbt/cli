@@ -116,7 +116,7 @@ const RANK_COLUMNS: output.TableColumn[] = [
     header: 'Rank',
     width: 6,
     align: 'right' as const,
-    format: (v: unknown) => (typeof v === 'number' ? `#${v}` : '-'),
+    format: (v: unknown) => (typeof v === 'number' ? String(v) : 'null'),
   },
   {
     key: 'score',
