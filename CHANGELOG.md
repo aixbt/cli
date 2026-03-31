@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6
+
+- **Rank nudge** — agent context now guides LLMs to treat rank as volatile background signal, not a headline number
+
 ## 0.1.5
 
 - **Fixes** — rank display shows full history instead of last 20 points, null for drop-outs
