@@ -120,6 +120,16 @@ export function resolveContextHints(
     hints.push('When discussing clusters: report structural patterns (count, diversity, trajectory direction, convergence rate). Do not list individual cluster names — the structural pattern matters, not which communities are involved.')
   }
 
+  // Rank reporting guidance
+  if (seen.has('rank')) {
+    hints.push(
+      'When discussing rank: the leaderboard is volatile — most projects swing widely within the top 100 and frequently drop off entirely. '
+      + 'Do not call out the specific rank number unless the position is genuinely notable (top 3, or sustained top-10 presence over multiple snapshots). '
+      + 'Large rank jumps and falling out of the top 100 are normal, not newsworthy. '
+      + 'Instead, use rank trajectory alongside the momentum score to inform your overall read on a project\'s relative performance — e.g., "leading the field" or "losing ground" — without citing rank numbers directly.',
+    )
+  }
+
   // Universal guidance
   hints.push('Do not mention all-time high (ATH) prices unless the asset has recently broken its ATH. Most assets are well below ATH, so commenting on the distance from ATH is not insightful.')
 
