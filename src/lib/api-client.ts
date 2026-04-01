@@ -36,7 +36,9 @@ function parseRateLimitHeaders(headers: Headers): RateLimitInfo | null {
   }
 }
 
-const DEFAULT_USER_AGENT = '@aixbt/cli'
+import { readFileSync } from 'node:fs'
+const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'))
+const DEFAULT_USER_AGENT = `@aixbt/cli/${pkg.version}`
 const MAX_RETRIES = 3
 
 export async function apiRequest<T>(
