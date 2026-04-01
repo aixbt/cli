@@ -486,7 +486,7 @@ describe('api-client', () => {
       const callArgs = mockFetch.mock.calls[0]
       const headers = callArgs[1].headers as Record<string, string>
       expect(headers['Content-Type']).toBe('application/json')
-      expect(headers['User-Agent']).toBe('@aixbt/cli')
+      expect(headers['User-Agent']).toMatch(/^@aixbt\/cli\/\d+\.\d+\.\d+$/)
     })
 
     it('should use custom userAgent when provided', async () => {
