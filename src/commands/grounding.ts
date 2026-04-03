@@ -112,4 +112,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
 
   output.dim(`${agoParts} ago · refreshes hourly · ${data.windowHours}h window`)
 
+  if (result.meta?.upgrade) {
+    output.dim(`Grounding is free · For full API access: ${chalk.reset('aixbt login')}`)
+  }
 }
