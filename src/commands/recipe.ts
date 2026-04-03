@@ -3,14 +3,14 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { globSync } from 'tinyglobby'
 import { parse as parseYaml } from 'yaml'
-import type { Recipe, RecipeAwaitingAgent } from '../types.js'
+import type { Recipe, RecipeAwaitingAgent, RecipeComplete } from '../types.js'
 import { isAgentStep, isParallelAgentStep, hasForModifier } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
-import { executeRecipe } from '../lib/recipe/engine.js'
-import { measureRecipe } from '../lib/recipe/measure.js'
-import { parseRecipe } from '../lib/recipe/parser.js'
-import { validateRecipeCollectIssues } from '../lib/recipe/validator.js'
-import { CliError, RecipeValidationError } from '../lib/errors.js'
+import { executeRecipeServer, validateRecipeServer } from '../lib/recipe/server.js'
+import { enrichServerResponse } from '../lib/recipe/enrichment.js'
+import { CliError } from '../lib/errors.js'
+import { getProviderNames, getProvider, parseSource } from '../lib/providers/registry.js'
+import type { ValidationIssue } from '../types.js'
 import { readConfig, resolveFormat, getRecipesDir } from '../lib/config.js'
 import { fetchRecipeList, fetchRecipeDetail, fetchRecipeFromRegistry } from '../lib/registry.js'
 import type { OutputFormat } from '../lib/output.js'
@@ -117,40 +117,80 @@ function extractDynamicParams(cmd: Command): Record<string, string> {
   return params
 }
 
-function printValidRecipeSummary(file: string, recipe: Recipe, outputFormat: OutputFormat): void {
+/** Parse a YAML string into a Recipe object for display purposes (no deep validation). */
+function parseRecipeLocal(yamlString: string): Recipe {
+  const raw = parseYaml(yamlString) as Record<string, unknown>
+  if (!raw || typeof raw.name !== 'string' || !Array.isArray(raw.steps)) {
+    throw new CliError('Invalid recipe YAML: missing name or steps', 'INVALID_RECIPE')
+  }
+  return raw as unknown as Recipe
+}
+
+function printValidRecipeSummaryFromServer(
+  file: string,
+  recipe: { name: string; version: string; stepCount: number; paramCount: number },
+  outputFormat: OutputFormat,
+): void {
   if (output.isStructuredFormat(outputFormat)) {
     output.outputStructured({
       status: 'valid',
       recipe: recipe.name,
       version: recipe.version,
-      stepCount: recipe.steps.length,
-      paramCount: recipe.params ? Object.keys(recipe.params).length : 0,
-      hint: `Run 'aixbt recipe measure ${recipe.name}' to check context token usage`,
+      stepCount: recipe.stepCount,
+      paramCount: recipe.paramCount,
     }, outputFormat)
     return
   }
 
   output.success(`${file} is valid`)
-
-  const agentSteps = recipe.steps.filter(isAgentStep).map((s) => s.id)
-  const forSteps = recipe.steps.filter(hasForModifier).map((s) => s.id)
-  const paramCount = recipe.params ? Object.keys(recipe.params).length : 0
-
   output.keyValue('Recipe', recipe.name, 20)
   output.keyValue('Version', recipe.version, 20)
-  output.keyValue('Steps', String(recipe.steps.length), 20)
-  output.keyValue('Params', String(paramCount), 20)
+  output.keyValue('Steps', String(recipe.stepCount), 20)
+  output.keyValue('Params', String(recipe.paramCount), 20)
+}
 
-  if (agentSteps.length > 0) {
-    output.keyValue('Agent steps', agentSteps.join(', '), 20)
+/** Local provider action validation — checks steps against the CLI's provider registry. */
+function validateProviderActionsLocal(yamlString: string): ValidationIssue[] {
+  let recipe: Recipe
+  try {
+    recipe = parseRecipeLocal(yamlString)
+  } catch {
+    return []
   }
-  if (forSteps.length > 0) {
-    output.keyValue('Iterated steps', forSteps.join(', '), 20)
+
+  const knownProviders = getProviderNames()
+  if (knownProviders.length === 0) return []
+
+  const issues: ValidationIssue[] = []
+
+  for (const step of recipe.steps) {
+    if (isAgentStep(step)) continue
+
+    const rawSource = step.source ?? 'aixbt'
+    const { providerName: source } = parseSource(rawSource)
+    const action = step.action
+    if (!action) continue
+
+    if (!knownProviders.includes(source)) {
+      issues.push({
+        path: `steps.${step.id}.source`,
+        message: `Unknown provider "${source}". Available providers: ${knownProviders.join(', ')}`,
+      })
+      continue
+    }
+
+    const provider = getProvider(source)
+    const isRawPath = action.startsWith('/') || action.includes(' /')
+    if (!isRawPath && !provider.actions[action]) {
+      const available = Object.keys(provider.actions).join(', ')
+      issues.push({
+        path: `steps.${step.id}.action`,
+        message: `Unknown action "${action}" for provider "${source}". Available: ${available}`,
+      })
+    }
   }
-  if (recipe.analysis?.instructions) {
-    output.keyValue('Analysis', 'Yes', 20)
-  }
-  output.hint(`Next: aixbt recipe measure ${recipe.name}`)
+
+  return issues
 }
 
 // -- Local recipe scanning --
@@ -174,7 +214,7 @@ function scanRecipeFiles(paths: string[]): LocalRecipe[] {
       if (!raw || typeof raw.name !== 'string' || !raw.steps) continue
 
       let valid = true
-      try { parseRecipe(yamlContent) } catch { valid = false }
+      try { parseRecipeLocal(yamlContent) } catch { valid = false }
 
       results.push({ file, recipe: raw as unknown as Recipe, valid })
     } catch {
@@ -476,7 +516,7 @@ export function registerRecipeCommand(program: Command): void {
         }
       }
 
-      const parsed = parseRecipe(yaml)
+      const parsed = parseRecipeLocal(yaml)
 
       const steps = parsed.steps.map((step) => {
         if (isParallelAgentStep(step)) {
@@ -631,6 +671,7 @@ export function registerRecipeCommand(program: Command): void {
     .command('validate <name>')
     .description('Validate a recipe YAML file without executing')
     .action(async (name: string, _opts: unknown, cmd: Command) => {
+      const { clientOpts: clientOptions } = getClientOptions(cmd)
       const globalOpts = cmd.optsWithGlobals()
       const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
@@ -650,196 +691,21 @@ export function registerRecipeCommand(program: Command): void {
         }
       }
 
-      let recipe: Recipe
-      try {
-        recipe = parseRecipe(yamlString)
-      } catch (err) {
-        if (err instanceof RecipeValidationError) {
-          reportValidationResults(file, err.issues, outputFormat)
-          process.exit(1)
-        }
-        throw err
-      }
+      const result = await validateRecipeServer({ yaml: yamlString, clientOptions })
 
-      const issues = validateRecipeCollectIssues(recipe)
-      if (issues.length > 0) {
-        reportValidationResults(file, issues, outputFormat)
+      // Supplement with local provider action validation
+      const localIssues = validateProviderActionsLocal(yamlString)
+      const allIssues = [...(result.issues ?? []), ...localIssues]
+
+      if (allIssues.length > 0) {
+        reportValidationResults(file, allIssues, outputFormat)
         process.exit(1)
       }
 
-      printValidRecipeSummary(file, recipe, outputFormat)
-    })
-
-  recipe
-    .command('measure <name>')
-    .description('Run data steps and report context token usage')
-    .allowUnknownOption(true)
-    .action(async (name: string, _opts: unknown, cmd: Command) => {
-      const { clientOpts: clientOptions } = getClientOptions(cmd)
-      const globalOpts = cmd.optsWithGlobals()
-      if (globalOpts.payPerUse) {
-        throw new CliError(
-          'Pay-per-use is not supported for recipes. Recipes make multiple API calls; use an API key instead.',
-          'PAY_PER_USE_UNSUPPORTED',
-        )
-      }
-      const outputFormat = resolveFormat(globalOpts.format as string | undefined)
-
-      // Resolve recipe source (same logic as info/run)
-      let yaml: string
-      let source = name
-      if (existsSync(name)) {
-        yaml = readFileSync(name, 'utf-8')
-      } else if (name.includes('/') || name.endsWith('.yaml') || name.endsWith('.yml')) {
-        throw new CliError(`File not found: ${name}`, 'FILE_NOT_FOUND')
+      if (result.recipe) {
+        printValidRecipeSummaryFromServer(file, result.recipe, outputFormat)
       } else {
-        const userFile = resolveUserRecipe(name)
-        if (userFile) {
-          yaml = readFileSync(userFile, 'utf-8')
-          source = userFile
-        } else {
-          throw new CliError(`Recipe "${name}" not found in ${getRecipesDir()}`, 'RECIPE_NOT_FOUND')
-        }
-      }
-
-      const params = extractDynamicParams(cmd)
-
-      // Auto-populate missing required params with Bitcoin project ID for measurement
-      const BITCOIN_ID = '66f4fdc76811ccaef955de3e'
-      try {
-        const parsed = parseRecipe(yaml)
-        if (parsed.params) {
-          for (const [key, def] of Object.entries(parsed.params)) {
-            if (def.required && !params[key] && !def.default) {
-              params[key] = BITCOIN_ID
-              if (!output.isStructuredFormat(outputFormat)) {
-                output.dim(`Auto-populated --${key} with Bitcoin for measurement`)
-              }
-            }
-          }
-        }
-      } catch { /* validation errors will surface when executeRecipe runs */ }
-
-      const structured = output.isStructuredFormat(outputFormat)
-
-      const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
-      let frameIdx = 0
-      let spinnerInterval: ReturnType<typeof setInterval> | undefined
-      let spinnerLabel = ''
-
-      const upgradeHints: string[] = []
-
-      // Rate limit countdown state
-      let rateLimitStart = 0
-      let rateLimitWaitMs = 0
-      let rateLimitProvider = ''
-      let rateLimitProgress = ''
-
-      if (!structured) {
-        spinnerLabel = 'Running data steps...'
-        spinnerInterval = setInterval(() => {
-          let extra = ''
-          if (rateLimitStart > 0) {
-            const elapsed = Date.now() - rateLimitStart
-            const remaining = Math.max(0, Math.ceil((rateLimitWaitMs - elapsed) / 1000))
-            if (remaining > 0) {
-              extra = ` (${rateLimitProvider}: rate limited, waiting ${remaining}s) ${rateLimitProgress}`
-            }
-          }
-          process.stderr.write(`\r${FRAMES[frameIdx++ % FRAMES.length]} ${output.fmt.dim(`${spinnerLabel}${extra}`)}`)
-        }, 80)
-      }
-
-      const handleProgress = (event: { type: string; provider: string; waitMs: number; completed: number; total: number; tier?: string; upgradeHint?: string }) => {
-        if (event.type === 'rate_limit') {
-          rateLimitStart = Date.now()
-          rateLimitWaitMs = event.waitMs
-          rateLimitProvider = event.provider
-          rateLimitProgress = `[${event.completed}/${event.total}]`
-          if (event.upgradeHint && !upgradeHints.includes(event.upgradeHint)) {
-            upgradeHints.push(event.upgradeHint)
-          }
-        } else if (event.type === 'item_complete') {
-          rateLimitStart = 0
-        }
-      }
-
-      try {
-        const result = await measureRecipe({
-          yaml,
-          params,
-          clientOptions,
-          recipeSource: source,
-          onSegment: (label) => { spinnerLabel = label },
-          onProgress: handleProgress,
-        })
-
-        if (spinnerInterval) {
-          clearInterval(spinnerInterval)
-          process.stderr.write(`\r${output.fmt.dim('✓')} Measured ${result.segments.length} segment${result.segments.length !== 1 ? 's' : ''}\n`)
-        }
-
-        if (upgradeHints.length > 0) {
-          for (const hint of upgradeHints) {
-            console.error(output.fmt.dim(`  ↳ ${hint}`))
-          }
-        }
-
-        if (structured) {
-          output.outputStructured(result, outputFormat)
-          return
-        }
-
-        // Human output
-        const fmtTokens = (n: number) => n < 1000 ? `~${n}` : `~${Math.round(n / 1000)}k`
-
-        console.log()
-        console.log(`${output.fmt.boldWhite(result.recipeName)}  ${output.fmt.dim(source)}`)
-        console.log()
-
-        for (const seg of result.segments) {
-          const typeTag = seg.type === 'post-yield'
-            ? output.fmt.dim('(post-yield, 1 mock item)')
-            : ''
-          console.log(`${output.fmt.dim(seg.label)} ${typeTag}`)
-          console.log(`  json: ${output.fmt.number(fmtTokens(seg.tokens.json))}  toon: ${output.fmt.number(fmtTokens(seg.tokens.toon))}`)
-        }
-
-        console.log()
-        console.log(`${output.fmt.boldWhite('Total')}`)
-        console.log(`  json: ${output.fmt.number(fmtTokens(result.totalTokens.json))}  toon: ${output.fmt.number(fmtTokens(result.totalTokens.toon))}`)
-
-        // Scaling note for multi-segment recipes with post-yield data
-        const postYieldSegs = result.segments.filter(s => s.type === 'post-yield')
-        if (postYieldSegs.length > 0) {
-          const postYieldTotal = {
-            json: postYieldSegs.reduce((sum, s) => sum + s.tokens.json, 0),
-            toon: postYieldSegs.reduce((sum, s) => sum + s.tokens.toon, 0),
-          }
-          const dataSegs = result.segments.filter(s => s.type === 'data')
-          const dataTotal = {
-            json: dataSegs.reduce((sum, s) => sum + s.tokens.json, 0),
-            toon: dataSegs.reduce((sum, s) => sum + s.tokens.toon, 0),
-          }
-          console.log()
-          output.dim('Post-yield segments measured with 1 mock item (Bitcoin).')
-          output.dim('Scale per-item cost by expected agent pick count:')
-          for (const n of [3, 5]) {
-            const scaled = {
-              json: dataTotal.json + postYieldTotal.json * n,
-              toon: dataTotal.toon + postYieldTotal.toon * n,
-            }
-            console.log(`  ${n} picks: json ${fmtTokens(scaled.json)}  toon ${fmtTokens(scaled.toon)}`)
-          }
-        }
-
-        console.log()
-      } catch (err) {
-        if (spinnerInterval) {
-          clearInterval(spinnerInterval)
-          process.stderr.write(`\r${output.fmt.red('✗')} Measure failed\n`)
-        }
-        throw err
+        output.success(`${file} is valid`)
       }
     })
 
@@ -849,7 +715,6 @@ export function registerRecipeCommand(program: Command): void {
     .option('--stdin', 'Read recipe YAML from stdin')
     .option('--resume-from <step>', 'Resume from an agent step (step:<id>)')
     .option('--input <json>', 'Agent step result JSON (used with --resume-from)')
-    .option('--output-dir <path>', 'Write segment data to files instead of stdout')
     .option('--agent <target>', 'Spawn an agent for inference steps: claude, codex')
     .option('--no-observe', 'Disable the background observer that shows data insights while the agent analyzes')
     .allowUnknownOption(true)
@@ -937,58 +802,36 @@ export function registerRecipeCommand(program: Command): void {
         }
       }
 
-      let result: Awaited<ReturnType<typeof executeRecipe>>
+      let result: RecipeAwaitingAgent | RecipeComplete
 
       const structured = formatFlag === 'json' || formatFlag === 'toon'
       const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
       const aixbt = output.fmt.brand('AIXBT')
-      // Rate limit countdown state for run command
-      let runRateLimitStart = 0
-      let runRateLimitWaitMs = 0
-      let runRateLimitProvider = ''
-      let runRateLimitProgress = ''
-      const runUpgradeHints: string[] = []
 
-      function getRunRateLimitSuffix(): string {
-        if (runRateLimitStart <= 0) return ''
-        const elapsed = Date.now() - runRateLimitStart
-        const remaining = Math.max(0, Math.ceil((runRateLimitWaitMs - elapsed) / 1000))
-        if (remaining <= 0) return ''
-        return ` ${output.fmt.dim(`(${runRateLimitProvider}: rate limited, waiting ${remaining}s) ${runRateLimitProgress}`)}`
+      /** Execute on server then enrich any provider fallbacks locally. */
+      async function callServerAndEnrich(
+        serverOpts: { resumeFromStep?: string; resumeInput?: Record<string, unknown>; carryForward?: Record<string, unknown> } = {},
+      ): Promise<RecipeAwaitingAgent | RecipeComplete> {
+        const res = await executeRecipeServer({
+          yaml,
+          params,
+          clientOptions,
+          ...serverOpts,
+        })
+        const enrichedData = await enrichServerResponse(res.data)
+        return { ...res, data: enrichedData }
       }
 
-      const handleRunProgress = (event: { type: string; provider: string; waitMs: number; completed: number; total: number; tier?: string; upgradeHint?: string }) => {
-        if (event.type === 'rate_limit') {
-          runRateLimitStart = Date.now()
-          runRateLimitWaitMs = event.waitMs
-          runRateLimitProvider = event.provider
-          runRateLimitProgress = `[${event.completed}/${event.total}]`
-          if (event.upgradeHint && !runUpgradeHints.includes(event.upgradeHint)) {
-            runUpgradeHints.push(event.upgradeHint)
-          }
-        } else if (event.type === 'item_complete') {
-          runRateLimitStart = 0
-        }
-      }
       if (adapter && !structured) {
-        // Agent mode: AIXBT with trailing spinner → tick on success
-        // Suppress spinner when verbose — debug lines go to stderr too
+        // Agent mode: AIXBT with trailing spinner -> tick on success
         let fi = 0
         const tick = verbosity < 1 ? setInterval(() => {
-          process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
+          process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}`)
         }, 80) : undefined
         try {
-          result = await executeRecipe({
-            yaml,
-            params,
-            clientOptions,
+          result = await callServerAndEnrich({
             resumeFromStep: opts.resumeFrom as string | undefined,
             resumeInput,
-            outputDir: opts.outputDir as string | undefined,
-            outputFormat: recipeFormat,
-            recipeSource: opts.stdin ? undefined : source,
-            onProgress: handleRunProgress,
-            verbosity,
           })
           if (tick) clearInterval(tick)
           if (!verbosity) process.stderr.write(`\r${aixbt} ${output.fmt.dim('✓')}\n`)
@@ -999,38 +842,22 @@ export function registerRecipeCommand(program: Command): void {
         }
       } else if (adapter && structured) {
         // Structured format with agent — quiet execution, no visual chrome
-        result = await executeRecipe({
-          yaml,
-          params,
-          clientOptions,
+        result = await callServerAndEnrich({
           resumeFromStep: opts.resumeFrom as string | undefined,
           resumeInput,
-          outputDir: opts.outputDir as string | undefined,
-          outputFormat: recipeFormat,
-          recipeSource: opts.stdin ? undefined : source,
-          onProgress: handleRunProgress,
-          verbosity,
         })
       } else {
         let noAgentFi = 0
         let noAgentInterval: ReturnType<typeof setInterval> | undefined
         if (!structured && verbosity < 1) {
           noAgentInterval = setInterval(() => {
-            process.stderr.write(`\r${FRAMES[noAgentFi++ % FRAMES.length]} ${output.fmt.dim('Executing recipe...')}${getRunRateLimitSuffix()}`)
+            process.stderr.write(`\r${FRAMES[noAgentFi++ % FRAMES.length]} ${output.fmt.dim('Executing recipe...')}`)
           }, 80)
         }
         try {
-          result = await executeRecipe({
-            yaml,
-            params,
-            clientOptions,
+          result = await callServerAndEnrich({
             resumeFromStep: opts.resumeFrom as string | undefined,
             resumeInput,
-            outputDir: opts.outputDir as string | undefined,
-            outputFormat: recipeFormat,
-            recipeSource: opts.stdin ? undefined : source,
-            onProgress: handleRunProgress,
-            verbosity,
           })
           if (noAgentInterval) {
             clearInterval(noAgentInterval)
@@ -1042,11 +869,6 @@ export function registerRecipeCommand(program: Command): void {
             process.stderr.write('\r\x1b[K')
           }
           throw err
-        }
-      }
-      if (runUpgradeHints.length > 0 && !structured) {
-        for (const hint of runUpgradeHints) {
-          console.error(output.fmt.dim(`↳ ${hint}`))
         }
       }
 
@@ -1087,39 +909,22 @@ export function registerRecipeCommand(program: Command): void {
         }
 
         if (structured) {
-          result = await executeRecipe({
-            yaml,
-            params,
-            clientOptions,
+          result = await callServerAndEnrich({
             resumeFromStep: `step:${awaiting.step}`,
             resumeInput: agentResponse,
-            outputDir: opts.outputDir as string | undefined,
-            outputFormat: recipeFormat,
-            recipeSource: opts.stdin ? undefined : source,
-            onProgress: handleRunProgress,
-            verbosity,
             carryForward: awaiting.carryForward,
           })
         } else {
           // Visual mode: AIXBT spinner for recipe resume
           if (verbosity < 1) process.stderr.write(`  ${chalk.dim('↓')}\n`)
-          runRateLimitStart = 0
           let fi = 0
           const resumeTick = verbosity < 1 ? setInterval(() => {
-            process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}${getRunRateLimitSuffix()}`)
+            process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}`)
           }, 80) : undefined
           try {
-            result = await executeRecipe({
-              yaml,
-              params,
-              clientOptions,
+            result = await callServerAndEnrich({
               resumeFromStep: `step:${awaiting.step}`,
               resumeInput: agentResponse,
-              outputDir: opts.outputDir as string | undefined,
-              outputFormat: recipeFormat,
-              recipeSource: opts.stdin ? undefined : source,
-              onProgress: handleRunProgress,
-              verbosity,
               carryForward: awaiting.carryForward,
             })
             if (resumeTick) clearInterval(resumeTick)
@@ -1134,7 +939,7 @@ export function registerRecipeCommand(program: Command): void {
 
       // Recipe complete — handle final analysis
       if (result.analysis && !structured) {
-        const recipeSteps = parseRecipe(yaml).steps
+        const recipeSteps = parseRecipeLocal(yaml).steps
         const observe = opts.observe !== false
         await invokeAgentForAnalysis(adapter, result, { allowedTools: agentAllowedTools, recipeSteps, observe })
         console.error('')

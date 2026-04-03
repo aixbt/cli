@@ -77,6 +77,82 @@ export async function apiRequest<T>(
   return executeWithBackoff<T>(method, url.toString(), headers)
 }
 
+/**
+ * Make an authenticated POST request returning the raw JSON response body.
+ * Unlike apiRequest(), this does not assume the standard { status, data } wrapper.
+ */
+export async function postRaw<T>(
+  path: string,
+  body: unknown,
+  options: ApiClientOptions = {},
+): Promise<T> {
+  const config = resolveConfig({
+    apiKey: options.apiKey,
+    apiUrl: options.apiUrl,
+  })
+
+  const baseUrl = config.apiUrl.replace(/\/$/, '')
+  const finalPath = options.pathPrefix ? `${options.pathPrefix}${path}` : path
+  const url = new URL(finalPath, baseUrl)
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'User-Agent': options.userAgent ?? DEFAULT_USER_AGENT,
+  }
+
+  if (!options.noAuth) {
+    const apiKey = options.apiKey ?? config.apiKey
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey
+    }
+  }
+
+  if (options.paymentSignature) {
+    headers['PAYMENT-SIGNATURE'] = options.paymentSignature
+  }
+
+  let res: Response
+  try {
+    res = await fetch(url.toString(), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    throw new NetworkError(
+      err instanceof Error ? err.message : 'Network request failed',
+    )
+  }
+
+  if (res.status === 401) {
+    const resBody = await safeJson(res)
+    throw new AuthError(
+      resBody?.message as string ?? 'Unauthorized',
+      resBody?.code as string | undefined,
+    )
+  }
+
+  if (res.status === 402) {
+    const resBody = await safeJson(res)
+    throw new PaymentRequiredError(resBody, res.headers)
+  }
+
+  if (!res.ok) {
+    const resBody = await safeJson(res)
+    throw new ApiError(
+      res.status,
+      (resBody?.error ?? resBody?.message ?? res.statusText) as string,
+      resBody?.code as string | undefined,
+    )
+  }
+
+  try {
+    return await res.json() as T
+  } catch {
+    throw new ApiError(res.status, 'Invalid JSON in API response', 'INVALID_RESPONSE')
+  }
+}
+
 async function executeWithBackoff<T>(
   method: string,
   url: string,

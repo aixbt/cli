@@ -1,5 +1,9 @@
 import type { SampleTransform, TransformBlock } from '../types.js'
-import { isErrorMarker } from './recipe/foreach.js'
+
+/** Check if a foreach result item is an error marker (failed iteration). */
+function isErrorMarker(item: unknown): item is { _error: true; item: unknown; error: string; status?: number } {
+  return typeof item === 'object' && item !== null && '_error' in item && (item as Record<string, unknown>)._error === true
+}
 
 // -- Helpers --
 
