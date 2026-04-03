@@ -28,10 +28,8 @@ export function scanForFallbacks(data: Record<string, unknown>): FallbackEntry[]
     if (!value || typeof value !== 'object') continue
 
     if (isFallbackEntry(value)) {
-      entries.push({
-        path: [key],
-        providerMeta: extractProviderMeta(value as Record<string, unknown>),
-      })
+      const meta = extractProviderMeta(value as Record<string, unknown>)
+      if (meta) entries.push({ path: [key], providerMeta: meta })
       continue
     }
 
@@ -41,10 +39,8 @@ export function scanForFallbacks(data: Record<string, unknown>): FallbackEntry[]
         const item = value[i]
         if (!item || typeof item !== 'object') continue
         if (isFallbackEntry(item)) {
-          entries.push({
-            path: [key, String(i)],
-            providerMeta: extractProviderMeta(item as Record<string, unknown>),
-          })
+          const meta = extractProviderMeta(item as Record<string, unknown>)
+          if (meta) entries.push({ path: [key, String(i)], providerMeta: meta })
           continue
         }
         // Defensive: check nested objects within array items
@@ -66,12 +62,15 @@ function isFallbackEntry(value: unknown): boolean {
   return obj._fallback === true && obj._providerMeta != null
 }
 
-function extractProviderMeta(obj: Record<string, unknown>): ProviderMeta {
-  const meta = obj._providerMeta as Record<string, unknown>
+function extractProviderMeta(obj: Record<string, unknown>): ProviderMeta | null {
+  const meta = obj._providerMeta
+  if (!meta || typeof meta !== 'object') return null
+  const m = meta as Record<string, unknown>
+  if (typeof m.source !== 'string' || !m.source || typeof m.action !== 'string' || !m.action) return null
   return {
-    source: meta.source as string,
-    action: meta.action as string,
-    params: (meta.params as Record<string, unknown>) ?? {},
+    source: m.source,
+    action: m.action,
+    params: (m.params && typeof m.params === 'object' ? m.params : {}) as Record<string, unknown>,
   }
 }
 
@@ -83,10 +82,8 @@ function scanNested(
   for (const [key, value] of Object.entries(obj)) {
     if (!value || typeof value !== 'object') continue
     if (isFallbackEntry(value)) {
-      entries.push({
-        path: [...basePath, key],
-        providerMeta: extractProviderMeta(value as Record<string, unknown>),
-      })
+      const meta = extractProviderMeta(value as Record<string, unknown>)
+      if (meta) entries.push({ path: [...basePath, key], providerMeta: meta })
     }
   }
 }
@@ -110,7 +107,7 @@ export async function enrichFallbacks(
   function enqueue(): void {
     while (active.size < CONCURRENCY_LIMIT && nextIndex < entries.length) {
       const entry = entries[nextIndex++]!
-      const pathKey = entry.path.join('.')
+      const pathKey = entry.path.join('\0')
       const p = enrichSingle(entry.providerMeta)
         .then((data) => {
           results.set(pathKey, data)
@@ -159,7 +156,7 @@ function toParams(raw: Record<string, unknown>): Params {
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       result[key] = value
     } else {
-      result[key] = String(value)
+      result[key] = JSON.stringify(value)
     }
   }
   return result
@@ -178,7 +175,7 @@ export function mergeFallbacks(
   const result: Record<string, unknown> = { ...data }
 
   for (const [pathKey, enrichedData] of enriched) {
-    const parts = pathKey.split('.')
+    const parts = pathKey.split('\0')
     setAtPath(result, parts, enrichedData)
   }
 
