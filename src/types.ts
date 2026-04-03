@@ -12,10 +12,7 @@ export interface RateLimitInfo {
   retryAfterSeconds?: number  // Only present on 429
 }
 
-export interface FreeTierMeta {
-  tier: 'free'
-  dataDelayHours: number
-  dataAsOf: string
+export interface UpgradeMeta {
   upgrade: {
     description: string
     protocol: string
@@ -27,7 +24,7 @@ export interface FreeTierMeta {
 export interface ApiResponse<T> {
   status: number
   data: T
-  meta?: FreeTierMeta
+  meta?: UpgradeMeta
   pagination?: {
     page: number
     limit: number

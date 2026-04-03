@@ -679,7 +679,7 @@ export function registerRecipeCommand(program: Command): void {
       const globalOpts = cmd.optsWithGlobals()
       if (globalOpts.payPerUse) {
         throw new CliError(
-          'Pay-per-use is not supported for recipes. Recipes make multiple API calls; use an API key or --delayed instead.',
+          'Pay-per-use is not supported for recipes. Recipes make multiple API calls; use an API key instead.',
           'PAY_PER_USE_UNSUPPORTED',
         )
       }
@@ -859,7 +859,7 @@ export function registerRecipeCommand(program: Command): void {
 
       if (globalOpts.payPerUse) {
         throw new CliError(
-          'Pay-per-use is not supported for recipes. Recipes make multiple API calls; use an API key or --delayed instead.',
+          'Pay-per-use is not supported for recipes. Recipes make multiple API calls; use an API key instead.',
           'PAY_PER_USE_UNSUPPORTED',
         )
       }

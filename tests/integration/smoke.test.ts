@@ -144,7 +144,7 @@ describe('E2E smoke tests', () => {
         expect(stripped).toContain('signals')
         expect(stripped).toContain('recipe')
         expect(stripped).toContain('--format')
-        expect(stripped).toContain('--delayed')
+        expect(stripped).not.toContain('--delayed')
         expect(stripped).toContain('--pay-per-use')
       } finally {
         mockStdoutWrite.mockRestore()
