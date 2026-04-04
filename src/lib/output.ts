@@ -2,7 +2,7 @@ import chalk from 'chalk'
 import ora from 'ora'
 import type { Ora } from 'ora'
 import { encode } from '@toon-format/toon'
-import type { ActivityEntry, FreeTierMeta } from '../types.js'
+import type { ActivityEntry } from '../types.js'
 
 /** Cached update info, set by cli.ts at startup. */
 let _updateInfo: { current: string; latest: string; type: string } | undefined
@@ -249,11 +249,6 @@ export function info(msg: string): void {
 
 export function dim(msg: string): void {
   console.log(chalk.dim(msg))
-}
-
-export function delayedDataWarning(meta: FreeTierMeta): void {
-  console.log()
-  console.log(`${chalk.yellow('Delayed data')} ${fmt.dim(`(${meta.dataDelayHours}h delay)`)} ${fmt.dim('·')} ${fmt.dim('For real-time data:')} aixbt login`)
 }
 
 export function hint(msg: string): void {

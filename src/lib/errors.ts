@@ -127,15 +127,12 @@ export class NoApiKeyError extends CliError {
           dataFreshness: 'real-time',
           requires: ['wallet'],
         },
-        {
-          mode: 'delayed',
-          flag: '--delayed',
-          description: 'Free tier with delayed data',
-          cost: 'free',
-          dataFreshness: '24h delay',
-          requires: [],
-        },
       ],
+      free: {
+        endpoint: 'grounding',
+        command: 'aixbt grounding',
+        description: 'Market grounding data is always free — no key required',
+      },
     }
   }
 
@@ -155,9 +152,7 @@ export class NoApiKeyError extends CliError {
       '     $0.50/call, requires wallet',
       '     Run with: --pay-per-use',
       '',
-      '  4. Use delayed data (free)',
-      '     Data delayed 24h, no account needed',
-      '     Run with: --delayed',
+      'Grounding data is always free — run: aixbt grounding',
     ].join('\n')
   }
 }
@@ -219,8 +214,7 @@ async function renderNoApiKeyError(outputFormat: OutputFormat): Promise<void> {
   console.log(`  ${output.fmt.brandBold('3. Pay per use')}`)
   console.log(`     Append ${output.fmt.dim('--pay-per-use')} to any command`)
   console.log()
-  console.log(`  ${output.fmt.brandBold('4. Delayed data')} ${output.fmt.dim('(free)')}`)
-  console.log(`     Append ${output.fmt.dim('--delayed')} to any command (data delayed 24h)`)
+  console.log(`  ${output.fmt.dim('Grounding data is always free — run:')} aixbt grounding`)
   console.log()
   console.log(`  ${output.fmt.boldWhite('Docs')}`)
   console.log(`  ${output.fmt.dim('humans:')} ${output.fmt.link('https://docs.aixbt.tech/builders')}`)

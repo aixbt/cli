@@ -182,7 +182,7 @@ describe('NoApiKeyError', () => {
     expect(json.message).toBe('No API key configured')
     expect(json.options).toBeDefined()
     expect(Array.isArray(json.options)).toBe(true)
-    expect((json.options as Array<{ mode: string }>).length).toBe(4)
+    expect((json.options as Array<{ mode: string }>).length).toBe(3)
   })
 
   it('should list all access modes in toJSON options', () => {
@@ -192,7 +192,7 @@ describe('NoApiKeyError', () => {
     expect(modes).toContain('api-key')
     expect(modes).toContain('purchase-pass')
     expect(modes).toContain('pay-per-use')
-    expect(modes).toContain('delayed')
+    expect(modes).not.toContain('delayed')
   })
 
   it('should return a multi-line human-readable string', () => {
@@ -203,9 +203,19 @@ describe('NoApiKeyError', () => {
     expect(text).toContain('aixbt login')
     expect(text).toContain('--purchase-pass')
     expect(text).toContain('--pay-per-use')
-    expect(text).toContain('--delayed')
+    expect(text).toContain('Grounding data is always free')
+    expect(text).not.toContain('--delayed')
     // Verify it's multi-line
     expect(text.split('\n').length).toBeGreaterThan(5)
+  })
+
+  it('should include free grounding guidance in toJSON', () => {
+    const err = new NoApiKeyError()
+    const json = err.toJSON()
+    expect(json.free).toBeDefined()
+    const free = json.free as Record<string, unknown>
+    expect(free.endpoint).toBe('grounding')
+    expect(free.command).toBe('aixbt grounding')
   })
 })
 

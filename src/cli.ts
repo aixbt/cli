@@ -19,7 +19,6 @@ import * as output from './lib/output.js'
 import { handleTopLevelError } from './lib/errors.js'
 import { resolveFormat, detectAllKeys } from './lib/config.js'
 import { isExpired, isExpiringSoon, formatTimeRemaining } from './lib/auth.js'
-import { getLastMeta } from './lib/api-client.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
@@ -85,7 +84,6 @@ export function createProgram(): Command {
       lines.push(output.fmt.dim('NFA. DYOR. Information Purpose Only.'))
       return '\n' + lines.join('\n') + '\n'
     })
-    .option('--delayed', 'Use free tier with delayed data (no auth required)')
     .option('--pay-per-use', 'Pay per API call via x402')
     .addOption(new Option('--payment-signature <base64>', 'Payment proof for x402 (base64-encoded)').hideHelp())
     .option('--api-key <key>', 'API key (overrides config and env)')
@@ -101,25 +99,10 @@ export function createProgram(): Command {
   program.addOption(formatOption)
   program.option('-v, --verbose', 'Increase verbosity (-v, -vv, -vvv)', (_: string, prev: number) => prev + 1, 0)
 
-  program.hook('postAction', (thisCommand) => {
-    const opts = thisCommand.optsWithGlobals()
-    const fmt = resolveFormat(opts.format as string | undefined)
-    if (!output.isStructuredFormat(fmt)) {
-      const meta = getLastMeta()
-      if (meta) output.delayedDataWarning(meta)
-    }
-  })
-
   program.hook('preAction', (thisCommand) => {
     const opts = thisCommand.optsWithGlobals()
-    if (opts.delayed && opts.payPerUse) {
-      thisCommand.error('--delayed and --pay-per-use cannot be used together')
-    }
     if (opts.paymentSignature && opts.payPerUse) {
       thisCommand.error('--payment-signature and --pay-per-use cannot be used together')
-    }
-    if (opts.paymentSignature && opts.delayed) {
-      thisCommand.error('--payment-signature and --delayed cannot be used together')
     }
   })
 

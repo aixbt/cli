@@ -448,29 +448,6 @@ analysis:
       ).rejects.toThrow('Invalid JSON for --input')
     })
 
-    it('should use --delayed flag for recipe run (no auth required)', async () => {
-      delete process.env.AIXBT_API_KEY
-
-      const recipeFile = join(tempDir, 'delayed.yaml')
-      writeFileSync(recipeFile, VALID_RECIPE_YAML)
-
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: [{ id: 'proj-1' }] }),
-      )
-
-      const program = createProgram()
-      program.exitOverride()
-      await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', '--delayed', 'recipe', 'run', recipeFile],
-        { from: 'node' },
-      )
-
-      expect(mockFetch).toHaveBeenCalledTimes(1)
-      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
-      // noAuth mode should not send X-API-Key
-      expect(headers['X-API-Key']).toBeUndefined()
-    })
-
     it('should fetch and execute recipe from registry when given a bare name', async () => {
       const registryRecipeYaml = `
 name: my-recipe

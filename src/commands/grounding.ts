@@ -1,8 +1,7 @@
 import type { Command } from 'commander'
-import { getClientOptions } from '../lib/auth.js'
+import { getPublicClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
-import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 import { resolveDate } from '../lib/date.js'
 import chalk from 'chalk'
 
@@ -21,7 +20,7 @@ interface GroundingData {
 export function registerGroundingCommand(program: Command): void {
   program
     .command('grounding')
-    .description('Get market grounding snapshot (narratives, macro, geopolitics)')
+    .description('Get market grounding snapshot (free, no key required)')
     .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .option('--section <name>', 'Show only a specific section (e.g., narratives, macro, geopolitics, tradfi)')
     .action(async (_opts: unknown, cmd: Command) => {
@@ -30,7 +29,7 @@ export function registerGroundingCommand(program: Command): void {
 }
 
 async function handleGrounding(cmd: Command): Promise<void> {
-  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
+  const { clientOpts, outputFormat } = getPublicClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
@@ -40,12 +39,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
   const result = await output.withSpinner(
     'Fetching grounding...',
     outputFormat,
-    () => withPayPerUse(
-      () => get<GroundingData>('/v2/grounding/latest', params, clientOpts),
-      authMode,
-      reconstructCommand('aixbt grounding', opts),
-      outputFormat,
-    ),
+    () => get<GroundingData>('/v2/grounding/latest', params, clientOpts),
     'Failed to fetch grounding',
     { silent: true },
   )
@@ -118,4 +112,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
 
   output.dim(`${agoParts} ago · refreshes hourly · ${data.windowHours}h window`)
 
+  if (result.meta?.upgrade) {
+    output.dim(`Grounding is free · For full API access: ${chalk.reset('aixbt login')}`)
+  }
 }

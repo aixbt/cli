@@ -32,11 +32,6 @@ describe('auth', () => {
   // -- resolveAuthMode --
 
   describe('resolveAuthMode', () => {
-    it('should return delayed mode when delayed flag is true', () => {
-      const result = resolveAuthMode({ delayed: true })
-      expect(result).toEqual({ mode: 'delayed' })
-    })
-
     it('should return pay-per-use mode when payPerUse flag is true', () => {
       const result = resolveAuthMode({ payPerUse: true })
       expect(result).toEqual({ mode: 'pay-per-use' })
@@ -71,13 +66,6 @@ describe('auth', () => {
 
     it('should throw NoApiKeyError when no key and no alternative flags', () => {
       expect(() => resolveAuthMode({})).toThrow(NoApiKeyError)
-    })
-
-    it('should prioritize delayed flag over a configured API key', () => {
-      writeConfig({ apiKey: 'config-key' })
-      process.env.AIXBT_API_KEY = 'env-key'
-      const result = resolveAuthMode({ delayed: true, apiKey: 'flag-key' })
-      expect(result).toEqual({ mode: 'delayed' })
     })
 
     it('should prioritize pay-per-use flag over a configured API key', () => {
@@ -185,8 +173,8 @@ describe('auth', () => {
       })
     })
 
-    it('should return noAuth true for delayed mode', () => {
-      const authMode: AuthMode = { mode: 'delayed' }
+    it('should return noAuth true for public mode', () => {
+      const authMode: AuthMode = { mode: 'public' }
 
       const result = buildClientOptions(authMode, {})
 
@@ -208,8 +196,8 @@ describe('auth', () => {
       })
     })
 
-    it('should pass apiUrl from global opts for delayed mode', () => {
-      const authMode: AuthMode = { mode: 'delayed' }
+    it('should pass apiUrl from global opts for public mode', () => {
+      const authMode: AuthMode = { mode: 'public' }
 
       const result = buildClientOptions(authMode, { apiUrl: 'https://override.api.com' })
 
@@ -300,8 +288,8 @@ describe('auth', () => {
       expect(result.paymentSignature).toBe('sig-xyz')
     })
 
-    it('should not set pathPrefix for delayed mode', () => {
-      const authMode: AuthMode = { mode: 'delayed' }
+    it('should not set pathPrefix for public mode', () => {
+      const authMode: AuthMode = { mode: 'public' }
       const result = buildClientOptions(authMode, {})
       expect(result.pathPrefix).toBeUndefined()
       expect(result.noAuth).toBe(true)
