@@ -21,6 +21,43 @@ import { resolveAdapter, resolveAgentTarget, invokeAgentForStep, invokeAgentForA
 
 const PARALLEL_FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
 
+/**
+ * Write step data to individual files on disk, replacing inline data with
+ * `{ dataFile: path }` references. Used by codex agent which reads from files.
+ */
+function applyOutputDir(
+  result: RecipeComplete,
+  outputDir: string,
+  outputFormat: 'json' | 'toon',
+): RecipeComplete {
+  const useToon = outputFormat === 'toon'
+  const ext = useToon ? 'toon' : 'json'
+  try {
+    mkdirSync(outputDir, { recursive: true })
+    const data: Record<string, unknown> = {}
+    let fileIndex = 1
+    for (const [stepId, stepData] of Object.entries(result.data)) {
+      if (stepId.startsWith('_')) {
+        data[stepId] = stepData
+        continue
+      }
+      const filename = `segment-${String(fileIndex).padStart(3, '0')}.${ext}`
+      const filePath = join(outputDir, filename)
+      const content = useToon
+        ? JSON.stringify(stepData, null, 2) // toon encoding handled by output layer
+        : JSON.stringify(stepData, null, 2)
+      writeFileSync(filePath, content)
+      data[stepId] = { dataFile: filePath }
+      fileIndex++
+    }
+    return { ...result, data }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    console.error(`warn: Failed to write output files to ${outputDir}: ${detail}. Falling back to inline data.`)
+    return result
+  }
+}
+
 async function handleParallelAgentStep(
   adapter: AgentAdapter,
   awaiting: RecipeAwaitingAgent,
@@ -716,6 +753,7 @@ export function registerRecipeCommand(program: Command): void {
     .option('--resume-from <step>', 'Resume from an agent step (step:<id>)')
     .option('--input <json>', 'Agent step result JSON (used with --resume-from)')
     .option('--agent <target>', 'Spawn an agent for inference steps: claude, codex')
+    .option('--output-dir <path>', 'Write segment data to files instead of inline (for codex agent)')
     .option('--no-observe', 'Disable the background observer that shows data insights while the agent analyzes')
     .allowUnknownOption(true)
     .action(async (source: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
@@ -872,9 +910,14 @@ export function registerRecipeCommand(program: Command): void {
         }
       }
 
+      const outputDir = opts.outputDir as string | undefined
+
       // No agent — output as-is (existing behavior)
       if (!adapter) {
-        output.outputStructured(result, recipeFormat)
+        const final = outputDir && result.status === 'complete'
+          ? applyOutputDir(result, outputDir, recipeFormat)
+          : result
+        output.outputStructured(final, recipeFormat)
         return
       }
 
@@ -937,17 +980,22 @@ export function registerRecipeCommand(program: Command): void {
         }
       }
 
+      // Apply output-dir if specified (writes segment data to files for codex agent)
+      const finalResult = outputDir && result.status === 'complete'
+        ? applyOutputDir(result as RecipeComplete, outputDir, recipeFormat)
+        : result
+
       // Recipe complete — handle final analysis
-      if (result.analysis && !structured) {
+      if (finalResult.analysis && !structured) {
         const recipeSteps = parseRecipeLocal(yaml).steps
         const observe = opts.observe !== false
-        await invokeAgentForAnalysis(adapter, result, { allowedTools: agentAllowedTools, recipeSteps, observe })
+        await invokeAgentForAnalysis(adapter, finalResult, { allowedTools: agentAllowedTools, recipeSteps, observe })
         console.error('')
-      } else if (result.analysis && structured) {
-        const { text: analysisText, dataDir } = await captureAgentAnalysis(adapter, result, { allowedTools: agentAllowedTools })
-        output.outputStructured({ ...result, analysis_result: analysisText, meta: { dataDir } }, recipeFormat)
+      } else if (finalResult.analysis && structured) {
+        const { text: analysisText, dataDir } = await captureAgentAnalysis(adapter, finalResult, { allowedTools: agentAllowedTools })
+        output.outputStructured({ ...finalResult, analysis_result: analysisText, meta: { dataDir } }, recipeFormat)
       } else {
-        output.outputStructured(result, recipeFormat)
+        output.outputStructured(finalResult, recipeFormat)
       }
     })
 }
