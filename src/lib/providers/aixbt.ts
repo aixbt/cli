@@ -8,7 +8,7 @@ export const AIXBT_ACTION_PATHS: Record<string, string> = {
   chains: '/v2/projects/chains',
   signals: '/v2/signals',
   clusters: '/v2/clusters',
-  grounding: '/v2/grounding/latest',
+  grounding: '/v2/grounding',
 }
 
 const actions: Record<string, ActionDefinition> = {
@@ -117,7 +117,7 @@ const actions: Record<string, ActionDefinition> = {
   },
   grounding: {
     method: 'GET',
-    path: '/v2/grounding/latest',
+    path: '/v2/grounding',
     description: 'Get market grounding snapshot (narratives, macro, geopolitics, tradfi)',
     hint: 'You need current market context — crypto narratives, global liquidity, geopolitics, or tradfi conditions',
     params: [

@@ -162,22 +162,6 @@ describe('clusters commands', () => {
   // -- auth modes --
 
   describe('auth modes', () => {
-    it('should work with --delayed flag (no auth required)', async () => {
-      delete process.env.AIXBT_API_KEY
-
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_CLUSTERS }),
-      )
-
-      const program = createProgram()
-      program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', '--delayed', 'signals', 'clusters'], { from: 'node' })
-
-      expect(mockFetch).toHaveBeenCalledTimes(1)
-      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
-      expect(headers['X-API-Key']).toBeUndefined()
-    })
-
     it('should send API key in headers when authenticated', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_CLUSTERS }),

@@ -31,7 +31,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = output.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.5')
+      expect(stripped).toMatch(/v\d+\.\d+\.\d+/)
     })
   })
 
@@ -41,15 +41,6 @@ describe('CLI', () => {
       const formatOpt = program.options.find((o) => o.long === '--format')
       expect(formatOpt).toBeDefined()
       expect(formatOpt!.description).toBe('Output format: human (default), json, toon')
-    })
-
-    it('should have --delayed option registered', () => {
-      const program = createProgram()
-      const delayedOpt = program.options.find((o) => o.long === '--delayed')
-      expect(delayedOpt).toBeDefined()
-      expect(delayedOpt!.description).toBe(
-        'Use free tier with delayed data (no auth required)',
-      )
     })
 
     it('should have --pay-per-use option registered', () => {
@@ -111,13 +102,6 @@ describe('CLI', () => {
       expect(program.opts().format).toBe('toon')
     })
 
-    it('should parse --delayed flag correctly', () => {
-      const program = createProgram()
-      program.exitOverride()
-      program.parse(['node', 'test', '--delayed', 'login'], { from: 'node' })
-      expect(program.opts().delayed).toBe(true)
-    })
-
     it('should parse --pay-per-use flag correctly', () => {
       const program = createProgram()
       program.exitOverride()
@@ -143,7 +127,6 @@ describe('CLI', () => {
       program.parse(['node', 'test', 'login'], { from: 'node' })
       const opts = program.opts()
       expect(opts.format).toBeUndefined()
-      expect(opts.delayed).toBeUndefined()
       expect(opts.payPerUse).toBeUndefined()
       expect(opts.apiKey).toBeUndefined()
     })
@@ -152,14 +135,6 @@ describe('CLI', () => {
       const program = createProgram()
       program.exitOverride()
       expect(() => program.parse(['node', 'aixbt', '-f', 'xml'], { from: 'node' })).toThrow()
-    })
-
-    it('should have --delayed as a boolean flag (no argument)', () => {
-      const program = createProgram()
-      const delayedOpt = program.options.find((o) => o.long === '--delayed')
-      expect(delayedOpt).toBeDefined()
-      expect(delayedOpt!.required).toBe(false)
-      expect(delayedOpt!.optional).toBe(false)
     })
 
     it('should have --pay-per-use as a boolean flag (no argument)', () => {
@@ -232,7 +207,7 @@ describe('CLI', () => {
       // eslint-disable-next-line no-control-regex
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
       expect(stripped).toContain('AIXBT')
-      expect(stripped).toContain('v0.1.5')
+      expect(stripped).toMatch(/v\d+\.\d+\.\d+/)
     })
 
     it('should have writeOut configured to use process.stdout.write', () => {
@@ -299,7 +274,6 @@ describe('CLI', () => {
 
       expect(stripped).toContain('--format')
       expect(stripped).toContain('-f')
-      expect(stripped).toContain('--delayed')
       expect(stripped).toContain('--pay-per-use')
       expect(stripped).toContain('--api-key')
       expect(stripped).not.toContain('-V, --version')

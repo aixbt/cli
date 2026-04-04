@@ -10,11 +10,10 @@ import { resolveDate } from './date.js'
 // Auth mode discriminated union
 export type AuthMode =
   | { mode: 'api-key'; apiKey: string; config: ResolvedConfig }
-  | { mode: 'delayed' }
+  | { mode: 'public' }
   | { mode: 'pay-per-use' }
 
 interface AuthModeFlags {
-  delayed?: boolean
   payPerUse?: boolean
   paymentSignature?: string
   apiKey?: string
@@ -30,9 +29,6 @@ export interface ApiKeyInfo {
 }
 
 export function resolveAuthMode(flags: AuthModeFlags, resolved?: ResolvedConfig): AuthMode {
-  if (flags.delayed) {
-    return { mode: 'delayed' }
-  }
   if (flags.payPerUse) {
     return { mode: 'pay-per-use' }
   }
@@ -183,7 +179,6 @@ export function getClientOptions(cmd: Command): {
   const limit = resolved.limit ?? (outputFormat === 'human' ? 25 : undefined)
 
   const authMode = resolveAuthMode({
-    delayed: opts.delayed as boolean | undefined,
     payPerUse: opts.payPerUse as boolean | undefined,
     paymentSignature: opts.paymentSignature as string | undefined,
   }, resolved)
@@ -228,7 +223,7 @@ export function getPublicClientOptions(cmd: Command): {
   // Use the key if available for better rate limits, otherwise go unauthenticated
   const authMode: AuthMode = resolved.apiKey
     ? { mode: 'api-key', apiKey: resolved.apiKey, config: resolved }
-    : { mode: 'delayed' }
+    : { mode: 'public' }
 
   const clientOpts = buildClientOptions(authMode, {
     apiUrl: opts.apiUrl as string | undefined,

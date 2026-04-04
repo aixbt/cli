@@ -2,13 +2,7 @@ import type { RateLimitInfo, ApiResponse } from '../types.js'
 import { resolveConfig } from './config.js'
 import { ApiError, RateLimitError, AuthError, NetworkError, PaymentRequiredError } from './errors.js'
 
-import type { FreeTierMeta } from '../types.js'
-
 export type { ApiClientOptions }
-
-/** Last free-tier meta received from any API response. */
-let _lastMeta: FreeTierMeta | undefined
-export function getLastMeta(): FreeTierMeta | undefined { return _lastMeta }
 
 interface ApiClientOptions {
   apiKey?: string
@@ -36,7 +30,9 @@ function parseRateLimitHeaders(headers: Headers): RateLimitInfo | null {
   }
 }
 
-const DEFAULT_USER_AGENT = '@aixbt/cli'
+import { readFileSync } from 'node:fs'
+const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'))
+const DEFAULT_USER_AGENT = `@aixbt/cli/${pkg.version}`
 const MAX_RETRIES = 3
 
 export async function apiRequest<T>(
@@ -143,7 +139,6 @@ async function executeWithBackoff<T>(
   const paymentResponse = decodeBase64JsonHeader<Record<string, unknown>>(res.headers, 'payment-response')
 
   const meta = body.meta as ApiResponse<T>['meta']
-  if (meta) _lastMeta = meta
 
   return {
     status: body.status,

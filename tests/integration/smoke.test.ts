@@ -138,13 +138,13 @@ describe('E2E smoke tests', () => {
         const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
 
         expect(stripped).toContain('AIXBT')
-        expect(stripped).toContain('v0.1.5')
+        expect(stripped).toMatch(/v\d+\.\d+\.\d+/)
         expect(stripped).toContain('login')
         expect(stripped).toContain('projects')
         expect(stripped).toContain('signals')
         expect(stripped).toContain('recipe')
         expect(stripped).toContain('--format')
-        expect(stripped).toContain('--delayed')
+        expect(stripped).not.toContain('--delayed')
         expect(stripped).toContain('--pay-per-use')
       } finally {
         mockStdoutWrite.mockRestore()

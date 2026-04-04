@@ -478,7 +478,7 @@ describe('withPayPerUse', () => {
   })
 
   it('should rethrow PaymentRequiredError when authMode is not pay-per-use', async () => {
-    const authMode: AuthMode = { mode: 'delayed' }
+    const authMode: AuthMode = { mode: 'public' }
     const payErr = new PaymentRequiredError({ message: 'Payment required' }, null)
 
     await expect(
@@ -501,7 +501,7 @@ describe('withPayPerUse', () => {
   })
 
   it('should rethrow other errors when authMode is not pay-per-use', async () => {
-    const authMode: AuthMode = { mode: 'delayed' }
+    const authMode: AuthMode = { mode: 'public' }
     const genericErr = new Error('Network failure')
 
     await expect(
