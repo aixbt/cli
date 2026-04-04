@@ -95,7 +95,7 @@ describe('grounding command', () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
     const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-    expect(callUrl.pathname).toBe('/v2/grounding/latest')
+    expect(callUrl.pathname).toBe('/v2/grounding')
 
     const jsonOutput = logs.find(l => l.includes('Narratives'))
     expect(jsonOutput).toBeDefined()

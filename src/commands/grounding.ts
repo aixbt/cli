@@ -39,7 +39,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
   const result = await output.withSpinner(
     'Fetching grounding...',
     outputFormat,
-    () => get<GroundingData>('/v2/grounding/latest', params, clientOpts),
+    () => get<GroundingData>('/v2/grounding', params, clientOpts),
     'Failed to fetch grounding',
     { silent: true },
   )
