@@ -3,6 +3,7 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { globSync } from 'tinyglobby'
 import { parse as parseYaml } from 'yaml'
+import { encode as encodeToon } from '@toon-format/toon'
 import type { Recipe, RecipeAwaitingAgent, RecipeComplete } from '../types.js'
 import { isAgentStep, isParallelAgentStep, hasForModifier } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
@@ -19,7 +20,7 @@ import chalk from 'chalk'
 import type { AgentAdapter } from '../lib/agents/index.js'
 import { resolveAdapter, resolveAgentTarget, invokeAgentForStep, invokeAgentForAnalysis, captureAgentAnalysis, invokeParallelAgents, AGENT_COLORS } from '../lib/agents/index.js'
 
-const PARALLEL_FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
+const SPINNER_FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
 
 /**
  * Write step data to individual files on disk, replacing inline data with
@@ -44,7 +45,7 @@ function applyOutputDir(
       const filename = `segment-${String(fileIndex).padStart(3, '0')}.${ext}`
       const filePath = join(outputDir, filename)
       const content = useToon
-        ? JSON.stringify(stepData, null, 2) // toon encoding handled by output layer
+        ? encodeToon(stepData)
         : JSON.stringify(stepData, null, 2)
       writeFileSync(filePath, content)
       data[stepId] = { dataFile: filePath }
@@ -81,7 +82,7 @@ async function handleParallelAgentStep(
   let fi = 0
   let completedCount = 0
   const stepTick = setInterval(() => {
-    process.stderr.write(`\r${agentLabel} ${PARALLEL_FRAMES[fi++ % PARALLEL_FRAMES.length]} ${chalk.dim(`step: ${awaiting.step} [${completedCount}/${total}]`)}`)
+    process.stderr.write(`\r${agentLabel} ${SPINNER_FRAMES[fi++ % SPINNER_FRAMES.length]} ${chalk.dim(`step: ${awaiting.step} [${completedCount}/${total}]`)}`)
   }, 80)
 
   try {
@@ -843,7 +844,6 @@ export function registerRecipeCommand(program: Command): void {
       let result: RecipeAwaitingAgent | RecipeComplete
 
       const structured = formatFlag === 'json' || formatFlag === 'toon'
-      const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
       const aixbt = output.fmt.brand('AIXBT')
 
       /** Execute on server then enrich any provider fallbacks locally. */
@@ -864,7 +864,7 @@ export function registerRecipeCommand(program: Command): void {
         // Agent mode: AIXBT with trailing spinner -> tick on success
         let fi = 0
         const tick = verbosity < 1 ? setInterval(() => {
-          process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}`)
+          process.stderr.write(`\r${aixbt} ${SPINNER_FRAMES[fi++ % SPINNER_FRAMES.length]}`)
         }, 80) : undefined
         try {
           result = await callServerAndEnrich({
@@ -889,7 +889,7 @@ export function registerRecipeCommand(program: Command): void {
         let noAgentInterval: ReturnType<typeof setInterval> | undefined
         if (!structured && verbosity < 1) {
           noAgentInterval = setInterval(() => {
-            process.stderr.write(`\r${FRAMES[noAgentFi++ % FRAMES.length]} ${output.fmt.dim('Executing recipe...')}`)
+            process.stderr.write(`\r${SPINNER_FRAMES[noAgentFi++ % SPINNER_FRAMES.length]} ${output.fmt.dim('Executing recipe...')}`)
           }, 80)
         }
         try {
@@ -938,7 +938,7 @@ export function registerRecipeCommand(program: Command): void {
           process.stderr.write(`  ${chalk.dim('↓')}\n`)
           let fi = 0
           const stepTick = setInterval(() => {
-            process.stderr.write(`\r${agentLabel} ${FRAMES[fi++ % FRAMES.length]} ${chalk.dim(`step: ${awaiting.step}`)}`)
+            process.stderr.write(`\r${agentLabel} ${SPINNER_FRAMES[fi++ % SPINNER_FRAMES.length]} ${chalk.dim(`step: ${awaiting.step}`)}`)
           }, 80)
           try {
             agentResponse = await invokeAgentForStep(adapter, awaiting, { allowedTools: agentAllowedTools })
@@ -962,7 +962,7 @@ export function registerRecipeCommand(program: Command): void {
           if (verbosity < 1) process.stderr.write(`  ${chalk.dim('↓')}\n`)
           let fi = 0
           const resumeTick = verbosity < 1 ? setInterval(() => {
-            process.stderr.write(`\r${aixbt} ${FRAMES[fi++ % FRAMES.length]}`)
+            process.stderr.write(`\r${aixbt} ${SPINNER_FRAMES[fi++ % SPINNER_FRAMES.length]}`)
           }, 80) : undefined
           try {
             result = await callServerAndEnrich({

@@ -226,6 +226,39 @@ function setAtPath(
 }
 
 // ---------------------------------------------------------------------------
+// Stage 4: Strip _providerMeta from any remaining fallback entries
+// ---------------------------------------------------------------------------
+
+function stripProviderMeta(data: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const obj = value as Record<string, unknown>
+      if (obj._fallback === true && obj._providerMeta) {
+        const { _providerMeta, ...rest } = obj
+        result[key] = rest
+      } else {
+        result[key] = value
+      }
+    } else if (Array.isArray(value)) {
+      result[key] = value.map(item => {
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          const obj = item as Record<string, unknown>
+          if (obj._fallback === true && obj._providerMeta) {
+            const { _providerMeta, ...rest } = obj
+            return rest
+          }
+        }
+        return item
+      })
+    } else {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Convenience: combined scan -> enrich -> merge pipeline
 // ---------------------------------------------------------------------------
 
@@ -233,8 +266,9 @@ export async function enrichServerResponse(
   data: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const entries = scanForFallbacks(data)
-  if (entries.length === 0) return data
+  if (entries.length === 0) return stripProviderMeta(data)
 
   const enriched = await enrichFallbacks(entries)
-  return mergeFallbacks(data, enriched)
+  const merged = mergeFallbacks(data, enriched)
+  return stripProviderMeta(merged)
 }

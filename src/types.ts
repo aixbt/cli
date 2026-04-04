@@ -201,7 +201,6 @@ export interface RecipeAwaitingAgent {
   returns: Record<string, string>
   data: Record<string, unknown>
   tokenCount: number
-  resumeCommand: string
   progress: RecipeYieldProgress
   remaining: string
   parallel?: ParallelAgentMeta
