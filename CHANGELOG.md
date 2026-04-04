@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7
+
+- **Free tier removal** — remove `--delayed` flag and free tier auth mode; unauthenticated grounding users see upgrade nudge
+- **User-Agent versioning** — API requests now include CLI version in the User-Agent header
+
 ## 0.1.6
 
 - **Rank nudge** — agent context now guides LLMs to treat rank as volatile background signal, not a headline number
