@@ -238,7 +238,7 @@ async function handleProjectList(cmd: Command): Promise<void> {
   }
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: result.data.map(p => filterProjectFields(p, verbosity)), meta: result.meta, hints }, outputFormat)
+    output.outputApiResult({ data: result.data.map(p => filterProjectFields(p, verbosity)), pagination: result.pagination, meta: result.meta, hints }, outputFormat)
     return
   }
 

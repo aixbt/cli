@@ -693,10 +693,14 @@ export function colorizeHelp(text: string): string {
 
 /** Output an API result with optional meta and hints in structured format. */
 export function outputApiResult(
-  result: { data: unknown; meta?: unknown; hints?: string[] },
+  result: { data: unknown; meta?: unknown; pagination?: unknown; hints?: string[] },
   outputFormat: StructuredFormat,
 ): void {
   const out: Record<string, unknown> = { data: result.data }
+
+  if (result.pagination) {
+    out.pagination = result.pagination
+  }
 
   const apiMeta = (result.meta ?? {}) as Record<string, unknown>
   const hasHints = result.hints && result.hints.length > 0

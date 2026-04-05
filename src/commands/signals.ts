@@ -113,7 +113,7 @@ async function handleSignalList(cmd: Command): Promise<void> {
   }
 
   if (output.isStructuredFormat(outputFormat)) {
-    output.outputApiResult({ data: result.data.map(s => filterSignalFields(s, verbosity)), meta: result.meta, hints }, outputFormat)
+    output.outputApiResult({ data: result.data.map(s => filterSignalFields(s, verbosity)), pagination: result.pagination, meta: result.meta, hints }, outputFormat)
     return
   }
 
