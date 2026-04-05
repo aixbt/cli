@@ -2,6 +2,7 @@ import type { Command } from 'commander'
 import { getPublicClientOptions, getClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
+import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 import { resolveDate } from '../lib/date.js'
 import chalk from 'chalk'
 
@@ -150,7 +151,7 @@ async function handleGrounding(cmd: Command): Promise<void> {
 }
 
 async function handleGroundingHistory(cmd: Command): Promise<void> {
-  const { clientOpts, outputFormat } = getClientOptions(cmd)
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
   const opts = cmd.optsWithGlobals()
 
   const params: Record<string, string | number | boolean | undefined> = {
@@ -165,8 +166,13 @@ async function handleGroundingHistory(cmd: Command): Promise<void> {
   const result = await output.withSpinner(
     'Fetching grounding history...',
     outputFormat,
-    () => get<PaginatedGroundingResponse>(
-      '/v2/grounding/history', params, clientOpts,
+    () => withPayPerUse(
+      () => get<PaginatedGroundingResponse>(
+        '/v2/grounding/history', params, clientOpts,
+      ),
+      authMode,
+      reconstructCommand('aixbt grounding history', opts),
+      outputFormat,
     ),
     'Failed to fetch grounding history',
     { silent: true },
@@ -177,14 +183,7 @@ async function handleGroundingHistory(cmd: Command): Promise<void> {
     return
   }
 
-  const { data, pagination } = result.data as unknown as PaginatedGroundingResponse
-
-  // Pagination header
-  console.log(
-    chalk.dim(`Page ${pagination.page} · ${pagination.totalCount} snapshots`)
-    + (pagination.hasMore ? chalk.dim(' · --page ' + (pagination.page + 1) + ' for more') : ''),
-  )
-  console.log()
+  const { data, pagination } = result.data
 
   // Display each snapshot with timestamp separator
   for (const snapshot of data) {
@@ -193,4 +192,6 @@ async function handleGroundingHistory(cmd: Command): Promise<void> {
     displaySections(snapshot.sections)
     console.log()
   }
+
+  output.showPagination(pagination, data.length)
 }

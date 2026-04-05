@@ -419,7 +419,7 @@ describe('grounding command', () => {
       vi.useRealTimers()
     })
 
-    it('should display pagination header in human mode', async () => {
+    it('should display pagination info in human mode', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
       )
@@ -432,8 +432,8 @@ describe('grounding command', () => {
       )
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Page 1')
-      expect(allOutput).toContain('168 snapshots')
+      expect(allOutput).toContain('Showing 2 of 168')
+      expect(allOutput).toContain('page 1')
     })
 
     it('should show next page hint when hasMore is true', async () => {
@@ -469,7 +469,7 @@ describe('grounding command', () => {
       )
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Page 4')
+      expect(allOutput).toContain('page 4')
       expect(allOutput).not.toContain('--page')
     })
 
@@ -530,8 +530,7 @@ describe('grounding command', () => {
       )
 
       const allOutput = logs.join('\n')
-      expect(allOutput).toContain('Page 1')
-      expect(allOutput).toContain('0 snapshots')
+      expect(allOutput).toContain('Showing 0 of 0')
       // No snapshot dividers should appear
       expect(allOutput).not.toContain('───')
     })
