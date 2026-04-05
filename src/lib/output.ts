@@ -693,7 +693,12 @@ export function colorizeHelp(text: string): string {
 
 /** Output an API result with optional meta and hints in structured format. */
 export function outputApiResult(
-  result: { data: unknown; meta?: unknown; pagination?: unknown; hints?: string[] },
+  result: {
+    data: unknown
+    meta?: unknown
+    pagination?: { page: number; limit: number; totalCount: number; hasMore: boolean }
+    hints?: string[]
+  },
   outputFormat: StructuredFormat,
 ): void {
   const out: Record<string, unknown> = { data: result.data }
@@ -702,13 +707,18 @@ export function outputApiResult(
     out.pagination = result.pagination
   }
 
+  const hints = [...(result.hints ?? [])]
+  if (result.pagination?.hasMore) {
+    hints.push(`More results available — use --page ${result.pagination.page + 1}`)
+  }
+
   const apiMeta = (result.meta ?? {}) as Record<string, unknown>
-  const hasHints = result.hints && result.hints.length > 0
+  const hasHints = hints.length > 0
   const update = getUpdateInfo()
   if (result.meta || hasHints || update) {
     out.meta = {
       ...apiMeta,
-      ...(hasHints ? { hints: result.hints } : {}),
+      ...(hasHints ? { hints } : {}),
       ...(update ? { update: { ...update, message: `A newer version of @aixbt/cli is available (${update.current} → ${update.latest}). Run: npm i -g @aixbt/cli` } } : {}),
     }
   }
