@@ -15,11 +15,12 @@ describe('AIXBT_ACTION_PATHS', () => {
     'rank',
     'clusters',
     'grounding',
+    'groundingHistory',
   ]
 
-  it('should have entries for all 8 action names', () => {
+  it('should have entries for all 9 action names', () => {
     const keys = Object.keys(AIXBT_ACTION_PATHS)
-    expect(keys).toHaveLength(8)
+    expect(keys).toHaveLength(9)
     for (const name of expectedActions) {
       expect(AIXBT_ACTION_PATHS).toHaveProperty(name)
     }
@@ -73,9 +74,10 @@ describe('aixbtProvider', () => {
       expect(aixbtProvider.baseUrl.default).toBe('https://api.aixbt.tech')
     })
 
-    it('should have a single free keyless tier', () => {
+    it('should have free and paid tiers', () => {
       expect(aixbtProvider.tiers).toEqual({
         free: { rank: 0, keyless: true },
+        paid: { rank: 1 },
       })
     })
   })
@@ -83,9 +85,9 @@ describe('aixbtProvider', () => {
   // -- Actions --
 
   describe('actions', () => {
-    it('should define all 8 actions', () => {
+    it('should define all 9 actions', () => {
       const actionNames = Object.keys(aixbtProvider.actions)
-      expect(actionNames).toHaveLength(8)
+      expect(actionNames).toHaveLength(9)
       expect(actionNames).toContain('projects')
       expect(actionNames).toContain('project')
       expect(actionNames).toContain('momentum')
@@ -94,6 +96,7 @@ describe('aixbtProvider', () => {
       expect(actionNames).toContain('signals')
       expect(actionNames).toContain('clusters')
       expect(actionNames).toContain('grounding')
+      expect(actionNames).toContain('groundingHistory')
     })
 
     it('should use method GET for all actions', () => {
@@ -102,12 +105,13 @@ describe('aixbtProvider', () => {
       }
     })
 
-    it('should use minTier "free" for all actions', () => {
+    it('should use a valid minTier for all actions', () => {
+      const validTiers = Object.keys(aixbtProvider.tiers)
       for (const [name, action] of Object.entries(aixbtProvider.actions)) {
         expect(
-          action.minTier,
-          `action "${name}" should have minTier "free"`,
-        ).toBe('free')
+          validTiers,
+          `action "${name}" has minTier "${action.minTier}" not in provider tiers`,
+        ).toContain(action.minTier)
       }
     })
 

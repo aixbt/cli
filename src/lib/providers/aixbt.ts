@@ -201,6 +201,7 @@ export const aixbtProvider: Provider = {
   },
   tiers: {
     free: { rank: 0, keyless: true },
+    paid: { rank: 1 },
   },
   authHeader: 'X-API-Key',
   normalize: (body: unknown): unknown => {
