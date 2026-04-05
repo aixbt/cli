@@ -512,6 +512,22 @@ describe('outputApiResult', () => {
     expect(parsed.pagination).toEqual(pagination)
     expect(parsed.meta).toMatchObject({ tier: 'paid' })
   })
+
+  it('should add pagination hint when hasMore is true', () => {
+    const pagination = { page: 1, limit: 20, totalCount: 50, hasMore: true }
+    outputApiResult({ data: [], pagination }, 'json')
+
+    const parsed = JSON.parse(mockLog.mock.calls[0][0] as string)
+    expect(parsed.meta.hints).toContainEqual('More results available — use --page 2')
+  })
+
+  it('should not add pagination hint when hasMore is false', () => {
+    const pagination = { page: 3, limit: 20, totalCount: 50, hasMore: false }
+    outputApiResult({ data: [], pagination }, 'json')
+
+    const parsed = JSON.parse(mockLog.mock.calls[0][0] as string)
+    expect(parsed.meta?.hints ?? []).not.toContainEqual(expect.stringContaining('--page'))
+  })
 })
 
 // -- toon --
