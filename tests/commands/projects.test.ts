@@ -166,6 +166,22 @@ describe('projects commands', () => {
       expect(parsed.data[1].name).toBe('Ethereum')
     })
 
+    it('should include pagination in JSON output when present', async () => {
+      const pagination = { page: 1, limit: 50, totalCount: 100, hasMore: true }
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_PROJECTS, pagination }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'projects'], { from: 'node' })
+
+      const jsonOutput = logs.find(l => l.includes('"pagination"'))
+      expect(jsonOutput).toBeDefined()
+      const parsed = JSON.parse(jsonOutput!)
+      expect(parsed.pagination).toEqual(pagination)
+    })
+
     it('should pass filter options as query params', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: [MOCK_PROJECTS[0]] }),

@@ -301,6 +301,29 @@ describe('grounding command', () => {
       expect(callUrl.pathname).toBe('/v2/grounding/history')
     })
 
+    it('should include pagination in JSON output when present', async () => {
+      const pagination = { page: 1, limit: 50, totalCount: 168, hasMore: true }
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: 200,
+          data: MOCK_GROUNDING_HISTORY.data,
+          pagination,
+        }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(
+        ['node', 'aixbt', '--format', 'json', 'grounding', 'history'],
+        { from: 'node' },
+      )
+
+      const jsonOutput = logs.find(l => l.includes('"pagination"'))
+      expect(jsonOutput).toBeDefined()
+      const parsed = JSON.parse(jsonOutput!)
+      expect(parsed.pagination).toEqual(pagination)
+    })
+
     it('should pass --from and --to as query parameters', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
