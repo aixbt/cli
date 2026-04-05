@@ -111,46 +111,62 @@ export async function postRaw<T>(
     headers['PAYMENT-SIGNATURE'] = options.paymentSignature
   }
 
-  let res: Response
-  try {
-    res = await fetch(url.toString(), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-  } catch (err) {
-    throw new NetworkError(
-      err instanceof Error ? err.message : 'Network request failed',
-    )
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(url.toString(), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      })
+    } catch (err) {
+      throw new NetworkError(
+        err instanceof Error ? err.message : 'Network request failed',
+      )
+    }
+
+    if (res.status === 429) {
+      if (attempt >= MAX_RETRIES) {
+        const rateLimit = parseRateLimitHeaders(res.headers)
+        throw new RateLimitError('Rate limit exceeded after maximum retries', rateLimit)
+      }
+      const rateLimit = parseRateLimitHeaders(res.headers)
+      const retryAfter = rateLimit?.retryAfterSeconds ?? 60
+      await sleep(retryAfter * 1000)
+      continue
+    }
+
+    if (res.status === 401) {
+      const resBody = await safeJson(res)
+      throw new AuthError(
+        resBody?.message as string ?? 'Unauthorized',
+        resBody?.code as string | undefined,
+      )
+    }
+
+    if (res.status === 402) {
+      const resBody = await safeJson(res)
+      throw new PaymentRequiredError(resBody, res.headers)
+    }
+
+    if (!res.ok) {
+      const resBody = await safeJson(res)
+      throw new ApiError(
+        res.status,
+        (resBody?.error ?? resBody?.message ?? res.statusText) as string,
+        resBody?.code as string | undefined,
+      )
+    }
+
+    try {
+      return await res.json() as T
+    } catch {
+      throw new ApiError(res.status, 'Invalid JSON in API response', 'INVALID_RESPONSE')
+    }
   }
 
-  if (res.status === 401) {
-    const resBody = await safeJson(res)
-    throw new AuthError(
-      resBody?.message as string ?? 'Unauthorized',
-      resBody?.code as string | undefined,
-    )
-  }
-
-  if (res.status === 402) {
-    const resBody = await safeJson(res)
-    throw new PaymentRequiredError(resBody, res.headers)
-  }
-
-  if (!res.ok) {
-    const resBody = await safeJson(res)
-    throw new ApiError(
-      res.status,
-      (resBody?.error ?? resBody?.message ?? res.statusText) as string,
-      resBody?.code as string | undefined,
-    )
-  }
-
-  try {
-    return await res.json() as T
-  } catch {
-    throw new ApiError(res.status, 'Invalid JSON in API response', 'INVALID_RESPONSE')
-  }
+  // Unreachable, but TypeScript needs it
+  throw new ApiError(429, 'Rate limit exceeded', 'RATE_LIMIT_EXCEEDED')
 }
 
 async function executeWithBackoff<T>(

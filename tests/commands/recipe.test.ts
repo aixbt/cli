@@ -201,6 +201,14 @@ describe('recipe commands', () => {
       const recipeFile = join(tempDir, 'valid.yaml')
       writeFileSync(recipeFile, VALID_RECIPE_YAML)
 
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: true,
+          issues: [],
+          recipe: { name: 'test-recipe', version: '1.0', stepCount: 1, paramCount: 0 },
+        }),
+      )
+
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'aixbt', 'recipe', 'validate', recipeFile], { from: 'node' })
@@ -213,6 +221,13 @@ describe('recipe commands', () => {
     it('should report issues for a recipe missing the name field', async () => {
       const recipeFile = join(tempDir, 'invalid.yaml')
       writeFileSync(recipeFile, INVALID_RECIPE_YAML_NO_NAME)
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: false,
+          issues: [{ path: 'name', message: 'name is required' }],
+        }),
+      )
 
       const program = createProgram()
       program.exitOverride()
@@ -227,6 +242,13 @@ describe('recipe commands', () => {
     it('should report issues for a recipe missing the steps field', async () => {
       const recipeFile = join(tempDir, 'no-steps.yaml')
       writeFileSync(recipeFile, INVALID_RECIPE_YAML_NO_STEPS)
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: false,
+          issues: [{ path: 'steps', message: 'steps is required' }],
+        }),
+      )
 
       const program = createProgram()
       program.exitOverride()
@@ -253,6 +275,14 @@ describe('recipe commands', () => {
       const recipeFile = join(tempDir, 'valid.yaml')
       writeFileSync(recipeFile, VALID_RECIPE_YAML)
 
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: true,
+          issues: [],
+          recipe: { name: 'test-recipe', version: '1.0', stepCount: 1, paramCount: 0 },
+        }),
+      )
+
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'validate', recipeFile], { from: 'node' })
@@ -269,6 +299,13 @@ describe('recipe commands', () => {
     it('should output JSON with status invalid for an invalid recipe when --format json is used', async () => {
       const recipeFile = join(tempDir, 'invalid.yaml')
       writeFileSync(recipeFile, INVALID_RECIPE_YAML_NO_NAME)
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: false,
+          issues: [{ path: 'name', message: 'name is required' }],
+        }),
+      )
 
       const program = createProgram()
       program.exitOverride()
@@ -301,6 +338,14 @@ describe('recipe commands', () => {
       const recipeFile = join(tempDir, 'with-params.yaml')
       writeFileSync(recipeFile, VALID_RECIPE_WITH_PARAMS_YAML)
 
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: true,
+          issues: [],
+          recipe: { name: 'param-recipe', version: '2.0', stepCount: 1, paramCount: 1 },
+        }),
+      )
+
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'aixbt', '--format', 'json', 'recipe', 'validate', recipeFile], { from: 'node' })
@@ -324,8 +369,12 @@ describe('recipe commands', () => {
 
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
-          status: 200,
-          data: [{ id: 'proj-1', name: 'Bitcoin' }],
+          status: 'complete',
+          recipe: 'test-recipe',
+          version: '1.0',
+          timestamp: new Date().toISOString(),
+          data: { projects: [{ id: 'proj-1', name: 'Bitcoin' }] },
+          tokenCount: 500,
         }),
       )
 
@@ -339,7 +388,7 @@ describe('recipe commands', () => {
       // Verify the API was called
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/projects')
+      expect(callUrl.pathname).toBe('/v2/recipes/execute')
 
       // Verify the output contains the recipe result
       const jsonOutput = logs.find(l => l.includes('"status"'))
@@ -371,9 +420,15 @@ describe('recipe commands', () => {
       const recipeFile = join(tempDir, 'raw.yaml')
       writeFileSync(recipeFile, VALID_RECIPE_YAML)
 
-      const mockData = [{ id: 'proj-1', name: 'Bitcoin' }]
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: mockData }),
+        jsonResponse(200, {
+          status: 'complete',
+          recipe: 'test-recipe',
+          version: '1.0',
+          timestamp: new Date().toISOString(),
+          data: { projects: [{ id: 'proj-1', name: 'Bitcoin' }] },
+          tokenCount: 500,
+        }),
       )
 
       const program = createProgram()
@@ -406,7 +461,15 @@ analysis:
       writeFileSync(recipeFile, recipeWithAnalysis)
 
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: [{ id: 'proj-1' }] }),
+        jsonResponse(200, {
+          status: 'complete',
+          recipe: 'analysis-recipe',
+          version: '1.0',
+          timestamp: new Date().toISOString(),
+          data: { projects: [{ id: 'proj-1' }] },
+          tokenCount: 500,
+          analysis: { instructions: 'Analyze the data' },
+        }),
       )
 
       const program = createProgram()
@@ -458,18 +521,22 @@ steps:
     type: api
     action: "GET /v2/projects"
 `
-      // First fetch: registry lookup returns recipe detail
+      // First fetch: registry lookup returns recipe detail (GET /v2/cli/recipes/my-recipe)
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
           status: 200,
           data: { name: 'my-recipe', updatedAt: '2026-03-01', yaml: registryRecipeYaml },
         }),
       )
-      // Second fetch: API call from executing the recipe step
+      // Second fetch: server-side recipe execution (POST /v2/recipes/execute)
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
-          status: 200,
-          data: [{ id: 'proj-1', name: 'Bitcoin' }],
+          status: 'complete',
+          recipe: 'my-recipe',
+          version: '1.0',
+          timestamp: new Date().toISOString(),
+          data: { projects: [{ id: 'proj-1', name: 'Bitcoin' }] },
+          tokenCount: 500,
         }),
       )
 
@@ -485,9 +552,9 @@ steps:
       const registryUrl = new URL(mockFetch.mock.calls[0][0] as string)
       expect(registryUrl.pathname).toBe('/v2/cli/recipes/my-recipe')
 
-      // Second call should be the recipe step execution
+      // Second call should be the server-side recipe execution
       const stepUrl = new URL(mockFetch.mock.calls[1][0] as string)
-      expect(stepUrl.pathname).toBe('/v2/projects')
+      expect(stepUrl.pathname).toBe('/v2/recipes/execute')
 
       // Output should include the execution result
       const jsonOutput = logs.find(l => l.includes('"status"'))

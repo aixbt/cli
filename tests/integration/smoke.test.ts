@@ -260,6 +260,14 @@ steps:
 
       process.env.AIXBT_API_KEY = 'test-key'
 
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: true,
+          issues: [],
+          recipe: { name: 'smoke-test-recipe', version: '1.0', stepCount: 1, paramCount: 0 },
+        }),
+      )
+
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
@@ -284,6 +292,13 @@ steps:
       writeFileSync(filePath, yamlContent, 'utf-8')
 
       process.env.AIXBT_API_KEY = 'test-key'
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: false,
+          issues: [{ path: 'name', message: 'name is required' }],
+        }),
+      )
 
       const program = createProgram()
       program.exitOverride()
@@ -339,8 +354,12 @@ steps:
 
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
-          status: 200,
-          data: [{ id: 'p1', name: 'TestProject' }],
+          status: 'complete',
+          recipe: 'run-smoke-test',
+          version: '1.0',
+          timestamp: new Date().toISOString(),
+          data: { projects: [{ id: 'p1', name: 'TestProject' }] },
+          tokenCount: 500,
         }),
       )
 
@@ -379,6 +398,13 @@ steps:
       writeFileSync(filePath, 'not a valid recipe: [', 'utf-8')
 
       process.env.AIXBT_API_KEY = 'test-key'
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: false,
+          issues: [{ path: '', message: 'Invalid YAML syntax' }],
+        }),
+      )
 
       const program = createProgram()
       program.exitOverride()
@@ -518,6 +544,14 @@ steps:
 
       process.env.AIXBT_API_KEY = 'test-key'
 
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: true,
+          issues: [],
+          recipe: { name: 'json-validate-test', version: '1.0', stepCount: 1, paramCount: 0 },
+        }),
+      )
+
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(['node', 'test', '--format', 'json', 'recipe', 'validate', filePath], { from: 'node' })
@@ -547,6 +581,13 @@ steps:
       writeFileSync(filePath, yamlContent, 'utf-8')
 
       process.env.AIXBT_API_KEY = 'test-key'
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, {
+          valid: false,
+          issues: [{ path: 'name', message: 'name is required' }],
+        }),
+      )
 
       const program = createProgram()
       program.exitOverride()
