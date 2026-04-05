@@ -309,7 +309,7 @@ describe('grounding command', () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
           status: 200,
-          data: MOCK_GROUNDING_HISTORY.data,
+          data: MOCK_HISTORY_SNAPSHOTS,
           pagination,
         }),
       )
