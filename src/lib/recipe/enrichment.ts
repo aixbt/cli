@@ -235,8 +235,9 @@ function stripProviderMeta(data: Record<string, unknown>): Record<string, unknow
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       const obj = value as Record<string, unknown>
       if (obj._fallback === true && obj._providerMeta) {
-        const { _providerMeta, ...rest } = obj
-        result[key] = rest
+        const clean = { ...obj }
+        delete clean._providerMeta
+        result[key] = clean
       } else {
         result[key] = value
       }
@@ -245,8 +246,9 @@ function stripProviderMeta(data: Record<string, unknown>): Record<string, unknow
         if (item && typeof item === 'object' && !Array.isArray(item)) {
           const obj = item as Record<string, unknown>
           if (obj._fallback === true && obj._providerMeta) {
-            const { _providerMeta, ...rest } = obj
-            return rest
+            const clean = { ...obj }
+            delete clean._providerMeta
+            return clean
           }
         }
         return item
