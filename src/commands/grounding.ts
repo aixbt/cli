@@ -18,16 +18,6 @@ interface GroundingData {
   sections: Record<string, GroundingSection>
 }
 
-interface PaginatedGroundingResponse {
-  data: GroundingData[]
-  pagination: {
-    page: number
-    limit: number
-    totalCount: number
-    hasMore: boolean
-  }
-}
-
 // Preferred display order; unknown sections appear after in API order
 const DISPLAY_ORDER = ['crypto', 'tradfi', 'macro', 'geopolitics']
 
@@ -167,7 +157,7 @@ async function handleGroundingHistory(cmd: Command): Promise<void> {
     'Fetching grounding history...',
     outputFormat,
     () => withPayPerUse(
-      () => get<PaginatedGroundingResponse>(
+      () => get<GroundingData[]>(
         '/v2/grounding/history', params, clientOpts,
       ),
       authMode,
@@ -183,7 +173,8 @@ async function handleGroundingHistory(cmd: Command): Promise<void> {
     return
   }
 
-  const { data, pagination } = result.data
+  const data = result.data
+  const pagination = result.pagination
 
   // Display each snapshot with timestamp separator
   for (const snapshot of data) {
@@ -193,5 +184,5 @@ async function handleGroundingHistory(cmd: Command): Promise<void> {
     console.log()
   }
 
-  output.showPagination(pagination, data.length)
+  if (pagination) output.showPagination(pagination, data.length)
 }

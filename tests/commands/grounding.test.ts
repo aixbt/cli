@@ -53,42 +53,45 @@ const MOCK_GROUNDING = {
   },
 }
 
-const MOCK_GROUNDING_HISTORY = {
-  data: [
-    {
-      createdAt: '2026-03-25T12:00:00.000Z',
-      windowHours: 12,
-      sections: {
-        crypto: {
-          title: 'Crypto & Digital Assets',
-          items: ['BTC dominance rising'],
-          generatedAt: '2026-03-25T11:00:00Z',
-        },
+const MOCK_HISTORY_SNAPSHOTS = [
+  {
+    createdAt: '2026-03-25T12:00:00.000Z',
+    windowHours: 12,
+    sections: {
+      crypto: {
+        title: 'Crypto & Digital Assets',
+        items: ['BTC dominance rising'],
+        generatedAt: '2026-03-25T11:00:00Z',
       },
     },
-    {
-      createdAt: '2026-03-25T11:00:00.000Z',
-      windowHours: 12,
-      sections: {
-        crypto: {
-          title: 'Crypto & Digital Assets',
-          items: ['ETH staking surge'],
-          generatedAt: '2026-03-25T10:00:00Z',
-        },
-        macro: {
-          title: 'Global Liquidity',
-          items: ['Fed holding rates'],
-          generatedAt: '2026-03-25T10:00:00Z',
-        },
-      },
-    },
-  ],
-  pagination: {
-    page: 1,
-    limit: 50,
-    totalCount: 168,
-    hasMore: true,
   },
+  {
+    createdAt: '2026-03-25T11:00:00.000Z',
+    windowHours: 12,
+    sections: {
+      crypto: {
+        title: 'Crypto & Digital Assets',
+        items: ['ETH staking surge'],
+        generatedAt: '2026-03-25T10:00:00Z',
+      },
+      macro: {
+        title: 'Global Liquidity',
+        items: ['Fed holding rates'],
+        generatedAt: '2026-03-25T10:00:00Z',
+      },
+    },
+  },
+]
+
+const MOCK_HISTORY_PAGINATION = {
+  page: 1,
+  limit: 50,
+  totalCount: 168,
+  hasMore: true,
+}
+
+function historyResponse(data = MOCK_HISTORY_SNAPSHOTS, pagination = MOCK_HISTORY_PAGINATION) {
+  return jsonResponse(200, { status: 200, data, pagination })
 }
 
 describe('grounding command', () => {
@@ -286,7 +289,7 @@ describe('grounding command', () => {
   describe('grounding history subcommand', () => {
     it('should fetch from /v2/grounding/history and output JSON', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -303,7 +306,7 @@ describe('grounding command', () => {
 
     it('should pass --from and --to as query parameters', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -324,7 +327,7 @@ describe('grounding command', () => {
 
     it('should pass --at as query parameter for anchor clamping', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -343,7 +346,7 @@ describe('grounding command', () => {
 
     it('should pass --sections as query parameter', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -362,7 +365,7 @@ describe('grounding command', () => {
 
     it('should pass --page and --limit as query parameters', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -383,7 +386,7 @@ describe('grounding command', () => {
 
     it('should default page to 1 and limit to 50', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -403,7 +406,7 @@ describe('grounding command', () => {
       vi.setSystemTime(new Date('2026-03-25T12:00:00.000Z'))
 
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -421,7 +424,7 @@ describe('grounding command', () => {
 
     it('should display pagination info in human mode', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -438,7 +441,7 @@ describe('grounding command', () => {
 
     it('should show next page hint when hasMore is true', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -453,12 +456,8 @@ describe('grounding command', () => {
     })
 
     it('should not show next page hint when hasMore is false', async () => {
-      const lastPageData = {
-        ...MOCK_GROUNDING_HISTORY,
-        pagination: { page: 4, limit: 50, totalCount: 168, hasMore: false },
-      }
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: lastPageData }),
+        historyResponse(MOCK_HISTORY_SNAPSHOTS, { page: 4, limit: 50, totalCount: 168, hasMore: false }),
       )
 
       const program = createProgram()
@@ -475,7 +474,7 @@ describe('grounding command', () => {
 
     it('should display snapshot timestamps as dividers in human mode', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -492,7 +491,7 @@ describe('grounding command', () => {
 
     it('should display section content for each snapshot in human mode', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_GROUNDING_HISTORY }),
+        historyResponse(),
       )
 
       const program = createProgram()
@@ -514,12 +513,8 @@ describe('grounding command', () => {
     })
 
     it('should handle empty history response in human mode', async () => {
-      const emptyData = {
-        data: [],
-        pagination: { page: 1, limit: 50, totalCount: 0, hasMore: false },
-      }
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: emptyData }),
+        historyResponse([], { page: 1, limit: 50, totalCount: 0, hasMore: false }),
       )
 
       const program = createProgram()
