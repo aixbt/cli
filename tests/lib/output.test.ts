@@ -487,6 +487,31 @@ describe('outputApiResult', () => {
     const output = mockLog.mock.calls[0][0] as string
     expect(output).toContain('test')
   })
+
+  it('should include pagination in JSON when present', () => {
+    const pagination = { page: 1, limit: 50, totalCount: 168, hasMore: true }
+    outputApiResult({ data: [{ id: '1' }], pagination }, 'json')
+
+    const parsed = JSON.parse(mockLog.mock.calls[0][0] as string)
+    expect(parsed.pagination).toEqual(pagination)
+  })
+
+  it('should omit pagination in JSON when undefined', () => {
+    outputApiResult({ data: [{ id: '1' }] }, 'json')
+
+    const parsed = JSON.parse(mockLog.mock.calls[0][0] as string)
+    expect(parsed).not.toHaveProperty('pagination')
+  })
+
+  it('should include pagination alongside meta and data', () => {
+    const pagination = { page: 2, limit: 10, totalCount: 50, hasMore: true }
+    outputApiResult({ data: [{ id: '1' }], pagination, meta: { tier: 'paid' } }, 'json')
+
+    const parsed = JSON.parse(mockLog.mock.calls[0][0] as string)
+    expect(parsed.data).toEqual([{ id: '1' }])
+    expect(parsed.pagination).toEqual(pagination)
+    expect(parsed.meta).toMatchObject({ tier: 'paid' })
+  })
 })
 
 // -- toon --
