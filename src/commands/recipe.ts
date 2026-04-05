@@ -714,7 +714,7 @@ export function registerRecipeCommand(program: Command): void {
       const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
       let file = name
-      let yamlString: string
+      let yamlString: string | undefined
       if (existsSync(name)) {
         yamlString = readFileSync(name, 'utf-8')
       } else if (name.includes('/') || name.endsWith('.yaml') || name.endsWith('.yml')) {
@@ -724,20 +724,45 @@ export function registerRecipeCommand(program: Command): void {
         if (userFile) {
           yamlString = readFileSync(userFile, 'utf-8')
           file = userFile
-        } else {
-          throw new CliError(`Recipe "${name}" not found in ${getRecipesDir()}`, 'RECIPE_NOT_FOUND')
         }
+        // If not found locally, fall through — will send { name } to server
       }
 
-      const result = await validateRecipeServer({ yaml: yamlString, clientOptions })
+      // Send to server: yaml if we have it, name otherwise
+      const result = yamlString
+        ? await validateRecipeServer({ yaml: yamlString, clientOptions })
+        : await validateRecipeServer({ name, clientOptions })
 
-      // Supplement with local provider action validation
-      const localIssues = validateProviderActionsLocal(yamlString)
-      const allIssues = [...(result.issues ?? []), ...localIssues]
-
-      if (allIssues.length > 0) {
-        reportValidationResults(file, allIssues, outputFormat)
+      // Server issues are authoritative errors
+      if ((result.issues ?? []).length > 0) {
+        reportValidationResults(file, result.issues!, outputFormat)
         process.exit(1)
+      }
+
+      // Local provider check — warnings only, never blocks
+      // Only run when we have local YAML (file-based validation)
+      if (yamlString) {
+        const localIssues = validateProviderActionsLocal(yamlString)
+        if (localIssues.length > 0) {
+          if (output.isStructuredFormat(outputFormat)) {
+            output.outputStructured({
+              status: 'valid',
+              file,
+              recipe: result.recipe,
+              warnings: localIssues,
+            }, outputFormat)
+          } else {
+            output.warn(`${localIssues.length} provider warning${localIssues.length !== 1 ? 's' : ''} (CLI may be outdated):`)
+            for (const issue of localIssues) {
+              const location = issue.path ? `  at ${issue.path}` : ''
+              output.warn(`${issue.message}${location}`)
+            }
+            if (result.recipe) {
+              printValidRecipeSummaryFromServer(file, result.recipe, outputFormat)
+            }
+          }
+          return
+        }
       }
 
       if (result.recipe) {
