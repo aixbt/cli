@@ -728,10 +728,10 @@ export function registerRecipeCommand(program: Command): void {
         // If not found locally, fall through — will send { name } to server
       }
 
-      // Send to server: yaml if we have it, name otherwise
+      // Send to server: yaml if we have it, recipeName otherwise
       const result = yamlString
         ? await validateRecipeServer({ yaml: yamlString, clientOptions })
-        : await validateRecipeServer({ name, clientOptions })
+        : await validateRecipeServer({ recipeName: name, clientOptions })
 
       // Server issues are authoritative errors
       if ((result.issues ?? []).length > 0) {
