@@ -712,20 +712,27 @@ export function registerRecipeCommand(program: Command): void {
     })
 
   recipe
-    .command('validate <name>')
+    .command('validate [name]')
     .description('Validate a recipe YAML file without executing')
-    .action(async (name: string, _opts: unknown, cmd: Command) => {
+    .option('--stdin', 'Read recipe YAML from stdin')
+    .action(async (name: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
       const { clientOpts: clientOptions } = getClientOptions(cmd)
       const globalOpts = cmd.optsWithGlobals()
       const outputFormat = resolveFormat(globalOpts.format as string | undefined)
 
-      let file = name
+      if (!name && !opts.stdin) {
+        throw new CliError('Provide a recipe name/path or use --stdin', 'MISSING_INPUT')
+      }
+
+      let file = name ?? 'stdin'
       let yamlString: string | undefined
-      if (existsSync(name)) {
+      if (opts.stdin) {
+        yamlString = await readStdin()
+      } else if (name && existsSync(name)) {
         yamlString = readFileSync(name, 'utf-8')
-      } else if (looksLikeFilePath(name)) {
+      } else if (name && looksLikeFilePath(name)) {
         throw new CliError(`File not found: ${name}`, 'FILE_NOT_FOUND')
-      } else {
+      } else if (name) {
         const userFile = resolveUserRecipe(name)
         if (userFile) {
           yamlString = readFileSync(userFile, 'utf-8')
@@ -739,7 +746,7 @@ export function registerRecipeCommand(program: Command): void {
       try {
         result = yamlString
           ? await validateRecipeServer({ yaml: yamlString, clientOptions })
-          : await validateRecipeServer({ recipeName: name, clientOptions })
+          : await validateRecipeServer({ recipeName: name!, clientOptions })
       } catch (err) {
         if (!yamlString && err instanceof ApiError && err.statusCode === 404) {
           throw new CliError(
