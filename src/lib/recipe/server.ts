@@ -51,7 +51,8 @@ export async function executeRecipeServer(
 }
 
 export interface ValidateRecipeOptions {
-  yaml: string
+  yaml?: string
+  recipeName?: string
   clientOptions: ApiClientOptions
 }
 
@@ -69,9 +70,17 @@ export interface ValidateRecipeResult {
 export async function validateRecipeServer(
   options: ValidateRecipeOptions,
 ): Promise<ValidateRecipeResult> {
+  if (!options.yaml && !options.recipeName) {
+    throw new CliError('Either yaml or recipeName must be provided', 'NO_RECIPE_SOURCE')
+  }
+
+  const body: Record<string, unknown> = {}
+  if (options.yaml) body.yaml = options.yaml
+  if (options.recipeName) body.recipeName = options.recipeName
+
   const result = await postRaw<ValidateRecipeResult>(
     '/v2/recipes/validate',
-    { yaml: options.yaml },
+    body,
     options.clientOptions,
   )
   return result
