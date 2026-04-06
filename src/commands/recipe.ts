@@ -9,7 +9,7 @@ import { isAgentStep, isParallelAgentStep, hasForModifier } from '../types.js'
 import { getClientOptions } from '../lib/auth.js'
 import { executeRecipeServer, validateRecipeServer } from '../lib/recipe/server.js'
 import { enrichServerResponse } from '../lib/recipe/enrichment.js'
-import { CliError } from '../lib/errors.js'
+import { CliError, ApiError } from '../lib/errors.js'
 import { getProviderNames, getProvider, parseSource } from '../lib/providers/registry.js'
 import type { ValidationIssue } from '../types.js'
 import { readConfig, resolveFormat, getRecipesDir } from '../lib/config.js'
@@ -168,6 +168,7 @@ function printValidRecipeSummaryFromServer(
   file: string,
   recipe: { name: string; version: string; stepCount: number; paramCount: number },
   outputFormat: OutputFormat,
+  warnings?: ValidationIssue[],
 ): void {
   if (output.isStructuredFormat(outputFormat)) {
     output.outputStructured({
@@ -176,6 +177,7 @@ function printValidRecipeSummaryFromServer(
       version: recipe.version,
       stepCount: recipe.stepCount,
       paramCount: recipe.paramCount,
+      ...(warnings?.length ? { warnings } : {}),
     }, outputFormat)
     return
   }
@@ -266,6 +268,10 @@ function scanRecipeFiles(paths: string[]): LocalRecipe[] {
 /** Check if a filename is a YAML recipe file. */
 function isYamlFile(f: string): boolean {
   return f.endsWith('.yaml') || f.endsWith('.yml')
+}
+
+function looksLikeFilePath(s: string): boolean {
+  return s.includes('/') || s.endsWith('.yaml') || s.endsWith('.yml')
 }
 
 function resolveFilePaths(paths: string[]): string[] {
@@ -508,7 +514,7 @@ export function registerRecipeCommand(program: Command): void {
       let updatedAt: string | undefined
       let resolvedSource: 'registry' | string // 'registry' or file path
 
-      const isFilePath = name.includes('/') || name.endsWith('.yaml') || name.endsWith('.yml')
+      const isFilePath = looksLikeFilePath(name)
 
       if (isFilePath || existsSync(name)) {
         if (!existsSync(name)) {
@@ -717,7 +723,7 @@ export function registerRecipeCommand(program: Command): void {
       let yamlString: string | undefined
       if (existsSync(name)) {
         yamlString = readFileSync(name, 'utf-8')
-      } else if (name.includes('/') || name.endsWith('.yaml') || name.endsWith('.yml')) {
+      } else if (looksLikeFilePath(name)) {
         throw new CliError(`File not found: ${name}`, 'FILE_NOT_FOUND')
       } else {
         const userFile = resolveUserRecipe(name)
@@ -725,48 +731,45 @@ export function registerRecipeCommand(program: Command): void {
           yamlString = readFileSync(userFile, 'utf-8')
           file = userFile
         }
-        // If not found locally, fall through — will send { name } to server
+        // If not found locally, fall through — will send { recipeName } to server
       }
 
       // Send to server: yaml if we have it, recipeName otherwise
-      const result = yamlString
-        ? await validateRecipeServer({ yaml: yamlString, clientOptions })
-        : await validateRecipeServer({ recipeName: name, clientOptions })
+      let result: Awaited<ReturnType<typeof validateRecipeServer>>
+      try {
+        result = yamlString
+          ? await validateRecipeServer({ yaml: yamlString, clientOptions })
+          : await validateRecipeServer({ recipeName: name, clientOptions })
+      } catch (err) {
+        if (!yamlString && err instanceof ApiError && err.statusCode === 404) {
+          throw new CliError(
+            `Recipe "${name}" not found locally (${getRecipesDir()}) or in the registry`,
+            'RECIPE_NOT_FOUND',
+          )
+        }
+        throw err
+      }
 
       // Server issues are authoritative errors
-      if ((result.issues ?? []).length > 0) {
-        reportValidationResults(file, result.issues!, outputFormat)
+      const issues = result.issues ?? []
+      if (issues.length > 0) {
+        reportValidationResults(file, issues, outputFormat)
         process.exit(1)
       }
 
       // Local provider check — warnings only, never blocks
       // Only run when we have local YAML (file-based validation)
-      if (yamlString) {
-        const localIssues = validateProviderActionsLocal(yamlString)
-        if (localIssues.length > 0) {
-          if (output.isStructuredFormat(outputFormat)) {
-            output.outputStructured({
-              status: 'valid',
-              file,
-              recipe: result.recipe,
-              warnings: localIssues,
-            }, outputFormat)
-          } else {
-            output.warn(`${localIssues.length} provider warning${localIssues.length !== 1 ? 's' : ''} (CLI may be outdated):`)
-            for (const issue of localIssues) {
-              const location = issue.path ? `  at ${issue.path}` : ''
-              output.warn(`${issue.message}${location}`)
-            }
-            if (result.recipe) {
-              printValidRecipeSummaryFromServer(file, result.recipe, outputFormat)
-            }
-          }
-          return
+      const localWarnings = yamlString ? validateProviderActionsLocal(yamlString) : []
+      if (localWarnings.length > 0 && !output.isStructuredFormat(outputFormat)) {
+        output.warn(`${localWarnings.length} provider warning${localWarnings.length !== 1 ? 's' : ''} (CLI may be outdated):`)
+        for (const issue of localWarnings) {
+          const location = issue.path ? `  at ${issue.path}` : ''
+          output.warn(`${issue.message}${location}`)
         }
       }
 
       if (result.recipe) {
-        printValidRecipeSummaryFromServer(file, result.recipe, outputFormat)
+        printValidRecipeSummaryFromServer(file, result.recipe, outputFormat, localWarnings.length > 0 ? localWarnings : undefined)
       } else {
         output.success(`${file} is valid`)
       }
@@ -828,7 +831,7 @@ export function registerRecipeCommand(program: Command): void {
         yaml = await readStdin()
       } else if (source && existsSync(source)) {
         yaml = readFileSync(source, 'utf-8')
-      } else if (source && (source.includes('/') || source.endsWith('.yaml') || source.endsWith('.yml'))) {
+      } else if (source && looksLikeFilePath(source)) {
         throw new CliError(`File not found: ${source}`, 'FILE_NOT_FOUND')
       } else if (source) {
         // Registry takes precedence over local — prevents name shadowing
