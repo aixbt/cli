@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.8
+
+- **Server-side recipe execution** -- recipes now execute via the API endpoint instead of client-side, with provider enrichment layer for server fallbacks
+- **Recipe validate** -- `aixbt recipe validate` supports registry names, `--stdin`, and server-side validation; local schema checks are reported as warnings
+- **Grounding history** -- `aixbt grounding history` subcommand with `--sections`, `--from`, `--to`, `--page` params
+- **Structured output pagination** -- JSON/toon output now includes pagination hints
+- **Doc URL updates** -- recipe help text points to `/builders/recipes/` (surface-agnostic)
+- **Cleanup** -- removed dead client-side transforms and stale internal docs
+
 ## 0.1.7
 
 - **Free tier removal** — remove `--delayed` flag and free tier auth mode; unauthenticated grounding users see upgrade nudge
