@@ -35,8 +35,6 @@ export interface ApiResponse<T> {
   paymentResponse?: Record<string, unknown> | null
 }
 
-export const TEMPLATE_REGEX = /\{([^}]+)\}/g
-
 export interface ValidationIssue {
   path: string
   message: string
@@ -103,9 +101,6 @@ export interface ApiStep {
   fallback?: string
 }
 
-export const AGENT_RETURN_TYPES = ['string', 'number', 'boolean', 'string[]', 'object'] as const
-export type AgentReturnType = (typeof AGENT_RETURN_TYPES)[number]
-
 export interface AgentStep {
   id: string
   type: 'agent'
@@ -161,25 +156,7 @@ export function isParallelAgentStep(step: RecipeStep): step is AgentStep & { 'fo
   return isAgentStep(step) && hasForModifier(step)
 }
 
-/** Parse a for: reference and return the step ID it refers to, or null if it's a reserved name (params, item). */
-export function parseForStepRef(forRef: string): string | null {
-  const dotIndex = forRef.indexOf('.')
-  const stepId = dotIndex === -1 ? forRef : forRef.slice(0, dotIndex)
-  return (stepId === 'params' || stepId === 'item') ? null : stepId
-}
-
-// -- Execution types --
-
-export interface ExecutionContext {
-  readonly recipe: Recipe
-  readonly params: Record<string, string>
-  results: Map<string, StepResult>
-  currentRateLimit: RateLimitInfo | null
-  currentSegmentIndex: number
-  readonly segments: Segment[]
-  agentInput: Record<string, unknown> | null
-  resumedFromStep: string | null
-}
+// -- Step result types (used by agent context resolution) --
 
 export interface StepResult {
   stepId: string
@@ -190,30 +167,12 @@ export interface StepResult {
   sampled?: { before: number; after: number; weightedBy: string }
 }
 
-export interface ForeachResult extends StepResult {
-  items: unknown[]
-  failures: ForeachFailure[]
-  _fallbackNote?: string
-}
-
-export interface ForeachFailure {
-  item: unknown
-  error: string
-  status?: number
-}
-
 export interface StepTiming {
   startedAt: string
   completedAt: string
   durationMs: number
   rateLimitPaused?: boolean
   waitedMs?: number
-}
-
-export interface Segment {
-  index: number
-  steps: RecipeStep[]
-  precedingAgentStep?: AgentStep
 }
 
 // -- Recipe execution output types --
@@ -242,7 +201,6 @@ export interface RecipeAwaitingAgent {
   returns: Record<string, string>
   data: Record<string, unknown>
   tokenCount: number
-  resumeCommand: string
   progress: RecipeYieldProgress
   remaining: string
   parallel?: ParallelAgentMeta

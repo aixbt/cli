@@ -8,7 +8,8 @@ export const AIXBT_ACTION_PATHS: Record<string, string> = {
   chains: '/v2/projects/chains',
   signals: '/v2/signals',
   clusters: '/v2/clusters',
-  grounding: '/v2/grounding',
+  grounding: '/v2/grounding/latest',
+  groundingHistory: '/v2/grounding/history',
 }
 
 const actions: Record<string, ActionDefinition> = {
@@ -117,14 +118,29 @@ const actions: Record<string, ActionDefinition> = {
   },
   grounding: {
     method: 'GET',
-    path: '/v2/grounding',
+    path: '/v2/grounding/latest',
     description: 'Get market grounding snapshot (narratives, macro, geopolitics, tradfi)',
     hint: 'You need current market context — crypto narratives, global liquidity, geopolitics, or tradfi conditions',
     params: [
       { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns the grounding snapshot active at this point in time.' },
-      { name: 'section', required: false, description: 'Show only a specific section (e.g., narratives, macro, geopolitics, tradfi)' },
+      { name: 'sections', required: false, description: 'Filter sections (CSV: crypto,macro,geopolitics,tradfi)' },
     ],
     minTier: 'free',
+  },
+  groundingHistory: {
+    method: 'GET',
+    path: '/v2/grounding/history',
+    description: 'Get paginated historical grounding snapshots',
+    hint: 'You need historical market context over a time range',
+    params: [
+      { name: 'at', required: false, description: 'Anchor timestamp (ISO 8601). Clamps "to".' },
+      { name: 'from', required: false, description: 'Range start (ISO 8601).' },
+      { name: 'to', required: false, description: 'Range end (ISO 8601).' },
+      { name: 'sections', required: false, description: 'Filter sections (CSV).' },
+      { name: 'page', required: false, description: 'Page number (default 1).' },
+      { name: 'limit', required: false, description: 'Results per page (default 50, max 50).' },
+    ],
+    minTier: 'paid',
   },
 }
 
@@ -185,6 +201,7 @@ export const aixbtProvider: Provider = {
   },
   tiers: {
     free: { rank: 0, keyless: true },
+    paid: { rank: 1 },
   },
   authHeader: 'X-API-Key',
   normalize: (body: unknown): unknown => {

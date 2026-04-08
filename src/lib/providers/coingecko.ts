@@ -302,7 +302,7 @@ export const coingeckoProvider: Provider = {
 
     // For ohlc with before_timestamp: expand the days window so it reaches back
     // to (at - days), then strip before_timestamp (CoinGecko doesn't accept it).
-    // Client-side filtering in dispatchProviderStep crops both ends.
+    // Client-side filtering crops both ends after fetching.
     if (actionName === 'ohlc' && result.before_timestamp !== undefined) {
       result = result === params ? { ...result } : result
       const daysAgo = Math.ceil((Date.now() / 1000 - Number(result.before_timestamp)) / 86400)

@@ -1,7 +1,8 @@
 import type { Command } from 'commander'
-import { getPublicClientOptions } from '../lib/auth.js'
+import { getPublicClientOptions, getClientOptions } from '../lib/auth.js'
 import { get } from '../lib/api-client.js'
 import * as output from '../lib/output.js'
+import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 import { resolveDate } from '../lib/date.js'
 import chalk from 'chalk'
 
@@ -17,82 +18,41 @@ interface GroundingData {
   sections: Record<string, GroundingSection>
 }
 
-export function registerGroundingCommand(program: Command): void {
-  program
-    .command('grounding')
-    .description('Get market grounding snapshot (free, no key required)')
-    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
-    .option('--section <name>', 'Show only a specific section (e.g., narratives, macro, geopolitics, tradfi)')
-    .action(async (_opts: unknown, cmd: Command) => {
-      await handleGrounding(cmd)
-    })
+// Preferred display order; unknown sections appear after in API order
+const DISPLAY_ORDER = ['crypto', 'tradfi', 'macro', 'geopolitics']
+
+// Known section colors; unknown sections get random colors from the palette
+const KNOWN_COLORS: Record<string, (s: string) => string> = {
+  crypto: chalk.hex('#b07de3'),
+  tradfi: chalk.blue,
+  macro: chalk.cyan,
+  geopolitics: chalk.green,
 }
+const EXTRA_COLORS = [
+  chalk.yellow, chalk.red, chalk.magentaBright,
+  chalk.cyanBright, chalk.greenBright, chalk.blueBright,
+]
 
-async function handleGrounding(cmd: Command): Promise<void> {
-  const { clientOpts, outputFormat } = getPublicClientOptions(cmd)
-  const opts = cmd.optsWithGlobals()
-
-  const params: Record<string, string | number | boolean | undefined> = {
-    at: resolveDate(opts.at as string | undefined),
-  }
-
-  const result = await output.withSpinner(
-    'Fetching grounding...',
-    outputFormat,
-    () => get<GroundingData>('/v2/grounding', params, clientOpts),
-    'Failed to fetch grounding',
-    { silent: true },
-  )
-
-  const sectionFilter = opts.section as string | undefined
-  const data = result.data
-
-  // Filter to a single section if --section specified
-  if (sectionFilter) {
-    const key = sectionFilter.toLowerCase()
-    if (!data.sections[key]) {
-      const available = Object.keys(data.sections).join(', ')
-      console.error(`Unknown section "${sectionFilter}". Available: ${available}`)
-      process.exit(1)
-    }
-    data.sections = { [key]: data.sections[key] }
-  }
-
-  if (output.isStructuredFormat(outputFormat)) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { summary: _, ...groundingData } = data as unknown as Record<string, unknown>
-    output.outputApiResult({ data: groundingData, meta: result.meta }, outputFormat)
-    return
-  }
-
-  // Preferred display order; unknown sections appear after in API order
-  const displayOrder = ['crypto', 'tradfi', 'macro', 'geopolitics']
-  const apiKeys = Object.keys(data.sections)
+/**
+ * Display grounding sections with color-coded headers and bullet items.
+ * Shared between handleGrounding and handleGroundingHistory.
+ */
+function displaySections(sections: Record<string, GroundingSection>): void {
+  const apiKeys = Object.keys(sections)
   const orderedKeys = [
-    ...displayOrder.filter(k => k in data.sections),
-    ...apiKeys.filter(k => !displayOrder.includes(k)),
+    ...DISPLAY_ORDER.filter(k => k in sections),
+    ...apiKeys.filter(k => !DISPLAY_ORDER.includes(k)),
   ]
 
-  // Known section colors; unknown sections get random colors from the palette
-  const knownColors: Record<string, (s: string) => string> = {
-    crypto: chalk.hex('#b07de3'),
-    tradfi: chalk.blue,
-    macro: chalk.cyan,
-    geopolitics: chalk.green,
-  }
-  const extraColors = [
-    chalk.yellow, chalk.red, chalk.magentaBright,
-    chalk.cyanBright, chalk.greenBright, chalk.blueBright,
-  ]
   let extraIdx = 0
   const getColor = (key: string) => {
-    if (knownColors[key]) return knownColors[key]
-    return extraColors[extraIdx++ % extraColors.length]
+    if (KNOWN_COLORS[key]) return KNOWN_COLORS[key]
+    return EXTRA_COLORS[extraIdx++ % EXTRA_COLORS.length]
   }
 
   for (let i = 0; i < orderedKeys.length; i++) {
     const key = orderedKeys[i]
-    const section = data.sections[key]
+    const section = sections[key]
     if (!section) continue
     const color = getColor(key)
 
@@ -103,6 +63,69 @@ async function handleGrounding(cmd: Command): Promise<void> {
       console.log(`  ${color('•')} ${wrapped}`)
     }
   }
+}
+
+export function registerGroundingCommand(program: Command): void {
+  const grounding = program
+    .command('grounding')
+    .description('Get market grounding snapshot (free, no key required)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
+    .option('--sections <list>', 'Filter sections (comma-separated: crypto,macro,geopolitics,tradfi)')
+    .option('--section <name>', 'Alias for --sections (single section)')
+    .action(async (_opts: unknown, cmd: Command) => {
+      await handleGrounding(cmd)
+    })
+
+  // Hide --section from help output (it's a backward compat alias)
+  const sectionOption = grounding.options.find(o => o.long === '--section')
+  if (sectionOption) sectionOption.hidden = true
+
+  grounding
+    .command('history')
+    .description('Get paginated grounding history (requires API key)')
+    .option('--from <date>', 'Range start (ISO 8601 or relative: -7d, -48h)')
+    .option('--to <date>', 'Range end (ISO 8601 or relative: -1h)')
+    .option('--at <date>', 'Anchor timestamp (clamps --to)')
+    .option('--sections <list>', 'Filter sections (comma-separated)')
+    .option('--page <n>', 'Page number', '1')
+    .option('--limit <n>', 'Results per page (max 50)', '50')
+    .action(async (_opts: unknown, cmd: Command) => {
+      await handleGroundingHistory(cmd)
+    })
+}
+
+async function handleGrounding(cmd: Command): Promise<void> {
+  const { clientOpts, outputFormat } = getPublicClientOptions(cmd)
+  const opts = cmd.optsWithGlobals()
+
+  // Merge --section (singular, backward compat) with --sections (plural, CSV)
+  const sectionsParam = opts.sections as string | undefined
+    ?? opts.section as string | undefined
+
+  const params: Record<string, string | number | boolean | undefined> = {
+    at: resolveDate(opts.at as string | undefined),
+    sections: sectionsParam,
+  }
+
+  const result = await output.withSpinner(
+    'Fetching grounding...',
+    outputFormat,
+    () => get<GroundingData>('/v2/grounding/latest', params, clientOpts),
+    'Failed to fetch grounding',
+    { silent: true },
+  )
+
+  // Server handles section filtering — no client-side filtering needed
+  const data = result.data
+
+  if (output.isStructuredFormat(outputFormat)) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { summary: _, ...groundingData } = data as unknown as Record<string, unknown>
+    output.outputApiResult({ data: groundingData, meta: result.meta }, outputFormat)
+    return
+  }
+
+  displaySections(data.sections)
 
   console.log()
   const agoMs = Date.now() - new Date(data.createdAt).getTime()
@@ -115,4 +138,51 @@ async function handleGrounding(cmd: Command): Promise<void> {
   if (result.meta?.upgrade) {
     output.dim(`Grounding is free · For full API access: ${chalk.reset('aixbt login')}`)
   }
+}
+
+async function handleGroundingHistory(cmd: Command): Promise<void> {
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
+  const opts = cmd.optsWithGlobals()
+
+  const params: Record<string, string | number | boolean | undefined> = {
+    from: resolveDate(opts.from as string | undefined),
+    to: resolveDate(opts.to as string | undefined),
+    at: resolveDate(opts.at as string | undefined),
+    sections: opts.sections as string | undefined,
+    page: opts.page as string | undefined,
+    limit: opts.limit as string | undefined,
+  }
+
+  const result = await output.withSpinner(
+    'Fetching grounding history...',
+    outputFormat,
+    () => withPayPerUse(
+      () => get<GroundingData[]>(
+        '/v2/grounding/history', params, clientOpts,
+      ),
+      authMode,
+      reconstructCommand('aixbt grounding history', opts),
+      outputFormat,
+    ),
+    'Failed to fetch grounding history',
+    { silent: true },
+  )
+
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputApiResult(result, outputFormat)
+    return
+  }
+
+  const data = result.data
+  const pagination = result.pagination
+
+  // Display each snapshot with timestamp separator
+  for (const snapshot of data) {
+    const ts = new Date(snapshot.createdAt)
+    console.log(chalk.dim('─── ') + chalk.bold(ts.toISOString()) + chalk.dim(' ───'))
+    displaySections(snapshot.sections)
+    console.log()
+  }
+
+  if (pagination) output.showPagination(pagination, data.length)
 }
