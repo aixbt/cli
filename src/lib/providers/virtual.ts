@@ -55,27 +55,15 @@ marketActions['chart'] = {
     { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — cap chart data to this time. Auto-set from recipe --at.' },
   ],
   minTier: 'free',
-  resolve: async (params, ctx) => {
+  resolve: (params, ctx) => {
     // Path 1: AIXBT candles (preferred when projectId available)
     if (hasValue(params.projectId)) {
       const intervalMap: Record<string, string> = { day: '1d', hour: '1h', minute: '5m' }
       const interval = intervalMap[String(params.timeframe ?? 'day')] ?? '1h'
-      try {
-        const result = await ctx.request({
-          provider: 'aixbt',
-          action: 'candles',
-          params: { id: params.projectId, interval, start: params.start, end: params.end, at: params.at },
-        })
-        const data = result.data as { candles?: unknown[] } | undefined
-        if (data?.candles && data.candles.length > 0) {
-          return {
-            provider: 'aixbt',
-            action: 'candles',
-            params: { id: params.projectId, interval, start: params.start, end: params.end, at: params.at },
-          }
-        }
-      } catch {
-        // AIXBT failed — fall through to existing paths
+      return {
+        provider: 'aixbt',
+        action: 'candles',
+        params: { id: params.projectId, interval, start: params.start, end: params.end, at: params.at },
       }
     }
 
