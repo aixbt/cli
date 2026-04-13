@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9
+
+- **Candles** -- `aixbt projects candles <id>` subcommand with candlestick chart renderer
+- **AIXBT provider** -- new `candles` action; `market.chart` recipe prefers AIXBT candles when available
+
 ## 0.1.8
 
 - **Server-side recipe execution** -- recipes now execute via the API endpoint instead of client-side, with provider enrichment layer for server fallbacks
