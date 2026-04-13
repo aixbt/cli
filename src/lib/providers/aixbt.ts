@@ -8,6 +8,7 @@ export const AIXBT_ACTION_PATHS: Record<string, string> = {
   chains: '/v2/projects/chains',
   signals: '/v2/signals',
   clusters: '/v2/clusters',
+  candles: '/v2/projects/{id}/candles',
   grounding: '/v2/grounding/latest',
   groundingHistory: '/v2/grounding/history',
 }
@@ -72,6 +73,20 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'start', required: false, description: 'Start date (ISO 8601 or relative like -7d)' },
       { name: 'end', required: false, description: 'End date (ISO 8601 or relative like -1d)' },
       { name: 'at', required: false, description: 'Historical anchor (ISO 8601). Sets the end of the rank window; start defaults to 7 days before.' },
+    ],
+    minTier: 'free',
+  },
+  candles: {
+    method: 'GET',
+    path: '/v2/projects/{id}/candles',
+    description: 'Get OHLCV price candle data for a project',
+    hint: 'You need price history or chart data for a tracked project',
+    params: [
+      { name: 'id', required: true, description: 'Project ID', inPath: true },
+      { name: 'interval', required: true, description: 'Candle interval: 5m, 1h, or 1d' },
+      { name: 'start', required: false, description: 'Start date (ISO 8601)' },
+      { name: 'end', required: false, description: 'End date (ISO 8601)' },
+      { name: 'at', required: false, description: 'Historical anchor (ISO 8601 or relative)' },
     ],
     minTier: 'free',
   },

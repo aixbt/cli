@@ -6,6 +6,7 @@ import * as output from '../lib/output.js'
 import { withPayPerUse, reconstructCommand } from '../lib/x402.js'
 import { formatTokenCount } from '../lib/tokens.js'
 import { resolveDate } from '../lib/date.js'
+import { renderCandlestickChart } from '../lib/chart.js'
 
 // -- Response types --
 
@@ -60,6 +61,13 @@ interface RankData {
     rank: number
     score?: number
   }>
+}
+
+interface CandlesData {
+  projectId: string
+  projectName: string
+  interval: string
+  candles: (number | null)[][]
 }
 
 // -- Table column definitions --
@@ -186,6 +194,18 @@ export function registerProjectsCommand(program: Command): void {
     .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .action(async (id: string, _opts: unknown, cmd: Command) => {
       await handleRank(id, cmd)
+    })
+
+  // -- candles subcommand --
+  projects
+    .command('candles <id>')
+    .description('Get OHLCV candle data for a project')
+    .option('--interval <interval>', 'Candle interval: 5m, 1h, or 1d (default: 1h)')
+    .option('--start <date>', 'Start date (ISO 8601 or relative: -7d, -24h)')
+    .option('--end <date>', 'End date (ISO 8601 or relative: -7d, -24h)')
+    .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
+    .action(async (id: string, _opts: unknown, cmd: Command) => {
+      await handleCandles(id, cmd)
     })
 }
 
@@ -411,6 +431,67 @@ async function handleRank(id: string, cmd: Command): Promise<void> {
   }))
 
   output.table(rows, RANK_COLUMNS)
+}
+
+async function handleCandles(id: string, cmd: Command): Promise<void> {
+  const { clientOpts, authMode, outputFormat } = getClientOptions(cmd)
+  const opts = cmd.optsWithGlobals()
+
+  const params: Record<string, string | number | boolean | undefined> = {
+    interval: (opts.interval as string) ?? '1h',
+    start: resolveDate(opts.start as string | undefined),
+    end: resolveDate(opts.end as string | undefined),
+    at: resolveDate(opts.at as string | undefined),
+  }
+
+  const result = await output.withSpinner(
+    'Fetching candles...',
+    outputFormat,
+    () => withPayPerUse(
+      () => get<CandlesData>(`/v2/projects/${encodeURIComponent(id)}/candles`, params, clientOpts),
+      authMode,
+      reconstructCommand(`aixbt projects candles ${id}`, opts),
+      outputFormat,
+    ),
+    'Failed to fetch candles',
+    { silent: true },
+  )
+
+  const data = result.data
+
+  if (output.isStructuredFormat(outputFormat)) {
+    output.outputApiResult({ data, meta: result.meta }, outputFormat)
+    return
+  }
+
+  if (!data.candles || data.candles.length === 0) {
+    output.dim('No candle data available for this project.')
+    return
+  }
+
+  try {
+    const chart = renderCandlestickChart(data.candles, {
+      projectName: data.projectName,
+      interval: data.interval,
+    })
+    console.log(chart)
+  } catch {
+    output.warn('Chart rendering failed, showing raw data:')
+    const rows = data.candles.slice(-20).map(c => ({
+      time: c[0] ? new Date(c[0]).toISOString().replace('T', ' ').slice(0, 16) : '-',
+      open: c[1]?.toFixed(6) ?? '-',
+      high: c[2]?.toFixed(6) ?? '-',
+      low: c[3]?.toFixed(6) ?? '-',
+      close: c[4]?.toFixed(6) ?? '-',
+    }))
+    output.table(rows, [
+      { key: 'time', header: 'Time', width: 18 },
+      { key: 'open', header: 'Open', width: 12, align: 'right' as const },
+      { key: 'high', header: 'High', width: 12, align: 'right' as const },
+      { key: 'low', header: 'Low', width: 12, align: 'right' as const },
+      { key: 'close', header: 'Close', width: 12, align: 'right' as const },
+    ])
+  }
 }
 
 async function handleChains(cmd: Command): Promise<void> {

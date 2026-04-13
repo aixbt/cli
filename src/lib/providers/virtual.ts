@@ -48,11 +48,26 @@ marketActions['chart'] = {
     { name: 'timeframe', required: false, description: 'Candle timeframe: "day", "hour", or "minute" (default: "day")' },
     { name: 'limit', required: false, description: 'Number of candles / days of data (default: 30)' },
     { name: 'currency', required: false, description: 'Quote currency (default: "usd")' },
+    { name: 'projectId', required: false, description: 'AIXBT project ID — routes to AIXBT candles when available' },
+    { name: 'start', required: false, description: 'Start date (ISO 8601)' },
+    { name: 'end', required: false, description: 'End date (ISO 8601)' },
+    { name: 'at', required: false, description: 'Historical anchor (ISO 8601 or relative)' },
     { name: 'before_timestamp', required: false, description: 'Unix timestamp (seconds) — cap chart data to this time. Auto-set from recipe --at.' },
   ],
   minTier: 'free',
   resolve: (params, ctx) => {
-    // On-chain path: pick provider based on hint, default dexpaprika
+    // Path 1: AIXBT candles (preferred when projectId available)
+    if (hasValue(params.projectId)) {
+      const intervalMap: Record<string, string> = { day: '1d', hour: '1h', minute: '5m' }
+      const interval = intervalMap[String(params.timeframe ?? 'day')] ?? '1h'
+      return {
+        provider: 'aixbt',
+        action: 'candles',
+        params: { id: params.projectId, interval, start: params.start, end: params.end, at: params.at },
+      }
+    }
+
+    // Path 2: On-chain — pick provider based on hint, default dexpaprika
     if (hasValue(params.network) && hasValue(params.address)) {
       const target = ctx.hint ?? 'dexpaprika'
       return {
