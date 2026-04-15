@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- **Breaking** — `aixbt signals` is now a deprecation shim that exits non-zero (code 2). Use `aixbt intel` instead. Old endpoint sunsets 2026-07-15.
+- **New** — `aixbt intel` command with `intel clusters` and `intel categories` subcommands; mirrors the previous `signals` interface against `/v2/intel`.
+
 ## 0.1.9
 
 - **Candles** -- `aixbt projects candles <id>` subcommand with candlestick chart renderer

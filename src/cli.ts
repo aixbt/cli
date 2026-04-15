@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Command, Option } from 'commander'
 import { registerProjectsCommand } from './commands/projects.js'
+import { registerIntelCommand } from './commands/intel.js'
 import { registerSignalsCommand } from './commands/signals.js'
 import { registerGroundingCommand } from './commands/grounding.js'
 // clusters is now a subcommand of signals — see signals.ts
@@ -53,7 +54,7 @@ export function createProgram(): Command {
       lines.push('  projects, inform trades, and gain an edge in the market.')
       lines.push('')
       lines.push('  Start with aixbt recipe list to find analysis pipelines for your task.')
-      lines.push('  For ad-hoc queries, use signals and projects with -f toon.')
+      lines.push('  For ad-hoc queries, use intel and projects with -f toon.')
       lines.push('  Full command reference: aixbt help all')
       lines.push('')
       lines.push(`  ${output.fmt.dim('docs.aixbt.tech/builders/cli.mdx')}`)
@@ -108,6 +109,7 @@ export function createProgram(): Command {
 
   registerLoginCommand(program)
   registerProjectsCommand(program)
+  registerIntelCommand(program)
   registerSignalsCommand(program)
   registerGroundingCommand(program)
   // clusters is now a subcommand of signals
