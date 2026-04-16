@@ -283,7 +283,7 @@ describe('projects commands', () => {
       expect(allOutput).toContain('The first cryptocurrency')
       expect(allOutput).toContain('Rationale')
       expect(allOutput).toContain('Institutional interest rising')
-      expect(allOutput).toContain('Signals')
+      expect(allOutput).toContain('Intel')
       expect(allOutput).toContain('Tokens')
       expect(allOutput).toContain('Created')
       expect(allOutput).toContain('Reinforced')

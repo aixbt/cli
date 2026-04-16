@@ -155,13 +155,13 @@ describe('Phase 2: Contextual Footers & Hints', () => {
 
   // ── Command integration tests ──
 
-  describe('signals command hints', () => {
+  describe('intel command hints', () => {
     let logs: string[]
     let consoleSpy: ReturnType<typeof vi.spyOn>
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>
     const mockFetch = vi.fn()
 
-    const mockSignalData = [
+    const mockIntelData = [
       {
         id: 'sig-1',
         projectName: 'Test',
@@ -200,20 +200,20 @@ describe('Phase 2: Contextual Footers & Hints', () => {
         headers: new Headers(),
         json: async () => ({
           status: 200,
-          data: mockSignalData,
+          data: mockIntelData,
           pagination: { page: 1, limit: 10, totalCount: 1, hasMore: false },
         }),
       })
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '-f', 'json', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-f', 'json', 'intel'], { from: 'node' })
 
       const jsonLine = logs.find(l => l.includes('"data"'))
       expect(jsonLine).toBeDefined()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed.meta).toBeDefined()
-      expect(parsed.meta.hints).toContain('For pipeline analysis, try: aixbt recipe run signal_scanner -f toon')
+      expect(parsed.meta.hints).toContain('For pipeline analysis, try: aixbt recipe run intel_scanner -f toon')
     })
 
     it('should include verbosity hint in structured output at v0', async () => {
@@ -223,14 +223,14 @@ describe('Phase 2: Contextual Footers & Hints', () => {
         headers: new Headers(),
         json: async () => ({
           status: 200,
-          data: mockSignalData,
+          data: mockIntelData,
           pagination: { page: 1, limit: 10, totalCount: 1, hasMore: false },
         }),
       })
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '-f', 'json', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-f', 'json', 'intel'], { from: 'node' })
 
       const jsonLine = logs.find(l => l.includes('"data"'))
       const parsed = JSON.parse(jsonLine!)
@@ -244,14 +244,14 @@ describe('Phase 2: Contextual Footers & Hints', () => {
         headers: new Headers(),
         json: async () => ({
           status: 200,
-          data: mockSignalData,
+          data: mockIntelData,
           pagination: { page: 1, limit: 10, totalCount: 1, hasMore: false },
         }),
       })
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '-f', 'json', '-v', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-f', 'json', '-v', 'intel'], { from: 'node' })
 
       const jsonLine = logs.find(l => l.includes('"data"'))
       const parsed = JSON.parse(jsonLine!)
@@ -265,21 +265,21 @@ describe('Phase 2: Contextual Footers & Hints', () => {
         headers: new Headers(),
         json: async () => ({
           status: 200,
-          data: mockSignalData,
+          data: mockIntelData,
           pagination: { page: 1, limit: 10, totalCount: 1, hasMore: false },
         }),
       })
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = stripAnsi(logs.join('\n'))
-      expect(allOutput).toContain('recipe run signal_scanner')
+      expect(allOutput).toContain('recipe run intel_scanner')
     })
   })
 
-  describe('clusters command hints', () => {
+  describe('intel clusters command hints', () => {
     let logs: string[]
     let consoleSpy: ReturnType<typeof vi.spyOn>
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>
@@ -321,7 +321,7 @@ describe('Phase 2: Contextual Footers & Hints', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '-f', 'json', 'signals', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-f', 'json', 'intel', 'clusters'], { from: 'node' })
 
       const jsonLine = logs.find(l => l.includes('"data"'))
       expect(jsonLine).toBeDefined()
@@ -344,7 +344,7 @@ describe('Phase 2: Contextual Footers & Hints', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '-f', 'json', '-v', 'signals', 'clusters'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-f', 'json', '-v', 'intel', 'clusters'], { from: 'node' })
 
       const jsonLine = logs.find(l => l.includes('"data"'))
       expect(jsonLine).toBeDefined()
@@ -415,7 +415,7 @@ describe('Phase 2: Contextual Footers & Hints', () => {
       expect(jsonLine).toBeDefined()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed.meta).toBeDefined()
-      expect(parsed.meta.hints).toContain('Use -v for details, -vv for signals')
+      expect(parsed.meta.hints).toContain('Use -v for details, -vv for intel')
     })
 
     it('should include v1 hint in structured output at verbosity 1', async () => {
@@ -438,7 +438,7 @@ describe('Phase 2: Contextual Footers & Hints', () => {
       expect(jsonLine).toBeDefined()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed.meta).toBeDefined()
-      expect(parsed.meta.hints).toContain('Use -vv for inline signals')
+      expect(parsed.meta.hints).toContain('Use -vv for inline intel')
     })
 
     it('should not include v0 hint when verbosity is 1', async () => {
