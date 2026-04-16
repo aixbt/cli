@@ -156,7 +156,7 @@ export function registerProjectsCommand(program: Command): void {
     .option('--exclude-stables', 'Exclude stablecoins')
     .option('--created-after <date>', 'Filter projects created after date (ISO 8601 or relative: -7d, -24h, -30m)')
     .option('--created-before <date>', 'Filter projects created before date (ISO 8601 or relative: -7d, -24h, -30m)')
-    .option('--signal-sort <field>', 'Sort signals by field (createdAt, reinforcedAt)', 'createdAt')
+    .option('--signal-sort <field>', 'Sort embedded intel by field (createdAt, reinforcedAt)', 'createdAt')
     .option('--at <date>', 'Snapshot at a past time (ISO 8601 or relative: -24h, -7d)')
     .action(async (id: string | undefined, _opts: unknown, cmd: Command) => {
       if (id) {
@@ -249,9 +249,9 @@ async function handleProjectList(cmd: Command): Promise<void> {
 
   const hints: string[] = []
   if (verbosity === 0) {
-    hints.push('Use -v for details, -vv for signals')
+    hints.push('Use -v for details, -vv for intel')
   } else if (verbosity === 1) {
-    hints.push('Use -vv for inline signals')
+    hints.push('Use -vv for inline intel')
   }
   if (verbosity >= 2 && result.data.length > 0) {
     hints.push(`Output: ~${formatTokenCount(result.data)} tokens. In recipes, use transform: to control what reaches agents.`)
@@ -541,7 +541,7 @@ function buildProjectCard(p: ProjectData, verbosity: number): output.CardItem {
       { label: 'X Handle', value: p.xHandle ? `@${p.xHandle}` : undefined },
       { label: 'Description', value: p.description },
       { label: 'Rationale', value: p.rationale },
-      ...(verbosity < 2 ? [{ label: 'Signals', value: output.fmt.number(String(p.signals?.length ?? 0)) }] : []),
+      ...(verbosity < 2 ? [{ label: 'Intel', value: output.fmt.number(String(p.signals?.length ?? 0)) }] : []),
       { label: 'Price', value: p.metrics?.usd != null ? metricsColor(p)(`$${p.metrics.usd.toFixed(6)}`) : undefined },
       { label: 'Market Cap', value: p.metrics?.usdMarketCap != null ? metricsColor(p)(`$${output.formatLargeNumber(p.metrics.usdMarketCap)}`) : undefined },
       { label: '24h Volume', value: p.metrics?.usd24hVol != null ? metricsColor(p)(`$${output.formatLargeNumber(p.metrics.usd24hVol)}`) : undefined },
@@ -579,7 +579,7 @@ function formatSignals(signals: SignalData[] | undefined, verbosity: number): ou
   const clusterColorMap = output.buildClusterColorMap(signals)
 
   const fields: output.CardField[] = []
-  fields.push({ label: 'signals', value: '', section: true })
+  fields.push({ label: 'intel', value: '', section: true })
   for (const s of signals) {
     const updates = s.activity?.length ?? 0
     const clusterTags = (s.clusters ?? []).map(c =>

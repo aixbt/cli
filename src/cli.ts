@@ -50,7 +50,7 @@ export function createProgram(): Command {
       const tail = Math.max(0, maxWidth - 1 - title.length)
       lines.push(output.fmt.dim('━' + title + '━'.repeat(tail)))
       lines.push('')
-      lines.push('  AIXBT provides real-time crypto signal intelligence. Find alpha, research')
+      lines.push('  AIXBT provides real-time crypto market intelligence. Find alpha, research')
       lines.push('  projects, inform trades, and gain an edge in the market.')
       lines.push('')
       lines.push('  Start with aixbt recipe list to find analysis pipelines for your task.')

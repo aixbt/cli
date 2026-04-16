@@ -11,6 +11,7 @@ describe('AIXBT_ACTION_PATHS', () => {
     'project',
     'momentum',
     'chains',
+    'intel',
     'signals',
     'rank',
     'clusters',
@@ -19,9 +20,9 @@ describe('AIXBT_ACTION_PATHS', () => {
     'candles',
   ]
 
-  it('should have entries for all 10 action names', () => {
+  it('should have entries for all 11 action names', () => {
     const keys = Object.keys(AIXBT_ACTION_PATHS)
-    expect(keys).toHaveLength(10)
+    expect(keys).toHaveLength(11)
     for (const name of expectedActions) {
       expect(AIXBT_ACTION_PATHS).toHaveProperty(name)
     }
@@ -88,12 +89,13 @@ describe('aixbtProvider', () => {
   describe('actions', () => {
     it('should define all 10 actions', () => {
       const actionNames = Object.keys(aixbtProvider.actions)
-      expect(actionNames).toHaveLength(10)
+      expect(actionNames).toHaveLength(11)
       expect(actionNames).toContain('projects')
       expect(actionNames).toContain('project')
       expect(actionNames).toContain('momentum')
       expect(actionNames).toContain('rank')
       expect(actionNames).toContain('chains')
+      expect(actionNames).toContain('intel')
       expect(actionNames).toContain('signals')
       expect(actionNames).toContain('clusters')
       expect(actionNames).toContain('grounding')

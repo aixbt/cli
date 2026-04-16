@@ -415,7 +415,7 @@ describe('Phase 2: Contextual Footers & Hints', () => {
       expect(jsonLine).toBeDefined()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed.meta).toBeDefined()
-      expect(parsed.meta.hints).toContain('Use -v for details, -vv for signals')
+      expect(parsed.meta.hints).toContain('Use -v for details, -vv for intel')
     })
 
     it('should include v1 hint in structured output at verbosity 1', async () => {
@@ -438,7 +438,7 @@ describe('Phase 2: Contextual Footers & Hints', () => {
       expect(jsonLine).toBeDefined()
       const parsed = JSON.parse(jsonLine!)
       expect(parsed.meta).toBeDefined()
-      expect(parsed.meta.hints).toContain('Use -vv for inline signals')
+      expect(parsed.meta.hints).toContain('Use -vv for inline intel')
     })
 
     it('should not include v0 hint when verbosity is 1', async () => {
