@@ -4,6 +4,7 @@
 
 - **Breaking** — `aixbt signals` is now a deprecation shim that exits non-zero (code 2). Use `aixbt intel` instead. Old endpoint sunsets 2026-07-15.
 - **New** — `aixbt intel` command with `intel clusters` and `intel categories` subcommands; mirrors the previous `signals` interface against `/v2/intel`.
+- **Sort default** — `aixbt intel` now sorts by `reinforcedAt` by default to match the homepage (use `--sort-by detectedAt` for first-detection order).
 
 ## 0.1.9
 

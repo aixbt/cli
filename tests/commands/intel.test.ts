@@ -137,7 +137,7 @@ describe('intel commands', () => {
       expect(callUrl.pathname).toBe('/v2/intel')
       expect(callUrl.searchParams.get('page')).toBe('1')
       expect(callUrl.searchParams.get('limit')).toBeNull()
-      expect(callUrl.searchParams.get('sortBy')).toBe('createdAt')
+      expect(callUrl.searchParams.get('sortBy')).toBe('reinforcedAt')
 
       // Verify JSON output
       const jsonOutput = logs.find(l => l.includes('Ethereum'))
