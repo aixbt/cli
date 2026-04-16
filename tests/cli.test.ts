@@ -14,6 +14,8 @@ describe('CLI', () => {
     expect(commandNames).toContain('logout')
     expect(commandNames).toContain('whoami')
     expect(commandNames).toContain('projects')
+    expect(commandNames).toContain('intel')
+    // signals is still registered as a hidden deprecation shim
     expect(commandNames).toContain('signals')
     expect(commandNames).toContain('grounding')
     expect(commandNames).toContain('recipe')
@@ -279,7 +281,7 @@ describe('CLI', () => {
       expect(stripped).not.toContain('-V, --version')
     })
 
-    it('should include all subcommands in help output', () => {
+    it('should include all visible subcommands in help output', () => {
       const program = createProgram()
       program.outputHelp()
 
@@ -290,17 +292,20 @@ describe('CLI', () => {
       const stripped = fullOutput.replace(/\x1b\[[0-9;]*m/g, '')
 
       expect(stripped).toContain('login')
-      expect(stripped).toContain('config')
       expect(stripped).toContain('projects')
-      expect(stripped).toContain('signals')
+      expect(stripped).toContain('intel')
       expect(stripped).toContain('recipe')
+      // signals is a hidden deprecation shim and must NOT appear in --help
+      expect(stripped).not.toContain('signals')
     })
   })
 
   describe('command count', () => {
-    it('should have exactly 9 registered commands', () => {
+    it('should have exactly 10 registered commands', () => {
       const program = createProgram()
-      expect(program.commands).toHaveLength(9)
+      // login, logout, whoami, projects, intel, signals (hidden shim),
+      // grounding, recipe, provider, help
+      expect(program.commands).toHaveLength(10)
     })
   })
 

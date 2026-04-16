@@ -12,8 +12,8 @@ import { fmt, wrapIndented } from '../output.js'
 const AGENT_SYSTEM_PROMPT = [
   'You are analyzing AIXBT recipe output.',
   'AIXBT is a crypto intelligence platform that tracks discussions on X.',
-  'It organizes tracked accounts into clusters (independent community segments via social graph analysis), detects signals (discrete verified facts about projects, not opinions), and scores momentum (rate of new cluster convergence, measuring breadth of attention, not volume).',
-  'When using tools, briefly describe what you are about to do (e.g. "Reading signals data").',
+  'It organizes tracked accounts into clusters (independent community segments via social graph analysis), detects intel (discrete verified facts about projects, not opinions), and scores momentum (rate of new cluster convergence, measuring breadth of attention, not volume).',
+  'When using tools, briefly describe what you are about to do (e.g. "Reading intel data").',
   'Once all tool calls are complete and you begin your final response, go straight into the analysis.',
   'No preamble, no "here is the analysis", no summary of what you just read — just the analysis itself.',
   'Never use em-dashes. Use commas, periods, or restructure the sentence.',
@@ -56,7 +56,7 @@ function cleanupTempFile(file: string): void {
 
 function buildPromptForStep(result: RecipeAwaitingAgent, dataFiles: Map<string, string>): string {
   const parts = [
-    `Read ALL of the AIXBT recipe data files below in parallel. Large datasets are split into numbered chunks (e.g. signals/001, signals/002). Read every file — do not skip or sample.`,
+    `Read ALL of the AIXBT recipe data files below in parallel. Large datasets are split into numbered chunks (e.g. intel/001, intel/002). Read every file — do not skip or sample.`,
     '',
   ]
 
@@ -83,7 +83,7 @@ function buildPromptForStep(result: RecipeAwaitingAgent, dataFiles: Map<string, 
 
 function buildPromptForAnalysis(result: RecipeComplete, dataFiles: Map<string, string>): string {
   const parts = [
-    `Read ALL of the AIXBT recipe data files below in parallel. Large datasets are split into numbered chunks (e.g. signals/001, signals/002). Read every file — do not skip or sample.`,
+    `Read ALL of the AIXBT recipe data files below in parallel. Large datasets are split into numbered chunks (e.g. intel/001, intel/002). Read every file — do not skip or sample.`,
     '',
   ]
 
@@ -478,7 +478,7 @@ function spawnObserverCalls(
   // Observer always uses claude/haiku — skip if claude isn't available
   try { execSync('which claude', { stdio: 'ignore' }) } catch { return Promise.resolve() }
 
-  const systemPrompt = 'You are scanning AIXBT crypto intelligence data. Respond with ONE short sentence (max 100 characters). Focus on: what projects or signals stand out, risk events (exploits, hacks, whale exits), or unusual patterns. Ignore momentum scores and price data. No preamble, no labels, no step names.'
+  const systemPrompt = 'You are scanning AIXBT crypto intelligence data. Respond with ONE short sentence (max 100 characters). Focus on: what projects or intel stand out, risk events (exploits, hacks, whale exits), or unusual patterns. Ignore momentum scores and price data. No preamble, no labels, no step names.'
 
   const promises = sections.map(({ stepId, data: sectionData }) => {
     return new Promise<void>((resolve) => {

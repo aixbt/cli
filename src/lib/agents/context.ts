@@ -9,15 +9,18 @@
 import type { RecipeStep, StepResult } from '../../types.js'
 import { isApiStep } from '../../types.js'
 
+const INTEL_CONTEXT = [
+  'Intel: Each intel item has detectedAt (first sighting) and reinforcedAt (latest confirmation).',
+  'When multiple independent detections report the same event, they reinforce one intel item rather than creating duplicates.',
+  'The activity array length is the total detection count: 1 means a single detection with no reinforcement.',
+  'Intel descriptions evolve over time: initial detections may be incomplete, underlying facts or metrics can change as events unfold, or early reports may be corrected.',
+  'hasOfficialSource means the project\'s own official account appears in the intel item\'s activity.',
+].join(' ')
+
 /** Context keyed by AIXBT action name. */
 const ACTION_CONTEXT: Record<string, string> = {
-  signals: [
-    'Signals: Each signal has detectedAt (first sighting) and reinforcedAt (latest confirmation).',
-    'When multiple independent detections report the same event, they reinforce one signal rather than creating duplicates.',
-    'The activity array length is the total detection count: 1 means a single detection with no reinforcement.',
-    'Signal descriptions evolve over time: initial detections may be incomplete, underlying facts or metrics can change as events unfold, or early reports may be corrected.',
-    'hasOfficialSource means the project\'s own official account appears in the signal\'s activity.',
-  ].join(' '),
+  intel: INTEL_CONTEXT,
+  signals: INTEL_CONTEXT,
 
   projects: [
     'Projects: momentumScore measures rate of change in cluster attention (how quickly new clusters pick up a project).',
@@ -36,7 +39,7 @@ const ACTION_CONTEXT: Record<string, string> = {
   rank: [
     'Rank: Leaderboard position (1-100) based on momentum score.',
     'Only projects in the top 100 appear. Rank history shows position changes over time.',
-    'Rapid rank improvement signals emerging breakout; declining rank signals cooling interest.',
+    'Rapid rank improvement indicates an emerging breakout; declining rank indicates cooling interest.',
   ].join(' '),
 
   clusters: [
@@ -46,13 +49,13 @@ const ACTION_CONTEXT: Record<string, string> = {
 }
 
 /** Context triggered by specific fields in the step's transform.select array. */
-const SELECT_CONTEXT: Record<string, { action: string; text: string }> = {
+const SELECT_CONTEXT: Record<string, { actions: string[]; text: string }> = {
   activity: {
-    action: 'signals',
+    actions: ['intel', 'signals'],
     text: [
-      'Activity: Each entry in the activity array is itself a detected signal that was merged into this one, not a raw source like a tweet.',
-      'The incoming field is the new detection\'s description; result is the signal description after merging.',
-      'An isOfficial entry means the project\'s own account produced that detection. If it is the first or only entry, the official source originated the signal; later isOfficial entries are corroboration.',
+      'Activity: Each entry in the activity array is itself a detected intel item that was merged into this one, not a raw source like a tweet.',
+      'The incoming field is the new detection\'s description; result is the intel description after merging.',
+      'An isOfficial entry means the project\'s own account produced that detection. If it is the first or only entry, the official source originated the intel; later isOfficial entries are corroboration.',
     ].join(' '),
   },
 }
@@ -85,7 +88,7 @@ export function resolveContextHints(
     const select = transform?.select
     if (key) {
       for (const [field, entry] of Object.entries(SELECT_CONTEXT)) {
-        if (entry.action !== key || seen.has(`${key}:${field}`)) continue
+        if (!entry.actions.includes(key) || seen.has(`${key}:${field}`)) continue
         if (!select || select.includes(field)) {
           seen.add(`${key}:${field}`)
           hints.push(entry.text)
@@ -116,7 +119,7 @@ export function resolveContextHints(
   }
 
   // Cluster reporting guidance
-  if (seen.has('clusters') || seen.has('momentum') || seen.has('signals') || seen.has('projects')) {
+  if (seen.has('clusters') || seen.has('momentum') || seen.has('intel') || seen.has('signals') || seen.has('projects')) {
     hints.push('When discussing clusters: report structural patterns (count, diversity, trajectory direction, convergence rate). Do not list individual cluster names — the structural pattern matters, not which communities are involved.')
   }
 

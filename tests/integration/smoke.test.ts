@@ -141,11 +141,13 @@ describe('E2E smoke tests', () => {
         expect(stripped).toMatch(/v\d+\.\d+\.\d+/)
         expect(stripped).toContain('login')
         expect(stripped).toContain('projects')
-        expect(stripped).toContain('signals')
+        expect(stripped).toContain('intel')
         expect(stripped).toContain('recipe')
         expect(stripped).toContain('--format')
         expect(stripped).not.toContain('--delayed')
         expect(stripped).toContain('--pay-per-use')
+        // signals is now a hidden deprecation shim and must NOT appear in --help
+        expect(stripped).not.toContain('signals')
       } finally {
         mockStdoutWrite.mockRestore()
       }

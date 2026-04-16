@@ -63,7 +63,7 @@ describe('Phase 1: CLI Help & Discovery', () => {
       const text = stripAnsi(raw)
 
       expect(text).toContain('recipe list')
-      expect(text).toContain('signals and projects with -f toon')
+      expect(text).toContain('intel and projects with -f toon')
       expect(text).toContain('help all')
     })
 
@@ -279,30 +279,30 @@ describe('Phase 1: CLI Help & Discovery', () => {
     })
   })
 
-  // ── Task 1.5: Clusters under signals ──
+  // ── Task 1.5: Clusters under intel ──
 
-  describe('signals clusters subcommand', () => {
-    it('should register clusters as a subcommand of signals', () => {
+  describe('intel clusters subcommand', () => {
+    it('should register clusters as a subcommand of intel', () => {
       const program = createProgram()
-      const signalsCmd = program.commands.find(c => c.name() === 'signals')
-      expect(signalsCmd).toBeDefined()
+      const intelCmd = program.commands.find(c => c.name() === 'intel')
+      expect(intelCmd).toBeDefined()
 
-      const subcommandNames = signalsCmd!.commands.map(c => c.name())
+      const subcommandNames = intelCmd!.commands.map(c => c.name())
       expect(subcommandNames).toContain('clusters')
     })
 
     it('should have a description for the clusters subcommand', () => {
       const program = createProgram()
-      const signalsCmd = program.commands.find(c => c.name() === 'signals')!
-      const clustersCmd = signalsCmd.commands.find(c => c.name() === 'clusters')
+      const intelCmd = program.commands.find(c => c.name() === 'intel')!
+      const clustersCmd = intelCmd.commands.find(c => c.name() === 'clusters')
       expect(clustersCmd).toBeDefined()
       expect(clustersCmd!.description()).toBeTruthy()
     })
 
     it('should mention -v in the clusters subcommand description', () => {
       const program = createProgram()
-      const signalsCmd = program.commands.find(c => c.name() === 'signals')!
-      const clustersCmd = signalsCmd.commands.find(c => c.name() === 'clusters')!
+      const intelCmd = program.commands.find(c => c.name() === 'intel')!
+      const clustersCmd = intelCmd.commands.find(c => c.name() === 'clusters')!
       expect(clustersCmd.description()).toContain('-v')
     })
   })

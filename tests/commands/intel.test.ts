@@ -31,7 +31,7 @@ vi.mock('@inquirer/prompts', () => ({
 
 // -- Mock data --
 
-const MOCK_SIGNALS = [
+const MOCK_INTEL = [
   {
     id: 'sig-1',
     detectedAt: '2026-02-28T12:00:00Z',
@@ -65,7 +65,31 @@ const MOCK_SIGNALS = [
   },
 ]
 
-describe('signals commands', () => {
+const MOCK_CLUSTERS = [
+  {
+    id: 'cluster-1',
+    name: 'DeFi Trends',
+    description: 'Intel related to decentralized finance trends and protocols',
+  },
+  {
+    id: 'cluster-2',
+    name: 'Market Sentiment',
+    description: 'Intel related to overall market sentiment and macro indicators',
+  },
+  {
+    id: 'cluster-3',
+    name: 'L2 Growth',
+    description: 'Layer 2 ecosystem growth and adoption intel',
+  },
+]
+
+const MOCK_CATEGORIES = [
+  { id: 'cat-1', name: 'DeFi', description: 'Decentralized finance intel' },
+  { id: 'cat-2', name: 'Adoption', description: 'Adoption and institutional intel' },
+  { id: 'cat-3', name: 'Security', description: 'Security and vulnerability intel' },
+]
+
+describe('intel commands', () => {
   let tempDir: string
   let logs: string[]
   let errors: string[]
@@ -74,7 +98,7 @@ describe('signals commands', () => {
 
   beforeEach(() => {
     mockFetch.mockReset()
-    tempDir = mkdtempSync(join(tmpdir(), 'aixbt-signals-test-'))
+    tempDir = mkdtempSync(join(tmpdir(), 'aixbt-intel-test-'))
     setConfigPath(join(tempDir, 'config.json'))
     process.env.AIXBT_API_KEY = 'test-key-123'
     logs = []
@@ -89,31 +113,31 @@ describe('signals commands', () => {
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true })
-    setConfigPath(join(tmpdir(), 'aixbt-signals-test-nonexistent', 'config.json'))
+    setConfigPath(join(tmpdir(), 'aixbt-intel-test-nonexistent', 'config.json'))
     delete process.env.AIXBT_API_KEY
     delete process.env.AIXBT_API_URL
     consoleSpy.mockRestore()
     consoleErrorSpy.mockRestore()
   })
 
-  // -- signals list --
+  // -- intel list --
 
-  describe('signals list', () => {
-    it('should fetch signals with default params in JSON mode', async () => {
+  describe('intel list', () => {
+    it('should fetch intel with default params in JSON mode', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_SIGNALS }),
+        jsonResponse(200, { status: 200, data: MOCK_INTEL }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/signals')
+      expect(callUrl.pathname).toBe('/v2/intel')
       expect(callUrl.searchParams.get('page')).toBe('1')
       expect(callUrl.searchParams.get('limit')).toBeNull()
-      expect(callUrl.searchParams.get('sortBy')).toBe('createdAt')
+      expect(callUrl.searchParams.get('sortBy')).toBe('reinforcedAt')
 
       // Verify JSON output
       const jsonOutput = logs.find(l => l.includes('Ethereum'))
@@ -127,12 +151,12 @@ describe('signals commands', () => {
     it('should include pagination in JSON output when present', async () => {
       const pagination = { page: 1, limit: 50, totalCount: 200, hasMore: true }
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_SIGNALS, pagination }),
+        jsonResponse(200, { status: 200, data: MOCK_INTEL, pagination }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel'], { from: 'node' })
 
       const jsonOutput = logs.find(l => l.includes('"pagination"'))
       expect(jsonOutput).toBeDefined()
@@ -142,14 +166,14 @@ describe('signals commands', () => {
 
     it('should pass filter options as query params', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: [MOCK_SIGNALS[0]] }),
+        jsonResponse(200, { status: 200, data: [MOCK_INTEL[0]] }),
       )
 
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
         [
-          'node', 'aixbt', '--format', 'json', 'signals',
+          'node', 'aixbt', '--format', 'json', 'intel',
           '--cluster-ids', 'c1,c2',
           '--categories', 'DeFi',
           '--detected-after', '2026-01-01',
@@ -172,7 +196,7 @@ describe('signals commands', () => {
       program.exitOverride()
       await program.parseAsync(
         [
-          'node', 'aixbt', '--format', 'json', 'signals',
+          'node', 'aixbt', '--format', 'json', 'intel',
           '--detected-after', '2026-01-01',
           '--detected-before', '2026-02-01',
           '--reinforced-after', '2026-01-15',
@@ -197,7 +221,7 @@ describe('signals commands', () => {
       program.exitOverride()
       await program.parseAsync(
         [
-          'node', 'aixbt', '--format', 'json', 'signals',
+          'node', 'aixbt', '--format', 'json', 'intel',
           '--project-ids', 'proj-1,proj-2',
           '--names', 'Bitcoin,Ethereum',
           '--x-handles', 'bitcoin,ethereum',
@@ -217,12 +241,12 @@ describe('signals commands', () => {
 
     it('should display card layout with project name, category, and description', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_SIGNALS }),
+        jsonResponse(200, { status: 200, data: MOCK_INTEL }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       // Project names shown
@@ -246,20 +270,20 @@ describe('signals commands', () => {
 
     it('should display OFFICIAL badge when hasOfficialSource is true', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: [MOCK_SIGNALS[0]] }),
+        jsonResponse(200, { status: 200, data: [MOCK_INTEL[0]] }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('OFFICIAL')
     })
 
-    it('should display HOT badge when signal has 3 or more clusters', async () => {
-      const hotSignal = {
-        ...MOCK_SIGNALS[0],
+    it('should display HOT badge when intel has 3 or more clusters', async () => {
+      const hotIntel = {
+        ...MOCK_INTEL[0],
         clusters: [
           { id: 'c1', name: 'DeFi Trends' },
           { id: 'c2', name: 'L2 Growth' },
@@ -267,26 +291,26 @@ describe('signals commands', () => {
         ],
       }
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: [hotSignal] }),
+        jsonResponse(200, { status: 200, data: [hotIntel] }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('HOT')
     })
 
-    it('should not display HOT badge when signal has fewer than 3 clusters', async () => {
+    it('should not display HOT badge when intel has fewer than 3 clusters', async () => {
       // sig-2 has only 1 cluster and hasOfficialSource: false
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: [MOCK_SIGNALS[1]] }),
+        jsonResponse(200, { status: 200, data: [MOCK_INTEL[1]] }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).not.toContain('HOT')
@@ -294,20 +318,20 @@ describe('signals commands', () => {
     })
 
     it('should display verbose output with -v flag including cluster names', async () => {
-      const signalWithActivity = {
-        ...MOCK_SIGNALS[0],
+      const intelWithActivity = {
+        ...MOCK_INTEL[0],
         activity: [
           { date: '2026-03-01', source: 'twitter', incoming: 'L2 TVL surge detected' },
-          { date: '2026-03-02', source: 'twitter', incoming: 'Continued growth confirmed', result: 'Signal reinforced' },
+          { date: '2026-03-02', source: 'twitter', incoming: 'Continued growth confirmed', result: 'Intel reinforced' },
         ],
       }
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: [signalWithActivity] }),
+        jsonResponse(200, { status: 200, data: [intelWithActivity] }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '-v', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '-v', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       // Project name still shown
@@ -323,14 +347,14 @@ describe('signals commands', () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
           status: 200,
-          data: MOCK_SIGNALS,
+          data: MOCK_INTEL,
           pagination: { page: 1, limit: 20, totalCount: 50, hasMore: true },
         }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('page 1')
@@ -342,43 +366,116 @@ describe('signals commands', () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
           status: 200,
-          data: MOCK_SIGNALS,
+          data: MOCK_INTEL,
           pagination: { page: 1, limit: 20, totalCount: 2, hasMore: false },
         }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('page 1')
       expect(allOutput).not.toContain('--page 2')
     })
 
-    it('should show verbose hint when signal list is empty', async () => {
+    it('should show verbose hint when intel list is empty', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: [] }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('-v')
     })
   })
 
-  // -- signals categories --
+  // -- intel clusters --
 
-  describe('signals categories', () => {
-    const MOCK_CATEGORIES = [
-      { id: 'cat-1', name: 'DeFi', description: 'Decentralized finance signals' },
-      { id: 'cat-2', name: 'Adoption', description: 'Adoption and institutional signals' },
-      { id: 'cat-3', name: 'Security', description: 'Security and vulnerability signals' },
-    ]
+  describe('intel clusters', () => {
+    it('should fetch clusters in JSON mode', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CLUSTERS }),
+      )
 
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel', 'clusters'], { from: 'node' })
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      expect(callUrl.pathname).toBe('/v2/clusters')
+
+      // Verify JSON output
+      const jsonOutput = logs.find(l => l.includes('cluster-1'))
+      expect(jsonOutput).toBeDefined()
+      const parsed = JSON.parse(jsonOutput!)
+      expect(parsed.data).toHaveLength(3)
+      expect(parsed.data[0].name).toBe('DeFi Trends')
+      expect(parsed.data[1].name).toBe('Market Sentiment')
+      expect(parsed.data[2].name).toBe('L2 Growth')
+    })
+
+    it('should not pass any query params to the API', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CLUSTERS }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel', 'clusters'], { from: 'node' })
+
+      const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
+      // Clusters endpoint takes no params
+      expect(callUrl.search).toBe('')
+    })
+
+    it('should display card layout with name, description, and ID', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CLUSTERS }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '-v', 'intel', 'clusters'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      // Card titles (cluster names)
+      expect(allOutput).toContain('DeFi Trends')
+      expect(allOutput).toContain('Market Sentiment')
+      expect(allOutput).toContain('L2 Growth')
+      // Card fields
+      expect(allOutput).toContain('ID')
+      expect(allOutput).toContain('cluster-1')
+      expect(allOutput).toContain('cluster-2')
+      expect(allOutput).toContain('cluster-3')
+      expect(allOutput).toContain('Description')
+      expect(allOutput).toContain('Intel related to decentralized finance')
+      // Footer count
+      expect(allOutput).toContain('3 clusters')
+    })
+
+    it('should show "No results" when cluster list is empty', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: [] }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', 'intel', 'clusters'], { from: 'node' })
+
+      const allOutput = logs.join('\n')
+      expect(allOutput).toContain('No results')
+    })
+  })
+
+  // -- intel categories --
+
+  describe('intel categories', () => {
     it('should fetch categories in JSON mode', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_CATEGORIES }),
@@ -386,11 +483,11 @@ describe('signals commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals', 'categories'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel', 'categories'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/signal-categories')
+      expect(callUrl.pathname).toBe('/v2/intel-categories')
 
       const jsonOutput = logs.find(l => l.includes('DeFi'))
       expect(jsonOutput).toBeDefined()
@@ -400,19 +497,19 @@ describe('signals commands', () => {
       expect(parsed.data[1].name).toBe('Adoption')
     })
 
-    it('should display cards without descriptions by default', async () => {
+    it('should display categories without descriptions by default', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_CATEGORIES }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals', 'categories'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel', 'categories'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('DeFi')
       expect(allOutput).toContain('Security')
-      expect(allOutput).not.toContain('Decentralized finance signals')
+      expect(allOutput).not.toContain('Decentralized finance intel')
       expect(allOutput).toContain('Use -v for category descriptions')
     })
 
@@ -423,11 +520,11 @@ describe('signals commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals', 'categories', '-v'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel', 'categories', '-v'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('DeFi')
-      expect(allOutput).toContain('Decentralized finance signals')
+      expect(allOutput).toContain('Decentralized finance intel')
       expect(allOutput).not.toContain('Use -v for category descriptions')
     })
 
@@ -438,7 +535,7 @@ describe('signals commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', 'signals', 'categories'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', 'intel', 'categories'], { from: 'node' })
 
       const allOutput = logs.join('\n')
       expect(allOutput).toContain('No categories available')
@@ -453,7 +550,7 @@ describe('signals commands', () => {
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals', 'categories'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel', 'categories'], { from: 'node' })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
@@ -475,7 +572,7 @@ describe('signals commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'signals', '--detected-after', '-7d'],
+        ['node', 'aixbt', '--format', 'json', 'intel', '--detected-after', '-7d'],
         { from: 'node' },
       )
 
@@ -497,7 +594,7 @@ describe('signals commands', () => {
       program.exitOverride()
       await program.parseAsync(
         [
-          'node', 'aixbt', '--format', 'json', 'signals',
+          'node', 'aixbt', '--format', 'json', 'intel',
           '--detected-after', '-7d',
           '--detected-before', '-1d',
           '--reinforced-after', '-24h',
@@ -523,7 +620,7 @@ describe('signals commands', () => {
       const program = createProgram()
       program.exitOverride()
       await program.parseAsync(
-        ['node', 'aixbt', '--format', 'json', 'signals', '--detected-after', '2026-01-01T00:00:00Z'],
+        ['node', 'aixbt', '--format', 'json', 'intel', '--detected-after', '2026-01-01T00:00:00Z'],
         { from: 'node' },
       )
 
@@ -535,14 +632,27 @@ describe('signals commands', () => {
   // -- auth modes --
 
   describe('auth modes', () => {
-    it('should send API key in headers when authenticated', async () => {
+    it('should send API key in headers when authenticated (intel)', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(200, { status: 200, data: MOCK_SIGNALS }),
+        jsonResponse(200, { status: 200, data: MOCK_INTEL }),
       )
 
       const program = createProgram()
       program.exitOverride()
-      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'signals'], { from: 'node' })
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel'], { from: 'node' })
+
+      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
+      expect(headers['X-API-Key']).toBe('test-key-123')
+    })
+
+    it('should send API key in headers when authenticated (intel clusters)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(200, { status: 200, data: MOCK_CLUSTERS }),
+      )
+
+      const program = createProgram()
+      program.exitOverride()
+      await program.parseAsync(['node', 'aixbt', '--format', 'json', 'intel', 'clusters'], { from: 'node' })
 
       const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
       expect(headers['X-API-Key']).toBe('test-key-123')
