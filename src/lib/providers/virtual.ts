@@ -117,3 +117,49 @@ export const securityProvider = createAliasProvider('security', 'Security', gopl
 // ---------------------------------------------------------------------------
 
 export const defiProvider = createAliasProvider('defi', 'DeFi', defillamaProvider)
+
+// ---------------------------------------------------------------------------
+// projects — AIXBT-tracked project data (purely internal, projectId required)
+//
+// Distinct from `market` which may route to external data sources.
+// `projects:metrics` is the v1 action — returns current or historical price
+// metrics for a tracked project.
+// ---------------------------------------------------------------------------
+
+export const projectsProvider: Provider = {
+  name: 'projects',
+  displayName: 'Projects',
+  actions: {
+    metrics: {
+      method: 'GET',
+      description: 'Get price metrics for an AIXBT-tracked project (current or historical)',
+      hint: 'You have a project ID and need its price, market cap, volume, and change metrics',
+      params: [
+        { name: 'projectId', required: true, description: 'AIXBT project ID' },
+        { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns metrics as of this point in time.' },
+      ],
+      minTier: 'free',
+      resolve: (params) => {
+        // Reject params that imply external routing — this action is projectId-only
+        if (hasValue(params.geckoId)) {
+          return { error: 'projects:metrics does not accept geckoId — use projectId instead' }
+        }
+        if (hasValue(params.address)) {
+          return { error: 'projects:metrics does not accept address — use projectId instead' }
+        }
+        if (hasValue(params.network)) {
+          return { error: 'projects:metrics does not accept network — use projectId instead' }
+        }
+        if (!hasValue(params.projectId)) {
+          return { error: 'projects:metrics requires projectId' }
+        }
+        return {
+          provider: 'aixbt',
+          action: 'metrics',
+          params: { id: params.projectId, ...(hasValue(params.at) ? { at: params.at } : {}) },
+        }
+      },
+    },
+  },
+  tiers: {},
+}

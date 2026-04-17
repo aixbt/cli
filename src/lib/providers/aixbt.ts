@@ -12,6 +12,7 @@ export const AIXBT_ACTION_PATHS: Record<string, string> = {
   candles: '/v2/projects/{id}/candles',
   grounding: '/v2/grounding/latest',
   groundingHistory: '/v2/grounding/history',
+  metrics: '/v2/projects/{id}/metrics',
 }
 
 const actions: Record<string, ActionDefinition> = {
@@ -182,6 +183,17 @@ const actions: Record<string, ActionDefinition> = {
       { name: 'limit', required: false, description: 'Results per page (default 50, max 50).' },
     ],
     minTier: 'paid',
+  },
+  metrics: {
+    method: 'GET',
+    path: '/v2/projects/{id}/metrics',
+    description: 'Get price metrics for a project (current or point-in-time)',
+    hint: 'You need price, market cap, volume, and change data for a tracked project',
+    params: [
+      { name: 'id', required: true, description: 'Project ID', inPath: true },
+      { name: 'at', required: false, description: 'Historical timestamp (ISO 8601). Returns metrics as of this point in time.' },
+    ],
+    minTier: 'free',
   },
 }
 
