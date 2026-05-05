@@ -12,6 +12,7 @@ import { registerSignalsCommand } from './commands/signals.js'
 import { registerGroundingCommand } from './commands/grounding.js'
 // clusters is now a subcommand of signals — see signals.ts
 import { registerRecipeCommand } from './commands/recipe.js'
+import { registerChatCommand } from './commands/chat.js'
 import { registerLoginCommand } from './commands/login.js'
 import { registerProviderCommand } from './commands/provider.js'
 
@@ -114,6 +115,7 @@ export function createProgram(): Command {
   registerGroundingCommand(program)
   // clusters is now a subcommand of signals
   registerRecipeCommand(program)
+  registerChatCommand(program)
   registerProviderCommand(program)
 
   // `aixbt help all` — full reference of every command and option
