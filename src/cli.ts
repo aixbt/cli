@@ -86,7 +86,7 @@ export function createProgram(): Command {
       lines.push(output.fmt.dim('NFA. DYOR. Information Purpose Only.'))
       return '\n' + lines.join('\n') + '\n'
     })
-    .option('--pay-per-use', 'Pay per API call via x402')
+    .addOption(new Option('--pay-per-use', '[Deprecated] Pay per API call via x402').hideHelp())
     .addOption(new Option('--payment-signature <base64>', 'Payment proof for x402 (base64-encoded)').hideHelp())
     .option('--api-key <key>', 'API key (overrides config and env)')
     .addOption(new Option('--api-url <url>', 'API base URL (overrides config and env)').hideHelp())

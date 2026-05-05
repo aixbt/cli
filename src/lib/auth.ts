@@ -30,7 +30,8 @@ export interface ApiKeyInfo {
 
 export function resolveAuthMode(flags: AuthModeFlags, resolved?: ResolvedConfig): AuthMode {
   if (flags.payPerUse) {
-    return { mode: 'pay-per-use' }
+    process.stderr.write('--pay-per-use is deprecated — purchase a key pass with `aixbt login --purchase-pass`. Sunset: 2026-07-15.\n')
+    process.exit(2)
   }
   if (flags.paymentSignature) {
     return { mode: 'pay-per-use' }

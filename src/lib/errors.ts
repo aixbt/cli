@@ -119,14 +119,6 @@ export class NoApiKeyError extends CliError {
           dataFreshness: 'real-time',
           requires: ['wallet'],
         },
-        {
-          mode: 'pay-per-use',
-          flag: '--pay-per-use',
-          description: 'Pay per request via x402',
-          cost: '$0.50/call',
-          dataFreshness: 'real-time',
-          requires: ['wallet'],
-        },
       ],
       free: {
         endpoint: 'grounding',
@@ -147,10 +139,6 @@ export class NoApiKeyError extends CliError {
       '  2. Purchase a pass via x402',
       '     1 day ($10) / 1 week ($50) / 4 weeks ($100)',
       '     Run: aixbt login --purchase-pass',
-      '',
-      '  3. Pay per use via x402',
-      '     $0.50/call, requires wallet',
-      '     Run with: --pay-per-use',
       '',
       'Grounding data is always free — run: aixbt grounding',
     ].join('\n')
@@ -211,10 +199,8 @@ async function renderNoApiKeyError(outputFormat: OutputFormat): Promise<void> {
   }
 
   console.log()
-  console.log(`  ${output.fmt.brandBold('3. Pay per use')}`)
-  console.log(`     Append ${output.fmt.dim('--pay-per-use')} to any command`)
-  console.log()
-  console.log(`  ${output.fmt.dim('Grounding data is always free — run:')} aixbt grounding`)
+  console.log(`  ${output.fmt.brandBold('3. Free data')}`)
+  console.log(`     Grounding data is always free — run: ${output.fmt.dim('aixbt grounding')}`)
   console.log()
   console.log(`  ${output.fmt.boldWhite('Docs')}`)
   console.log(`  ${output.fmt.dim('humans:')} ${output.fmt.link('https://docs.aixbt.tech/builders')}`)
