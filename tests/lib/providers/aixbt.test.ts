@@ -18,11 +18,12 @@ describe('AIXBT_ACTION_PATHS', () => {
     'grounding',
     'groundingHistory',
     'candles',
+    'metrics',
   ]
 
-  it('should have entries for all 11 action names', () => {
+  it('should have entries for all 12 action names', () => {
     const keys = Object.keys(AIXBT_ACTION_PATHS)
-    expect(keys).toHaveLength(11)
+    expect(keys).toHaveLength(12)
     for (const name of expectedActions) {
       expect(AIXBT_ACTION_PATHS).toHaveProperty(name)
     }
@@ -87,9 +88,9 @@ describe('aixbtProvider', () => {
   // -- Actions --
 
   describe('actions', () => {
-    it('should define all 10 actions', () => {
+    it('should define all 12 actions', () => {
       const actionNames = Object.keys(aixbtProvider.actions)
-      expect(actionNames).toHaveLength(11)
+      expect(actionNames).toHaveLength(12)
       expect(actionNames).toContain('projects')
       expect(actionNames).toContain('project')
       expect(actionNames).toContain('momentum')
@@ -101,6 +102,7 @@ describe('aixbtProvider', () => {
       expect(actionNames).toContain('grounding')
       expect(actionNames).toContain('groundingHistory')
       expect(actionNames).toContain('candles')
+      expect(actionNames).toContain('metrics')
     })
 
     it('should use method GET for all actions', () => {
