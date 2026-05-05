@@ -301,11 +301,11 @@ describe('CLI', () => {
   })
 
   describe('command count', () => {
-    it('should have exactly 10 registered commands', () => {
+    it('should have exactly 11 registered commands', () => {
       const program = createProgram()
       // login, logout, whoami, projects, intel, signals (hidden shim),
-      // grounding, recipe, provider, help
-      expect(program.commands).toHaveLength(10)
+      // grounding, recipe, chat, provider, help
+      expect(program.commands).toHaveLength(11)
     })
   })
 
