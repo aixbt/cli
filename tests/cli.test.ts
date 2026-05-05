@@ -45,11 +45,11 @@ describe('CLI', () => {
       expect(formatOpt!.description).toBe('Output format: human (default), json, toon')
     })
 
-    it('should have --pay-per-use option registered', () => {
+    it('should have --pay-per-use option registered (hidden, deprecated)', () => {
       const program = createProgram()
       const ppuOpt = program.options.find((o) => o.long === '--pay-per-use')
       expect(ppuOpt).toBeDefined()
-      expect(ppuOpt!.description).toBe('Pay per API call via x402')
+      expect(ppuOpt!.description).toBe('[Deprecated] Pay per API call via x402')
     })
 
     it('should have --payment-signature option registered with required argument', () => {
@@ -276,7 +276,7 @@ describe('CLI', () => {
 
       expect(stripped).toContain('--format')
       expect(stripped).toContain('-f')
-      expect(stripped).toContain('--pay-per-use')
+      expect(stripped).not.toContain('--pay-per-use')
       expect(stripped).toContain('--api-key')
       expect(stripped).not.toContain('-V, --version')
     })

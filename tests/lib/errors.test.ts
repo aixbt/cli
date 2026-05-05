@@ -182,7 +182,7 @@ describe('NoApiKeyError', () => {
     expect(json.message).toBe('No API key configured')
     expect(json.options).toBeDefined()
     expect(Array.isArray(json.options)).toBe(true)
-    expect((json.options as Array<{ mode: string }>).length).toBe(3)
+    expect((json.options as Array<{ mode: string }>).length).toBe(2)
   })
 
   it('should list all access modes in toJSON options', () => {
@@ -191,7 +191,7 @@ describe('NoApiKeyError', () => {
     const modes = options.map((o) => o.mode)
     expect(modes).toContain('api-key')
     expect(modes).toContain('purchase-pass')
-    expect(modes).toContain('pay-per-use')
+    expect(modes).not.toContain('pay-per-use')
     expect(modes).not.toContain('delayed')
   })
 
@@ -202,7 +202,7 @@ describe('NoApiKeyError', () => {
     expect(text).toContain('Access options:')
     expect(text).toContain('aixbt login')
     expect(text).toContain('--purchase-pass')
-    expect(text).toContain('--pay-per-use')
+    expect(text).not.toContain('--pay-per-use')
     expect(text).toContain('Grounding data is always free')
     expect(text).not.toContain('--delayed')
     // Verify it's multi-line
