@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- **New** — `aixbt chat` command for conversational interaction with the AIXBT agent
+- **New** — `projects:metrics` virtual action for project metric queries
+- **Deprecation** — `--pay-per-use` flag deprecated with hard shim (exits non-zero with migration guidance)
+
 ## 0.2.0
 
 - **Breaking** — `aixbt signals` is now a deprecation shim that exits non-zero (code 2). Use `aixbt intel` instead. Old endpoint sunsets 2026-07-15.
