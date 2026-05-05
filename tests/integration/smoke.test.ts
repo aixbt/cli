@@ -145,7 +145,7 @@ describe('E2E smoke tests', () => {
         expect(stripped).toContain('recipe')
         expect(stripped).toContain('--format')
         expect(stripped).not.toContain('--delayed')
-        expect(stripped).toContain('--pay-per-use')
+        expect(stripped).not.toContain('--pay-per-use')
         // signals is now a hidden deprecation shim and must NOT appear in --help
         expect(stripped).not.toContain('signals')
       } finally {

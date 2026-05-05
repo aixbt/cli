@@ -32,9 +32,14 @@ describe('auth', () => {
   // -- resolveAuthMode --
 
   describe('resolveAuthMode', () => {
-    it('should return pay-per-use mode when payPerUse flag is true', () => {
-      const result = resolveAuthMode({ payPerUse: true })
-      expect(result).toEqual({ mode: 'pay-per-use' })
+    it('should exit with code 2 when payPerUse flag is true (deprecated)', () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit') })
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      expect(() => resolveAuthMode({ payPerUse: true })).toThrow('process.exit')
+      expect(exitSpy).toHaveBeenCalledWith(2)
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('deprecated'))
+      exitSpy.mockRestore()
+      stderrSpy.mockRestore()
     })
 
     it('should return api-key mode when apiKey is provided via flag', () => {
@@ -68,11 +73,15 @@ describe('auth', () => {
       expect(() => resolveAuthMode({})).toThrow(NoApiKeyError)
     })
 
-    it('should prioritize pay-per-use flag over a configured API key', () => {
+    it('should exit with code 2 when payPerUse flag is true even with configured API key (deprecated)', () => {
       writeConfig({ apiKey: 'config-key' })
       process.env.AIXBT_API_KEY = 'env-key'
-      const result = resolveAuthMode({ payPerUse: true, apiKey: 'flag-key' })
-      expect(result).toEqual({ mode: 'pay-per-use' })
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit') })
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      expect(() => resolveAuthMode({ payPerUse: true, apiKey: 'flag-key' })).toThrow('process.exit')
+      expect(exitSpy).toHaveBeenCalledWith(2)
+      exitSpy.mockRestore()
+      stderrSpy.mockRestore()
     })
 
     it('should include resolved config in api-key mode result', () => {
