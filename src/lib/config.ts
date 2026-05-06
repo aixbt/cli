@@ -28,9 +28,11 @@ const DEFAULT_CONFIG_DIR = join(homedir(), '.aixbt')
 const DEFAULT_CONFIG_FILE = join(DEFAULT_CONFIG_DIR, 'config.json')
 
 let configPathOverride: string | undefined
+let configCache: AixbtConfig | undefined
 
 export function setConfigPath(path: string): void {
   configPathOverride = path
+  configCache = undefined
 }
 
 export function getConfigPath(): string {
@@ -53,21 +55,23 @@ function ensureConfigDir(): void {
 }
 
 export function readConfig(): AixbtConfig {
+  if (configCache) return configCache
+
   const configFile = getConfigPath()
   if (!existsSync(configFile)) {
     return {}
   }
   try {
     const raw = readFileSync(configFile, 'utf-8')
-    return JSON.parse(raw) as AixbtConfig
+    configCache = JSON.parse(raw) as AixbtConfig
+    return configCache
   } catch {
-    // Corrupt or unreadable config file -- return empty defaults rather than crashing.
-    // The user can fix it with `aixbt config set` or delete the file.
     return {}
   }
 }
 
 export function writeConfig(config: AixbtConfig): void {
+  configCache = undefined
   try {
     ensureConfigDir()
     writeFileSync(getConfigPath(), JSON.stringify(config, null, 2) + '\n', {
@@ -81,6 +85,7 @@ export function writeConfig(config: AixbtConfig): void {
 }
 
 export function clearConfig(): void {
+  configCache = undefined
   const configFile = getConfigPath()
   try {
     unlinkSync(configFile)

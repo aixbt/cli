@@ -17,6 +17,10 @@ function parseRateLimitHeaders(headers: Headers): RateLimitInfo | null {
   const limitMinute = headers.get('x-ratelimit-limit-minute')
   if (!limitMinute) return null
 
+  const rawRetryAfter = headers.has('retry-after')
+    ? parseInt(headers.get('retry-after')!, 10)
+    : undefined
+
   return {
     limitPerMinute: parseInt(limitMinute, 10),
     remainingPerMinute: parseInt(headers.get('x-ratelimit-remaining-minute') ?? '0', 10),
@@ -24,16 +28,23 @@ function parseRateLimitHeaders(headers: Headers): RateLimitInfo | null {
     limitPerDay: parseInt(headers.get('x-ratelimit-limit-day') ?? '0', 10),
     remainingPerDay: parseInt(headers.get('x-ratelimit-remaining-day') ?? '0', 10),
     resetDay: headers.get('x-ratelimit-reset-day') ?? '',
-    retryAfterSeconds: headers.has('retry-after')
-      ? parseInt(headers.get('retry-after')!, 10)
-      : undefined,
+    retryAfterSeconds: rawRetryAfter !== undefined && !isNaN(rawRetryAfter) ? rawRetryAfter : undefined,
   }
 }
 
-import { readFileSync } from 'node:fs'
-const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'))
-const DEFAULT_USER_AGENT = `@aixbt/cli/${pkg.version}`
+import { cliVersion } from './version.js'
+
+const DEFAULT_USER_AGENT = `@aixbt/cli/${cliVersion}`
 const MAX_RETRIES = 3
+
+function computeRetryDelay(rateLimit: RateLimitInfo | null, responseBody: Record<string, unknown> | null): number {
+  if (responseBody?.limitType === 'day' || rateLimit?.remainingPerDay === 0) {
+    throw new RateLimitError('Daily rate limit exhausted', rateLimit)
+  }
+  const baseDelay = (rateLimit?.retryAfterSeconds ?? 5) * 1000
+  const jitter = Math.random() * 2000
+  return baseDelay + jitter
+}
 
 export async function apiRequest<T>(
   method: string,
@@ -126,13 +137,16 @@ export async function postRaw<T>(
     }
 
     if (res.status === 429) {
+      const rateLimit = parseRateLimitHeaders(res.headers)
+      const resBody = await safeJson(res)
+
+      const delay = computeRetryDelay(rateLimit, resBody)
+
       if (attempt >= MAX_RETRIES) {
-        const rateLimit = parseRateLimitHeaders(res.headers)
         throw new RateLimitError('Rate limit exceeded after maximum retries', rateLimit)
       }
-      const rateLimit = parseRateLimitHeaders(res.headers)
-      const retryAfter = rateLimit?.retryAfterSeconds ?? 60
-      await sleep(retryAfter * 1000)
+
+      await sleep(delay)
       continue
     }
 
@@ -187,6 +201,10 @@ async function executeWithBackoff<T>(
   const rateLimit = parseRateLimitHeaders(res.headers)
 
   if (res.status === 429) {
+    const body = await safeJson(res)
+
+    const delay = computeRetryDelay(rateLimit, body)
+
     if (attempt >= MAX_RETRIES) {
       throw new RateLimitError(
         'Rate limit exceeded after maximum retries',
@@ -194,8 +212,7 @@ async function executeWithBackoff<T>(
       )
     }
 
-    const retryAfter = rateLimit?.retryAfterSeconds ?? 60
-    await sleep(retryAfter * 1000)
+    await sleep(delay)
     return executeWithBackoff<T>(method, url, headers, attempt + 1)
   }
 
