@@ -374,6 +374,23 @@ describe('handleTopLevelError', () => {
       expect(mockError).toHaveBeenCalledWith('\nRetry after: 45s')
     })
 
+    it('should print daily-exhausted message when remainingPerDay is 0', async () => {
+      const rateLimit: RateLimitInfo = {
+        limitPerMinute: 100,
+        remainingPerMinute: 0,
+        resetMinute: '2026-01-01T00:01:00Z',
+        limitPerDay: 10000,
+        remainingPerDay: 0,
+        resetDay: '2026-01-02T00:00:00Z',
+        retryAfterSeconds: 45,
+      }
+      const err = new RateLimitError('Daily rate limit exhausted', rateLimit)
+
+      await expect(handleTopLevelError(err, 'human')).rejects.toThrow('process.exit called')
+
+      expect(mockError).toHaveBeenCalledWith('\nDaily rate limit exhausted. Resets at 2026-01-02T00:00:00Z')
+    })
+
     it('should print resetMinute when no retryAfterSeconds', async () => {
       const rateLimit: RateLimitInfo = {
         limitPerMinute: 100,

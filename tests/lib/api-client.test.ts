@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import { get, apiRequest } from '../../src/lib/api-client.js'
+import { get, postRaw, apiRequest } from '../../src/lib/api-client.js'
 import { setConfigPath } from '../../src/lib/config.js'
 import {
   ApiError,
@@ -119,6 +119,7 @@ describe('api-client', () => {
   describe('auto-retry on 429', () => {
     it('should retry on 429 and return success on second attempt', async () => {
       vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(0)
 
       const retryHeaders = rateLimitHeaders({ 'retry-after': '0' })
 
@@ -130,7 +131,7 @@ describe('api-client', () => {
 
       const promise = get('/v1/test')
 
-      // Advance past the 0ms sleep
+      // Advance past the 0ms sleep (retry-after 0 + jitter 0)
       await vi.advanceTimersByTimeAsync(0)
 
       const result = await promise
@@ -138,11 +139,13 @@ describe('api-client', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2)
       expect(result.data).toEqual({ ok: true })
 
+      vi.spyOn(Math, 'random').mockRestore()
       vi.useRealTimers()
     })
 
     it('should throw RateLimitError after exceeding max retries', async () => {
       vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(0)
 
       const retryHeaders = rateLimitHeaders({ 'retry-after': '0' })
 
@@ -168,6 +171,195 @@ describe('api-client', () => {
         'Rate limit exceeded after maximum retries',
       )
 
+      vi.spyOn(Math, 'random').mockRestore()
+      vi.useRealTimers()
+    })
+
+    it('should use 5s fallback delay (not 60s) when no retry-after header', async () => {
+      vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(0.5) // jitter = 1000ms
+
+      // No retry-after header — fallback should be 5s + 1s jitter = 6s
+      const headers = rateLimitHeaders()
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(429, {}, headers))
+        .mockResolvedValueOnce(
+          jsonResponse(200, { status: 200, data: { ok: true } }, rateLimitHeaders()),
+        )
+
+      const promise = get('/v1/test')
+
+      // At 5999ms the sleep should not have resolved yet
+      await vi.advanceTimersByTimeAsync(5999)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      // At 6000ms the sleep resolves (5000 base + 1000 jitter)
+      await vi.advanceTimersByTimeAsync(1)
+
+      const result = await promise
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(result.data).toEqual({ ok: true })
+
+      vi.spyOn(Math, 'random').mockRestore()
+      vi.useRealTimers()
+    })
+
+    it('should add jitter to retry delay', async () => {
+      vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(1) // max jitter = 2000ms
+
+      const retryHeaders = rateLimitHeaders({ 'retry-after': '3' })
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(429, {}, retryHeaders))
+        .mockResolvedValueOnce(
+          jsonResponse(200, { status: 200, data: { ok: true } }, rateLimitHeaders()),
+        )
+
+      const promise = get('/v1/test')
+
+      // At 4999ms the sleep should not have resolved (3000 base + 2000 jitter)
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      // At 5000ms the sleep resolves
+      await vi.advanceTimersByTimeAsync(1)
+
+      const result = await promise
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(result.data).toEqual({ ok: true })
+
+      vi.spyOn(Math, 'random').mockRestore()
+      vi.useRealTimers()
+    })
+
+    it('should bail immediately on daily rate limit (limitType in body)', async () => {
+      const retryHeaders = rateLimitHeaders({ 'retry-after': '5' })
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(429, { limitType: 'day' }, retryHeaders),
+      )
+
+      try {
+        await get('/v1/test')
+        expect.fail('Expected RateLimitError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(RateLimitError)
+        expect((err as RateLimitError).message).toBe('Daily rate limit exhausted')
+        // Should not retry — only one fetch call
+        expect(mockFetch).toHaveBeenCalledTimes(1)
+      }
+    })
+
+    it('should bail immediately when remainingPerDay is 0', async () => {
+      const retryHeaders = rateLimitHeaders({
+        'retry-after': '5',
+        'x-ratelimit-remaining-day': '0',
+      })
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(429, {}, retryHeaders),
+      )
+
+      try {
+        await get('/v1/test')
+        expect.fail('Expected RateLimitError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(RateLimitError)
+        expect((err as RateLimitError).message).toBe('Daily rate limit exhausted')
+        expect(mockFetch).toHaveBeenCalledTimes(1)
+      }
+    })
+
+    it('should treat non-numeric Retry-After as missing (use 5s fallback)', async () => {
+      vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(0)
+
+      const headers = rateLimitHeaders({ 'retry-after': 'Tue, 06 May 2026 12:00:00 GMT' })
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(429, {}, headers))
+        .mockResolvedValueOnce(
+          jsonResponse(200, { status: 200, data: { ok: true } }, rateLimitHeaders()),
+        )
+
+      const promise = get('/v1/test')
+
+      // Should use 5s fallback (not 0ms from NaN)
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(1)
+
+      const result = await promise
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(result.data).toEqual({ ok: true })
+
+      vi.spyOn(Math, 'random').mockRestore()
+      vi.useRealTimers()
+    })
+  })
+
+  // -- postRaw retry behavior --
+
+  describe('postRaw retry on 429', () => {
+    it('should bail immediately on daily rate limit (limitType in body)', async () => {
+      const retryHeaders = rateLimitHeaders({ 'retry-after': '5' })
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(429, { limitType: 'day' }, retryHeaders),
+      )
+
+      try {
+        await postRaw('/v1/test', { some: 'payload' })
+        expect.fail('Expected RateLimitError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(RateLimitError)
+        expect((err as RateLimitError).message).toBe('Daily rate limit exhausted')
+        expect(mockFetch).toHaveBeenCalledTimes(1)
+      }
+    })
+
+    it('should bail immediately when remainingPerDay is 0', async () => {
+      const retryHeaders = rateLimitHeaders({
+        'retry-after': '5',
+        'x-ratelimit-remaining-day': '0',
+      })
+
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(429, {}, retryHeaders),
+      )
+
+      try {
+        await postRaw('/v1/test', { some: 'payload' })
+        expect.fail('Expected RateLimitError to be thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(RateLimitError)
+        expect((err as RateLimitError).message).toBe('Daily rate limit exhausted')
+        expect(mockFetch).toHaveBeenCalledTimes(1)
+      }
+    })
+
+    it('should retry with jitter and succeed on second attempt', async () => {
+      vi.useFakeTimers()
+      vi.spyOn(Math, 'random').mockReturnValue(0)
+
+      const retryHeaders = rateLimitHeaders({ 'retry-after': '0' })
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(429, {}, retryHeaders))
+        .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
+
+      const promise = postRaw('/v1/test', { some: 'payload' })
+
+      await vi.advanceTimersByTimeAsync(0)
+
+      const result = await promise
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(result).toEqual({ ok: true })
+
+      vi.spyOn(Math, 'random').mockRestore()
       vi.useRealTimers()
     })
   })
