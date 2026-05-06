@@ -28,10 +28,11 @@ Four access modes: API key, x402 purchase pass, x402 pay-per-use, and delayed (f
 | `logout` | Remove stored credentials |
 | `whoami` | Show current authentication status |
 | `projects` | Query tracked projects and momentum |
-| `signals` | Query real-time detected signals |
+| `intel` | Query real-time detected intel |
+| `chat` | Conversational analysis with aixbt |
 | `grounding` | Market grounding snapshot (narratives, macro, geopolitics, tradfi) |
-| `signals clusters` | Explore signal clusters |
-| `signals categories` | List signal categories |
+| `intel clusters` | Explore intel clusters |
+| `intel categories` | List intel categories |
 | `recipe` | Build and run analysis pipelines |
 | `provider` | External data providers (CoinGecko, DeFiLlama, GoPlus, DexPaprika) |
 
