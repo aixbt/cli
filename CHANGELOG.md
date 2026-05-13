@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- **Fix** — recipe list/info/clone commands now hit the correct `/v2/recipes` endpoint (was using removed `/v2/cli/recipes` path)
+- **Fix** — smarter rate limit retry with jitter and daily limit bailout
+
 ## 0.3.0
 
 - **New** — `aixbt chat` command for conversational interaction with the AIXBT agent
