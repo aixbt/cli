@@ -46,7 +46,7 @@ describe('registry', () => {
   // -- fetchRecipeList --
 
   describe('fetchRecipeList', () => {
-    it('should call the correct URL (/v2/cli/recipes)', async () => {
+    it('should call the correct URL (/v2/recipes)', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, { status: 200, data: MOCK_RECIPE_LIST }),
       )
@@ -55,7 +55,7 @@ describe('registry', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/cli/recipes')
+      expect(callUrl.pathname).toBe('/v2/recipes')
     })
 
     it('should not send an X-API-Key header (unauthenticated)', async () => {
@@ -103,7 +103,7 @@ describe('registry', () => {
 
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
       expect(callUrl.origin).toBe('https://custom.api.com')
-      expect(callUrl.pathname).toBe('/v2/cli/recipes')
+      expect(callUrl.pathname).toBe('/v2/recipes')
     })
   })
 
@@ -119,7 +119,7 @@ describe('registry', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/cli/recipes/defi-analysis')
+      expect(callUrl.pathname).toBe('/v2/recipes/defi-analysis')
     })
 
     it('should URL-encode the recipe name', async () => {
@@ -130,7 +130,7 @@ describe('registry', () => {
       await fetchRecipeDetail('my recipe/special')
 
       const callUrl = mockFetch.mock.calls[0][0] as string
-      expect(callUrl).toContain('/v2/cli/recipes/my%20recipe%2Fspecial')
+      expect(callUrl).toContain('/v2/recipes/my%20recipe%2Fspecial')
     })
 
     it('should return the detail object', async () => {

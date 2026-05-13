@@ -16,7 +16,7 @@ export interface RecipeDetail {
 }
 
 export async function fetchRecipeList(clientOptions?: ApiClientOptions): Promise<RecipeSummary[]> {
-  const result = await get<RecipeSummary[]>('/v2/cli/recipes', undefined, {
+  const result = await get<RecipeSummary[]>('/v2/recipes', undefined, {
     ...clientOptions,
     noAuth: true,
   })
@@ -26,7 +26,7 @@ export async function fetchRecipeList(clientOptions?: ApiClientOptions): Promise
 export async function fetchRecipeDetail(name: string, clientOptions?: ApiClientOptions): Promise<RecipeDetail> {
   try {
     const result = await get<RecipeDetail>(
-      `/v2/cli/recipes/${encodeURIComponent(name)}`,
+      `/v2/recipes/${encodeURIComponent(name)}`,
       undefined,
       { ...clientOptions, noAuth: true },
     )

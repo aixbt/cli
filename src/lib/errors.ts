@@ -242,10 +242,14 @@ export async function handleTopLevelError(err: unknown, outputFormat: OutputForm
         }
       }
       if (err instanceof RateLimitError && err.rateLimit) {
-        const resetTime = err.rateLimit.retryAfterSeconds
-          ? `${err.rateLimit.retryAfterSeconds}s`
-          : err.rateLimit.resetMinute
-        console.error(`\nRetry after: ${resetTime}`)
+        if (err.rateLimit.remainingPerDay === 0 && err.rateLimit.resetDay) {
+          console.error(`\nDaily rate limit exhausted. Resets at ${err.rateLimit.resetDay}`)
+        } else {
+          const resetTime = err.rateLimit.retryAfterSeconds
+            ? `${err.rateLimit.retryAfterSeconds}s`
+            : err.rateLimit.resetMinute
+          console.error(`\nRetry after: ${resetTime}`)
+        }
       }
       if (err instanceof NetworkError) {
         console.error('\nCheck your internet connection and try again.')
