@@ -125,7 +125,7 @@ describe('recipe commands', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/cli/recipes')
+      expect(callUrl.pathname).toBe('/v2/recipes')
 
       const allOutput = logs.join('\n')
       // Recipe names and versions should be present
@@ -521,7 +521,7 @@ steps:
     type: api
     action: "GET /v2/projects"
 `
-      // First fetch: registry lookup returns recipe detail (GET /v2/cli/recipes/my-recipe)
+      // First fetch: registry lookup returns recipe detail (GET /v2/recipes/my-recipe)
       mockFetch.mockResolvedValueOnce(
         jsonResponse(200, {
           status: 200,
@@ -550,7 +550,7 @@ steps:
       // First call should be the registry fetch
       expect(mockFetch).toHaveBeenCalledTimes(2)
       const registryUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(registryUrl.pathname).toBe('/v2/cli/recipes/my-recipe')
+      expect(registryUrl.pathname).toBe('/v2/recipes/my-recipe')
 
       // Second call should be the server-side recipe execution
       const stepUrl = new URL(mockFetch.mock.calls[1][0] as string)
@@ -665,7 +665,7 @@ analysis:
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/cli/recipes/test_recipe')
+      expect(callUrl.pathname).toBe('/v2/recipes/test_recipe')
 
       const jsonOutput = logs.find(l => l.includes('"name"'))
       expect(jsonOutput).toBeDefined()
@@ -771,7 +771,7 @@ analysis:
       ).rejects.toThrow()
 
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/cli/recipes/nonexistent')
+      expect(callUrl.pathname).toBe('/v2/recipes/nonexistent')
     })
   })
 
@@ -809,7 +809,7 @@ steps:
       // Verify the registry was called with the correct recipe name
       expect(mockFetch).toHaveBeenCalledTimes(1)
       const callUrl = new URL(mockFetch.mock.calls[0][0] as string)
-      expect(callUrl.pathname).toBe('/v2/cli/recipes/my-recipe')
+      expect(callUrl.pathname).toBe('/v2/recipes/my-recipe')
 
       // Verify JSON output
       const jsonOutput = logs.find(l => l.includes('"status"'))
